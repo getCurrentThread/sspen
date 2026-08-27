@@ -1,0 +1,16 @@
+# 텍스트는 저장소에 LF로 저장하고 체크아웃 시 플랫폼 기본을 따른다.
+* text=auto
+
+*.cs      text diff=csharp
+*.csproj  text
+*.sln     text eol=crlf
+*.xaml    text
+*.manifest text
+*.md      text
+*.yml     text
+*.ps1     text eol=crlf
+*.iss     text eol=crlf
+
+*.ico     binary
+*.ttf     binary
+*.png     binary

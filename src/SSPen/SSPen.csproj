@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>SSPen</RootNamespace>
+    <AssemblyName>SSPen</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- exe 파일 아이콘 (탐색기·작업 표시줄·Alt+Tab). build/make-appicon.ps1로 재생성한다. -->
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <!-- LibraryImport 소스 생성기가 unsafe 코드를 방출한다 (수동 unsafe 블록 없음). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- PerMonitorV2 manifest is spec-locked; WinForms only hosts NotifyIcon. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <Platforms>AnyCPU</Platforms>
+    <SatelliteResourceLanguages>ko-KR</SatelliteResourceLanguages>
+    <!-- 1.2.0: 페이딩 잉크를 도구에서 토글로 전환(펜·도형과 조합), 보드 기본색 설정,
+         설정에서 페이딩 항목 제거, 바로가기 색상 6칸 편집, 설정 아이콘 톱니바퀴.
+         1.1.0: 필기내용 선택 도구, 앱 아이콘, 보드 슬라이드, 캐처 기본 핀 고정,
+         커서 고정 확대, 휴지통이 핀까지 정리, 페이딩 0.1~5초, 사라진 창 입력 경주 크래시 수정.
+         설치 프로그램(installer/SSPen.iss)의 MyAppVersion과 반드시 같이 올린다. -->
+    <Version>1.2.0</Version>
+    <Product>SS Pen</Product>
+    <Description>한국어 판서 + 캐처 도구</Description>
+    <!-- Win32 버전 정보 필드. Description은 exe의 FileDescription으로 가지 않으므로
+         AssemblyTitle을 따로 준다 — 이게 작업 관리자·파일 속성에 보이는 이름이다. -->
+    <AssemblyTitle>SS Pen</AssemblyTitle>
+    <Company>SS Pen</Company>
+    <Copyright>Copyright © 2026 SS Pen</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WinForms implicit global using collides with System.Windows.Media in WPF files. -->
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\Fonts\FluentSystemIcons-Regular.ttf" />
+    <Resource Include="Assets\Fonts\FluentSystemIcons-Filled.ttf" />
+    <!-- 트레이 아이콘이 exe와 **같은 자산**을 쓰도록 매니페스트 리소스로도 싫는다.
+         pack:// 대신 매니페스트 리소스인 이유: WinForms NotifyIcon은 WPF Application 컨텍스트 없이도 읽혀야 한다. -->
+    <EmbeddedResource Include="Assets\AppIcon.ico" LogicalName="SSPen.AppIcon.ico" />
+  </ItemGroup>
+
+</Project>
