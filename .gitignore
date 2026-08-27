@@ -1,0 +1,12 @@
+bin/
+obj/
+publish/
+artifacts/
+TestResults/
+*.user
+*.suo
+.vs/
+.idea/
+
+# 에이전트 워크플로 세션 상태 (제품 산출물 아님)
+.gjc/

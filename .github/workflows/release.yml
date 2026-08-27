@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  release:
+    name: self-contained 게시 + 설치 프로그램
+    runs-on: windows-latest
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v5
+
+      - name: .NET 10 SDK 설치
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 단위 테스트
+        run: dotnet test tests/SSPen.Tests/SSPen.Tests.csproj -c Release
+
+      - name: self-contained win-x64 게시
+        run: >
+          dotnet publish src/SSPen/SSPen.csproj
+          -c Release -r win-x64 --self-contained true
+          -o publish/win-x64
+
+      - name: 자체 포함 검증
+        shell: pwsh
+        run: |
+          $cfg = Get-Content publish/win-x64/SSPen.runtimeconfig.json -Raw | ConvertFrom-Json
+          if ($cfg.runtimeOptions.PSObject.Properties.Name -notcontains 'includedFrameworks') {
+              throw 'self-contained 게시가 아닙니다 (includedFrameworks 없음)'
+          }
+          foreach ($f in 'SSPen.exe', 'coreclr.dll', 'hostfxr.dll') {
+              if (-not (Test-Path (Join-Path 'publish/win-x64' $f))) { throw "게시 산출물 누락: $f" }
+          }
+
+      - name: Inno Setup 6 확보
+        shell: pwsh
+        run: |
+          $iscc = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+              choco install innosetup -y --no-progress
+              $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          "ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: 설치 프로그램 컴파일
+        run: '& "$env:ISCC" installer/SSPen.iss'
+        shell: pwsh
+
+      - name: 포터블 zip 묶기
+        shell: pwsh
+        run: Compress-Archive -Path publish/win-x64/* -DestinationPath publish/SSPen-portable-win-x64.zip
+
+      - name: 빌드 산출물 업로드
+        uses: actions/upload-artifact@v5
+        with:
+          name: SSPen-win-x64
+          path: |
+            publish/SSPen-portable-win-x64.zip
+            publish/installer/*.exe
+
+      - name: 릴리스 생성
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $installer = (Get-ChildItem publish/installer/*.exe | Select-Object -First 1).FullName
+          gh release create $env:GITHUB_REF_NAME `
+            $installer `
+            publish/SSPen-portable-win-x64.zip `
+            --title "SS Pen $env:GITHUB_REF_NAME" `
+            --generate-notes
