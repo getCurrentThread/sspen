@@ -16,7 +16,7 @@ public static class SelectionGestureRules
 {
     /// <summary>
     /// '제자리 클릭'과 '드래그'를 가르는 논리 픽셀 거리 (R2).
-    /// 도형 커밋이 쓰던 3px 임계와 같은 값이었고, 이제 <c>SurfaceInputController.CommitShape</c>가
+    /// 도형 커밋이 쓰던 3px 임계와 같은 값이었고, 이제 <see cref="ShapeGestureRules.ShouldCommit"/>가
     /// 이 상수를 직접 읽는다 — 두 값이 다시 갈라질 수 없다.
     /// </summary>
     public const double ClickThresholdPixels = 3;

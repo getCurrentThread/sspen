@@ -168,10 +168,8 @@ public sealed class SurfaceInputController(
         {
             // D3: 선택 경로와 같은 이유로 KeyboardState를 쓴다 — Keyboard.Modifiers는 스레드 로컬이라
             // 이 창(영구 NOACTIVATE)에서는 항상 None이고, 전역 핫키로 도형 도구를 켠 정상 흐름에서
-            // Shift 스냅(수평/수직/정비율)이 조용히 죽는다. 미리보기와 커밋이 **같은 판정**을 써야 한다.
-            var end = KeyboardState.Shift
-                ? ShiftConstraints.Apply(_previewKind, _shapeStart, pos)
-                : pos;
+            // Shift 스냅(수평/수직/정비율)이 조용히 죽는다.
+            var end = ShapeGestureRules.ResolveEnd(_previewKind, _shapeStart, pos, KeyboardState.Shift);
             AnnotationVisualFactory.UpdateShapeVisual(_previewShape, _previewKind, _shapeStart, end);
         }
         else if (_eraserDragging && state.ActiveTool == ToolKind.Eraser && state.IsInteractive)
@@ -804,15 +802,13 @@ public sealed class SurfaceInputController(
         {
             return;
         }
-        var end = KeyboardState.Shift
-            ? ShiftConstraints.Apply(_previewKind, _shapeStart, rawEnd)
-            : rawEnd;
+        var end = ShapeGestureRules.ResolveEnd(_previewKind, _shapeStart, rawEnd, KeyboardState.Shift);
         inkCanvas.Children.Remove(_previewShape);
         _previewShape = null;
 
-        if ((end - _shapeStart).Length < SelectionGestureRules.ClickThresholdPixels)
+        if (!ShapeGestureRules.ShouldCommit(_shapeStart, end))
         {
-            return; // 클릭만으로는 도형을 만들지 않는다.
+            return;
         }
         var element = new ShapeElement(_previewKind, _shapeStart, end, _activeShapeColor, _activeShapeThickness);
         CommitElement(element, fade: _activeShapeFading);
@@ -833,7 +829,7 @@ public sealed class SurfaceInputController(
         _activeTextFading = state.FadingApplies;
         _activeTextBox = new TextBox
         {
-            FontFamily = new FontFamily("맑은 고딕"),
+            FontFamily = new FontFamily(TextCommitRules.FontFamilyName),
             FontSize = _activeTextFontSize,
             Foreground = new SolidColorBrush(_activeTextColor),
             Background = new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
@@ -865,14 +861,14 @@ public sealed class SurfaceInputController(
         inkCanvas.Children.Remove(box);
         host.SetNoActivate(true);
 
-        if (!string.IsNullOrWhiteSpace(text))
+        if (TextCommitRules.ProducesElement(text))
         {
             var dpi = host.GetDpi();
             var formatted = new FormattedText(
                 text,
                 System.Globalization.CultureInfo.CurrentUICulture,
                 FlowDirection.LeftToRight,
-                new Typeface(new FontFamily("맑은 고딕"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
+                new Typeface(new FontFamily(TextCommitRules.FontFamilyName), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
                 _activeTextFontSize,
                 Brushes.Black,
                 dpi.PixelsPerDip);
@@ -881,7 +877,7 @@ public sealed class SurfaceInputController(
                 text,
                 _activeTextColor,
                 _activeTextFontSize,
-                new Size(Math.Max(formatted.WidthIncludingTrailingWhitespace, 8), Math.Max(formatted.Height, 8)));
+                TextCommitRules.FloorMeasured(new Size(formatted.WidthIncludingTrailingWhitespace, formatted.Height)));
             CommitElement(element, fade: _activeTextFading);
         }
     }

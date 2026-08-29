@@ -82,7 +82,7 @@ public static class AnnotationVisualFactory
         return new TextBlock
         {
             Text = text.Text,
-            FontFamily = new FontFamily("맑은 고딕"),
+            FontFamily = new FontFamily(TextCommitRules.FontFamilyName),
             FontSize = text.FontSize,
             Foreground = CreateFrozen(text.Color),
         };
