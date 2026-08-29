@@ -43,7 +43,8 @@ public sealed class SurfaceInputController(
     Func<AnnotationElement, AnnotationDocument?> ownerLookup,
     Func<AnnotationDocument, double> dpiOf,
     Action<Rect?> setMarquee,
-    Action<Rect?> setGroupFrame,
+    // 마퀴(setMarquee)와 타입을 묶지 않는다 — 마퀴는 설계상 영원히 축 정렬이다 (SEL-B-1).
+    Action<GroupFrame?> setGestureGroupFrame,
     Action<IReadOnlyList<TransformDelta>, Point?> commitTransform,
     Action requestClickThrough)
 {
@@ -62,6 +63,9 @@ public sealed class SurfaceInputController(
     /// 제스처 시작 시점에 <b>동결</b>된 그룹 프레임 (R1). 살아있는 경계로 매 프레임 재계산하면
     /// 회전 중 피벗이 표류하고 잡은 핸들이 커서 밑에서 빠져나간다 — "매 프레임 드래그 시작 상태에서
     /// 재계산"(<see cref="UpdateSelectGesture"/>) 규약의 프레임판이다.
+    ///
+    /// 각도는 여기에 <b>싣지 않는다</b> — 실으면 <see cref="SelectionGroup.ScaleFactor"/>/
+    /// <c>AnchorCorner</c>/휠 경로로 새어 나간다. 그려지는 프레임의 각도는 창으로만 흐른다 (SEL-LIM-6).
     /// </summary>
     private Rect _groupFrame;
 
@@ -303,6 +307,15 @@ public sealed class SurfaceInputController(
     private void BeginSelectGesture(Point pos)
     {
         CancelWheelScale(commit: true); // 휠 확대 중 클릭은 그 확대를 먼저 확정한다 (원장 순서 보존).
+
+        // 캡처를 잃어 버튼 업이 유실된 제스처가 그려지는 프레임에 각도를 남길 수 있다.
+        // 마우스 다운 시점에는 각도가 반드시 0이어야 한다 — 그래야 아래 히트 테스트,
+        // R6 내부 판정(IsInsideSelectionFrame), 휠 고정점(WheelPivot)이 전부
+        // "화면에 그려진 것과 같은 축 정렬 프레임"을 본다.
+        // ResetSelectGesture()를 부르면 안 된다: 진행 중이던 변형을 커밋도 롤백도 하지 않아
+        // 원장에 없는 변형이 화면에 남고 실행취소로 지울 수 없게 된다 (CancelActiveInput의 규칙).
+        setGestureGroupFrame(null);
+
         _dragStart = pos;
         // D3: WPF Keyboard.Modifiers는 스레드 로컬이라 이 창(영구 NOACTIVATE)에서 항상 None이다.
         bool shift = KeyboardState.Shift;
@@ -326,15 +339,14 @@ public sealed class SurfaceInputController(
                     ? SelectionDragKind.GroupRotate
                     : SelectionDragKind.GroupScale;
                 SnapshotDragStates();
-                // 그려지는 프레임을 동결하는 것은 **회전뿐**이다. 회전은 축 정렬 합집합을 부풀려
+                // 그려지는 프레임을 미는 것은 **회전뿐**이다. 회전은 축 정렬 합집합을 부풀려
                 // 잡은 핸들이 커서 밑에서 빠져나가지만, 등방 스케일은 축 정렬 사상이라 살아있는
                 // 합집합이 그대로 정답이다. 오히려 동결하면 구성원 배율이 바닥에 클램프될 때
                 // 이상적 사상과 실제 합집합이 어긋나 마우스 업에서 프레임이 튄다.
                 // (_groupFrame 자체는 배율·피벗의 기준이므로 두 경우 모두 동결한다.)
-                if (_dragKind == SelectionDragKind.GroupRotate)
-                {
-                    setGroupFrame(frame);
-                }
+                // 밀어 넣는 것은 **크기뿐**이고, 각도는 아래 UpdateSelectGesture가 매 프레임 갱신한다.
+                setGestureGroupFrame(SelectionGroup.GestureFrame(
+                    _groupFrame, _dragKind == SelectionDragKind.GroupRotate, deltaDegrees: 0));
                 host.CaptureMouse();
                 return;
             }
@@ -409,6 +421,11 @@ public sealed class SurfaceInputController(
     /// <summary>
     /// 커서가 선택 표시 안쪽인가 (R6). 다중 선택은 축 정렬 그룹 프레임,
     /// 단일 선택은 회전을 반영한 로컬 프레임(OBB) — <b>화면에 그려진 점선 경계와 같은 영역</b>이어야 한다.
+    ///
+    /// 이 판정은 <b>마우스 다운에서만</b> 물어보고, 그 시점에는 <see cref="BeginSelectGesture"/> 머리에서
+    /// 제스처 프레임을 null로 지웠으므로 화면에 그려진 것도 같은 축 정렬 합집합이다 — 그래서 회전 각도가
+    /// 붙어도 "그려진 점선 경계와 같은 영역"이 유지된다. 각도를 지속 상태로 승격하는 순간 이 등가성이
+    /// 깨지므로, 그때는 <see cref="SelectionGeometry.ContainsInFrame"/>처럼 볼록 사각형 판정으로 바꿔야 한다.
     /// </summary>
     private bool IsInsideSelectionFrame(List<AnnotationElement> owned, Point pos)
     {
@@ -489,14 +506,26 @@ public sealed class SurfaceInputController(
 
             case SelectionDragKind.GroupRotate:
             {
-                var pivot = SelectionGroup.Center(_groupFrame);
-                double delta = GroupRotationDelta(pivot, pos);
+                // 피벗·각도·가이드 프레임을 **한 번에** 받는다. 따로 구하면 가이드와 잉크가 서로 다른
+                // 값을 쓰는 상태가 표현 가능해지는데, 그 어긋남이 바로 "그룹을 회전해도 테두리 가이드가
+                // 같이 안 도는" 증상이었다 (SelectionGroup.GroupRotateStep 참고).
+                // D3: KeyboardState를 쓰는 이유는 이 파일의 다른 Shift 판정과 같다
+                // (스레드 로컬 Keyboard.Modifiers는 영구 NOACTIVATE 서피스에서 항상 None).
+                var step = SelectionGroup.RotateStep(_groupFrame, _dragStart, pos, KeyboardState.Shift);
+
+                // 루프보다 **먼저** 미는 이유: 아래 ApplyTransformState가 유발하는 재그리기가
+                // 이미 새 각도를 보게 한다. 각도는 _dragStart 기준 누적 증분이라 프레임 각에
+                // 더해 나가지 않는다 ("직전 프레임 결과 누적 금지" 규약).
+                setGestureGroupFrame(step.Guide);
+
                 foreach (var element in selection.Elements)
                 {
                     if (baseStates.TryGetValue(element.Id, out var start))
                     {
                         ApplyTransformState(
-                            element, TransformMath.RotateAbout(start, element.LocalBounds, pivot, delta));
+                            element,
+                            TransformMath.RotateAbout(
+                                start, element.LocalBounds, step.Pivot, step.DeltaDegrees));
                     }
                 }
                 break;
@@ -528,23 +557,6 @@ public sealed class SurfaceInputController(
                 : delta;
             ApplyTransformState(element, TransformMath.Translate(start, scaled));
         }
-    }
-
-    /// <summary>
-    /// 그룹 회전각 증분. Shift는 <b>증분</b>을 15도 배수로 스냅한다 — 요소마다 시작 각이 달라
-    /// 결과 각을 스냅하는 단일 선택 규칙(<see cref="TransformMath.Rotate"/>)을 그대로 쓸 수 없다.
-    /// </summary>
-    private double GroupRotationDelta(Point pivot, Point pos)
-    {
-        var before = _dragStart - pivot;
-        var after = pos - pivot;
-        if (before.Length < TransformMath.MinScale || after.Length < TransformMath.MinScale)
-        {
-            return 0;
-        }
-        double delta =
-            (Math.Atan2(after.Y, after.X) - Math.Atan2(before.Y, before.X)) * 180.0 / Math.PI;
-        return KeyboardState.Shift ? ShiftConstraints.SnapDegrees(delta) : delta;
     }
 
     private void EndSelectGesture(Point pos)
@@ -750,7 +762,8 @@ public sealed class SurfaceInputController(
         _dragHandleTarget = null;
         _dragBaseStates = null;
         _groupFrame = Rect.Empty;
-        setGroupFrame(null); // 동결 해제 — 이후 장식은 다시 살아있는 경계로 그린다.
+        // 각도의 유일한 소멸 지점 — 이후 장식은 다시 살아있는 축 정렬 경계로 그린다 (SEL-LIM-6).
+        setGestureGroupFrame(null);
     }
 
     private void StartStroke(Point pos)

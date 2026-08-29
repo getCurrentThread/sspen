@@ -37,8 +37,12 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     private readonly SelectionModel _selection;
     private Rect? _marquee;
 
-    /// <summary>제스처 도중 동결된 그룹 프레임 (R1). null이면 매 그리기마다 살아있는 경계로 재계산한다.</summary>
-    private Rect? _groupFrameOverride;
+    /// <summary>
+    /// 제스처 도중 입력 컨트롤러가 밀어 넣은 그룹 프레임 (R1). null이면 매 그리기마다 살아있는
+    /// 축 정렬 합집합으로 재계산한다. GroupRotate 동안에는 <b>크기는 동결, 각도만 매 프레임 갱신</b>된다 —
+    /// 그래서 이름이 '동결(override)'이 아니라 '제스처 프레임'이다.
+    /// </summary>
+    private GroupFrame? _gestureGroupFrame;
     // 보드 전이 판정용 직전 적용 상태 (BoardTransition.Resolve 입력).
     private bool _boardShown;
     private BoardMode _boardApplied = BoardMode.None;
@@ -123,7 +127,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
 
         _input = new SurfaceInputController(
             _inkCanvas, _state, Document, ledger, _fading, this,
-            selection, ownerLookup, dpiOf, SetMarquee, SetGroupFrame,
+            selection, ownerLookup, dpiOf, SetMarquee, SetGestureGroupFrame,
             (deltas, drop) => commitTransform(deltas, drop is { } p ? ToPhysical(p) : null),
             // R5: 해제 제스처가 끝난 **뒤에** 상태를 바꾼다. 마우스 업 핸들러 안에서 곧바로 켜면
             // ApplyState → CancelActiveInput이 같은 콜 스택에서 재진입해 캡처 해제 순서가 뒤엉킨다.
@@ -327,12 +331,21 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     }
 
     /// <summary>
-    /// 그룹 프레임 동결/해제 (R1). 그룹을 회전하면 축 정렬 합집합이 커지므로, 제스처 도중 살아있는
-    /// 경계로 다시 그리면 잡은 핸들이 커서 밑에서 빠져나간다. 입력 컨트롤러가 시작 시점 프레임을 밀어 넣는다.
+    /// 제스처 프레임 푸시/해제 (R1). 입력 컨트롤러가 <c>setGestureGroupFrame</c> 델리게이트로 부른다.
+    ///
+    /// GroupRotate 동안에는 <b>매 마우스무브마다</b> 불린다 — 크기는 제스처 시작값으로 동결하고 각도만
+    /// 갱신한다. 살아있는 합집합으로 되그리면 회전 중 프레임이 부풀어 잡은 핸들이 커서 밑에서 빠져나가고,
+    /// 반대로 각도까지 동결하면 가이드가 잉크를 따라오지 않는다(이 수정 이전의 증상).
+    /// 등방 스케일은 아무것도 밀지 않는다 — 살아있는 합집합이 정답이다
+    /// (<see cref="SelectionGroup.GestureFrame"/> 참고).
     /// </summary>
-    public void SetGroupFrame(Rect? frame)
+    public void SetGestureGroupFrame(GroupFrame? frame)
     {
-        _groupFrameOverride = frame;
+        if (Nullable.Equals(_gestureGroupFrame, frame))
+        {
+            return; // 값이 그대로면 재그리기를 건너뛴다 (마우스 다운마다 오는 null 초기화가 공짜가 된다).
+        }
+        _gestureGroupFrame = frame;
         RedrawDecorations();
     }
 
@@ -407,16 +420,24 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     /// 그룹 장식 (R1): 공통 프레임 + 모서리 4핸들 + 회전 핸들 1개.
     /// 측면 4핸들을 그리지 않는 이유는 <see cref="SelectionGroup"/> 참고 — 비등방 그룹 스케일은
     /// 회전된 요소에 전단을 요구해 <see cref="ElementTransformState"/>로 표현할 수 없다.
+    ///
+    /// 회전 중에는 컨트롤러가 밀어 넣은 각도로 테두리·핸들·스템이 함께 돈다. 각도는 좌표 계산에만 쓰이며
+    /// 히트 테스트도 같은 <see cref="GroupFrame"/> 계산을 쓰므로 "그려지는 위치 == 잡히는 위치"가 유지된다 (R5).
     /// </summary>
     private void DrawGroupDecorations(List<AnnotationElement> owned, Rect surfaceBounds, bool handles)
     {
-        if ((_groupFrameOverride ?? SelectionGroup.Frame(owned)) is not { } frame)
+        GroupFrame? current = _gestureGroupFrame;
+        if (current is null && SelectionGroup.Frame(owned) is { } live)
+        {
+            current = new GroupFrame(live, 0);
+        }
+        if (current is not { } frame)
         {
             return;
         }
 
-        _decorationLayer.Children.Add(AnnotationVisualFactory.BuildSelectionBorder(
-            [frame.TopLeft, frame.TopRight, frame.BottomRight, frame.BottomLeft]));
+        _decorationLayer.Children.Add(
+            AnnotationVisualFactory.BuildSelectionBorder(SelectionGroup.Corners(frame)));
         if (!handles)
         {
             return;

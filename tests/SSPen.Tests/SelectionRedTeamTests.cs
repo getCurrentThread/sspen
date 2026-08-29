@@ -839,4 +839,34 @@ public class SelectionRedTeamTests
         Assert.InRange(actual.X, expected.X - tolerance, expected.X + tolerance);
         Assert.InRange(actual.Y, expected.Y - tolerance, expected.Y + tolerance);
     }
+
+    // ---- G. 회전한 그룹 프레임 — 극단 각도에서 네 모서리가 서로 다른 핸들로 잡히는가 ----
+    //
+    // 각도 축의 "보이지만 잡히지 않는 핸들"(SEL-LIM-5 회귀의 결함 클래스) 사냥.
+    // 렌더와 히트가 같은 GroupFrame 계산에서 나오지 않으면 여기서 무너진다.
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(90)]
+    [InlineData(180)]
+    [InlineData(270)]
+    [InlineData(-137.5)]
+    public void HitHandle_PosedFrame_AllFourCorners_AreDistinctAndGrabbable_AtExtremeAngles(double angle)
+    {
+        var frame = new GroupFrame(new Rect(400, 300, 100, 60), angle);
+        var seen = new List<GroupHandleKind>();
+
+        foreach (var handle in SelectionGroup.CornersClockwise)
+        {
+            var drawn = SelectionGroup.CornerCenter(frame, handle);
+            var hit = SelectionGroup.HitHandle(frame, drawn, Rect.Empty);
+
+            Assert.True(
+                hit == handle,
+                $"{handle}@{angle}도: 그려진 위치 {drawn}에서 {hit?.ToString() ?? "없음"}이 잡혔다 — 렌더와 히트가 갈라졌다.");
+            seen.Add(handle);
+        }
+
+        Assert.Equal(SelectionGroup.CornersClockwise.Length, seen.Distinct().Count());
+    }
 }
