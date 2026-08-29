@@ -566,25 +566,29 @@ public sealed class SurfaceInputController(
     }
 
     /// <summary>
-    /// 선택 전체 이동 (SEL-AC-9). 모니터에 걸친 선택에서도 이동만은 허용되므로(SEL-LIM-5)
-    /// 다른 모니터 소속 요소가 섞일 수 있고, 그때 필요한 DPI 환산(D1)은
-    /// <see cref="SelectionOperations.ScaleDisplacementForDpi"/>가 소유한다.
+    /// 선택 전체 이동 (SEL-AC-9). 계산은 <see cref="SelectionOperations.PlanMove"/>가 하고,
+    /// 이 어댑터는 계획을 R15의 유일한 집행 지점(<see cref="DragBaseStates.Apply"/>)으로 흘리기만 한다.
     ///
     /// 순회 대상은 <c>owned</c>가 아니라 <c>selection.Elements</c>다 — 이 서피스가 소유하지 않은
     /// 요소도 함께 움직여야 선택이 통째로 따라온다 (SEL-LIM-5).
+    ///
+    /// D1: 다른 모니터 소속 요소에는 <b>DPI 환산</b>이 필요하다 —
+    /// <see cref="SelectionOperations.ScaleDisplacementForDpi"/> 참고. 소유 문서를 못 찾을 때의
+    /// <c>?? document</c> 폴백은 여기 남는다: 순수 코어는 문서도 소유자 조회도 모른다.
+    /// <c>host.GetDpi()</c>는 이동 프레임당 <b>정확히 한 번</b>이다 (요소마다 다시 묻지 않는다).
     /// </summary>
     private void MoveSelection(IReadOnlyDictionary<long, ElementTransformState> baseStates, Vector delta)
     {
-        double sourceDpi = host.GetDpi().DpiScaleX;
-        foreach (var element in selection.Elements)
+        var plan = SelectionOperations.PlanMove(
+            selection.Elements,
+            baseStates,
+            delta,
+            host.GetDpi().DpiScaleX,
+            element => dpiOf(ownerLookup(element) ?? document));
+
+        foreach (var (element, next) in plan)
         {
-            if (!baseStates.TryGetValue(element.Id, out var start))
-            {
-                continue;
-            }
-            double targetDpi = dpiOf(ownerLookup(element) ?? document);
-            var scaled = SelectionOperations.ScaleDisplacementForDpi(delta, sourceDpi, targetDpi);
-            _base.Apply(element, TransformMath.Translate(start, scaled));
+            _base.Apply(element, next);
         }
     }
 

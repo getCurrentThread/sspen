@@ -135,4 +135,41 @@ public static class SelectionOperations
         targetDpi > 0 && Math.Abs(targetDpi - sourceDpi) > 1e-9
             ? new Vector(delta.X * sourceDpi / targetDpi, delta.Y * sourceDpi / targetDpi)
             : delta;
+
+    /// <summary>
+    /// 선택 전체 이동 계획 (SEL-AC-9). 순회 대상은 <b>선택집합 전체</b>이지 이 서피스가 소유한
+    /// 부분집합이 아니다 — 모니터에 걸친 선택에서 <b>이동만</b>은 허용되며(SEL-LIM-5), 다른 문서
+    /// 소속 요소도 함께 움직여야 선택이 통째로 따라오기 때문이다.
+    ///
+    /// 다른 모니터 소속 요소의 변위는 <see cref="ScaleDisplacementForDpi"/>가 환산한다 (D1).
+    /// 반환 순서는 <paramref name="selected"/>의 순서 그대로다 —
+    /// <paramref name="baseStates"/>를 순회하지 않는다: 사전 순서는 선택 순서가 아니고,
+    /// 스냅샷에는 선택집합에 없는 핸들 대상이 섞일 수 있다.
+    ///
+    /// 매 프레임 <paramref name="baseStates"/>(드래그 시작 상태)에서 <b>재계산</b>하고 요소의 현재
+    /// 상태를 절대 읽지 않는다 — 직전 프레임 결과에 누적하면 부동소수 오차가 프레임마다 쌓여 요소가
+    /// 서서히 어긋나고, 취소 복원 기준도 사라진다.
+    ///
+    /// 이 함수는 아무것도 쓰지 않는다 (ARCH-15, D4): 대입과 소유 문서 알림은 호출부의 단일
+    /// 집행 지점이 맡는다 (R15).
+    /// </summary>
+    public static IReadOnlyList<(AnnotationElement Element, ElementTransformState Next)> PlanMove(
+        IReadOnlyList<AnnotationElement> selected,
+        IReadOnlyDictionary<long, ElementTransformState> baseStates,
+        Vector delta,
+        double sourceDpi,
+        Func<AnnotationElement, double> targetDpiOf)
+    {
+        var plan = new List<(AnnotationElement, ElementTransformState)>(selected.Count);
+        foreach (var element in selected)
+        {
+            if (!baseStates.TryGetValue(element.Id, out var start))
+            {
+                continue; // 제스처 시작 뒤에 선택에 더해진 요소 — 시작 상태가 없으므로 조용히 건너뛴다.
+            }
+            var scaled = ScaleDisplacementForDpi(delta, sourceDpi, targetDpiOf(element));
+            plan.Add((element, TransformMath.Translate(start, scaled)));
+        }
+        return plan;
+    }
 }

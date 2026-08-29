@@ -387,4 +387,156 @@ public class SelectionOperationsTests
 
         Assert.Equal(rebased.ScaleX, scaled.X, Tolerance);
     }
+
+    // ---- PlanMove (SEL-AC-9, SEL-LIM-5, D1, R15) ----
+
+    /// <summary>모든 요소가 같은 배율일 때 쓰는 기본 조회 (환산이 항등이 되는 경우).</summary>
+    private static Func<AnnotationElement, double> SameDpi(double dpi) => _ => dpi;
+
+    private static Dictionary<long, ElementTransformState> BaseStatesOf(
+        params AnnotationElement[] elements)
+    {
+        var map = new Dictionary<long, ElementTransformState>();
+        foreach (var element in elements)
+        {
+            map[element.Id] = element.TransformState;
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// SEL-LIM-5의 증인: 모니터에 걸친 선택에서 <b>이동만</b>은 허용되므로, 다른 문서 소속 요소도
+    /// 계획에 들어야 한다. 순회 대상을 이 서피스 소유분으로 좁히면 이 단언이 무너진다.
+    /// </summary>
+    [Fact]
+    public void PlanMove_CrossMonitorSelection_IncludesElementsOwnedByOtherDocuments()
+    {
+        var d1 = new AnnotationDocument("M1");
+        var d2 = new AnnotationDocument("M2");
+        var onD1 = NewStroke();
+        var onD2 = NewStroke();
+        d1.Add(onD1);
+        d2.Add(onD2);
+
+        var plan = SelectionOperations.PlanMove(
+            [onD1, onD2],
+            BaseStatesOf(onD1, onD2),
+            new Vector(12, -5),
+            1.0,
+            SameDpi(1.0));
+
+        Assert.Equal(2, plan.Count);
+        Assert.Same(onD1, plan[0].Element);
+        Assert.Same(onD2, plan[1].Element);
+        Assert.Equal(new Vector(12, -5), plan[0].Next.Translation);
+        Assert.Equal(new Vector(12, -5), plan[1].Next.Translation);
+    }
+
+    /// <summary>
+    /// D1: 배율이 다른 요소가 섞이면 <b>요소마다</b> 따로 환산해야 한다. 이 리그는 3대 모두
+    /// 100%(r=1)이므로 같은 배율 단언은 올바른 식과 순진한 식을 구분하지 못한다 — r ≠ 1 필수.
+    /// </summary>
+    [Fact]
+    public void PlanMove_MixedDpiTargets_ScalesEachDisplacementIndependently()
+    {
+        var a = NewStroke();
+        var b = NewStroke();
+
+        var plan = SelectionOperations.PlanMove(
+            [a, b],
+            BaseStatesOf(a, b),
+            new Vector(30, 60),
+            1.0,
+            element => ReferenceEquals(element, a) ? 1.0 : 1.5);
+
+        Assert.Equal(2, plan.Count);
+        Assert.Equal(30, plan[0].Next.Translation.X, Tolerance);
+        Assert.Equal(60, plan[0].Next.Translation.Y, Tolerance);
+        Assert.Equal(20, plan[1].Next.Translation.X, Tolerance);
+        Assert.Equal(40, plan[1].Next.Translation.Y, Tolerance);
+    }
+
+    /// <summary>
+    /// 제스처 시작 뒤에 선택에 더해진 요소는 시작 상태가 없으므로 조용히 건너뛴다 (예외도 로그도 없다).
+    /// 남은 요소들의 상대 순서는 그대로여야 한다.
+    /// </summary>
+    [Fact]
+    public void PlanMove_ElementMissingFromBaseStates_IsSkipped()
+    {
+        var a = NewStroke();
+        var b = NewStroke();
+        var c = NewStroke();
+
+        var plan = SelectionOperations.PlanMove(
+            [a, b, c],
+            BaseStatesOf(a, c), // b만 스냅샷에 없다.
+            new Vector(4, 4),
+            1.0,
+            SameDpi(1.0));
+
+        Assert.Equal(2, plan.Count);
+        Assert.Same(a, plan[0].Element);
+        Assert.Same(c, plan[1].Element);
+    }
+
+    /// <summary>
+    /// 매 프레임 <b>드래그 시작 상태에서 재계산</b>한다 — 직전 프레임 결과에 누적하면 부동소수 오차가
+    /// 쌓이고 취소 복원 기준도 사라진다. 1차 계획을 실제로 대입한 뒤 <b>같은</b> 시작 상태로 2차
+    /// 계획을 세우면 결과는 <c>base + delta2</c>여야지 <c>base + delta1 + delta2</c>가 아니다.
+    /// </summary>
+    [Fact]
+    public void PlanMove_RecomputesFromBaseState_NotFromCurrent()
+    {
+        var element = NewStroke();
+        var baseStates = BaseStatesOf(element);
+
+        var first = SelectionOperations.PlanMove(
+            [element], baseStates, new Vector(10, 0), 1.0, SameDpi(1.0));
+        element.TransformState = first[0].Next; // 호출부의 R15 집행을 흉내낸다.
+
+        var second = SelectionOperations.PlanMove(
+            [element], baseStates, new Vector(3, 0), 1.0, SameDpi(1.0));
+
+        Assert.Equal(3, second[0].Next.Translation.X, Tolerance);
+        Assert.Equal(0, second[0].Next.Translation.Y, Tolerance);
+    }
+
+    /// <summary>
+    /// 반환 순서는 선택 순서다. 스냅샷 사전을 순회하면 순서가 사전 순서로 바뀌고, 선택집합에 없는
+    /// 핸들 대상까지 섞여 들어온다.
+    /// </summary>
+    [Fact]
+    public void PlanMove_PreservesSelectionOrder()
+    {
+        var a = NewStroke();
+        var b = NewStroke();
+        var c = NewStroke();
+        var selected = new AnnotationElement[] { c, a, b };
+
+        var plan = SelectionOperations.PlanMove(
+            selected, BaseStatesOf(a, b, c), new Vector(1, 1), 1.0, SameDpi(1.0));
+
+        Assert.Equal(3, plan.Count);
+        Assert.Same(c, plan[0].Element);
+        Assert.Same(a, plan[1].Element);
+        Assert.Same(b, plan[2].Element);
+    }
+
+    /// <summary>
+    /// 파일 계약의 증인 (ARCH-15, D4): 계획 함수는 아무것도 쓰지 않는다. 여기서 대입이 일어나면
+    /// 알림 없는 <c>TransformState</c> 대입이 생겨 시각물과 장식이 갈린다 (R15).
+    /// </summary>
+    [Fact]
+    public void PlanMove_DoesNotWriteTransformState()
+    {
+        var a = NewStroke();
+        var b = NewStroke();
+
+        var plan = SelectionOperations.PlanMove(
+            [a, b], BaseStatesOf(a, b), new Vector(50, -70), 1.0, SameDpi(1.5));
+
+        Assert.Equal(2, plan.Count); // 계획은 세워졌지만 소비하지 않았다.
+        Assert.Equal(ElementTransformState.Identity, a.TransformState);
+        Assert.Equal(ElementTransformState.Identity, b.TransformState);
+    }
 }
