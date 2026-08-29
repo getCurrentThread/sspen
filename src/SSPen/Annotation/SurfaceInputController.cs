@@ -23,12 +23,6 @@ public interface ISurfaceHost
 }
 
 /// <summary>
-/// 획 시작 시점에 스냅샷하는 스타일 값 (드래그 중 퀵컬러 핫키/휠 굵기 조정이
-/// 진행 중인 획/도형/텍스트의 미리보기·커밋 스타일을 어긋나게 하는 버그 수정용).
-/// </summary>
-public readonly record struct StrokeStyle(Color Color, double Thickness, bool IsHighlighter, bool IsFading);
-
-/// <summary>
 /// 마우스/키보드 입력 상태 머신 (획·도형·텍스트·지우개). 창 참조 없이 <see cref="ISurfaceHost"/>로만
 /// 창과 통신한다 (ARCH-2/ARCH-6 핸드셰이크만 위임).
 /// </summary>
@@ -82,21 +76,16 @@ public sealed class SurfaceInputController(
     private DispatcherTimer? _wheelTimer;
 
     // 진행 중 획/도형/텍스트 상태
-    private List<Point>? _activePoints;
+    private StrokeAccumulator? _stroke;
     private Polyline? _activePolyline;
-    private StrokeStyle _activeStrokeStyle;
     private bool _eraserDragging;          // 지우개 드래그 삭제 중 (사용자 조타 12차)
     private Point _shapeStart;
     private Shape? _previewShape;
     private ShapeKind _previewKind;
-    private Color _activeShapeColor;
-    private double _activeShapeThickness;
-    private bool _activeShapeFading;       // 도형 시작 시점 페이딩 판정 (사용자 요청 17차)
+    private ShapeStyle _activeShapeStyle;  // 도형 시작 시점 페이딩 판정 (사용자 요청 17차)
     private TextBox? _activeTextBox;
     private Point _textOrigin;
-    private Color _activeTextColor;
-    private double _activeTextFontSize;
-    private bool _activeTextFading;        // 텍스트 시작 시점 페이딩 판정 (사용자 요청 17차)
+    private TextStyle _activeTextStyle;    // 텍스트 시작 시점 페이딩 판정 (사용자 요청 17차)
 
     public void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
@@ -155,12 +144,10 @@ public sealed class SurfaceInputController(
         }
         var pos = e.GetPosition(inkCanvas);
 
-        if (_activePoints is not null && _activePolyline is not null)
+        if (_stroke is not null && _activePolyline is not null)
         {
-            var last = _activePoints[^1];
-            if ((pos - last).Length >= 1.5)
+            if (_stroke.TryAppend(pos))
             {
-                _activePoints.Add(pos);
                 _activePolyline.Points.Add(pos);
             }
         }
@@ -193,7 +180,7 @@ public sealed class SurfaceInputController(
             return;
         }
 
-        if (_activePoints is not null)
+        if (_stroke is not null)
         {
             CommitStroke();
         }
@@ -748,17 +735,12 @@ public sealed class SurfaceInputController(
     {
         // 시작 시점 판정 캡처 (아키텍트 자문): 드래그 중 핫키로 도구가 바뀌거나 퀵컬러/휠로
         // 색·굵기가 바뀌어도, 이 획의 스타일(색·굵기·형광펜·페이딩 여부)은 시작 당시 스냅샷을 따른다.
-        bool highlighter = state.ActiveTool == ToolKind.Highlighter;
-        bool fading = state.FadingApplies;
-        var color = state.CurrentColor;
-        double thickness = highlighter ? state.HighlighterThickness : state.PenThickness;
-        _activeStrokeStyle = new StrokeStyle(color, thickness, highlighter, fading);
-
-        _activePoints = [pos];
+        var style = GestureStyleSnapshot.ForStroke(state);
+        _stroke = new StrokeAccumulator(pos, style);
         _activePolyline = new Polyline
         {
-            Stroke = AnnotationVisualFactory.StrokeBrush(color, highlighter),
-            StrokeThickness = thickness,
+            Stroke = AnnotationVisualFactory.StrokeBrush(style.Color, style.IsHighlighter),
+            StrokeThickness = style.Thickness,
             StrokeLineJoin = PenLineJoin.Round,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
@@ -770,14 +752,14 @@ public sealed class SurfaceInputController(
 
     private void CommitStroke()
     {
-        if (_activePoints is null || _activePolyline is null)
+        if (_stroke is null || _activePolyline is null)
         {
             return;
         }
-        var style = _activeStrokeStyle;
-        var element = new StrokeElement(_activePoints, style.Color, style.Thickness, style.IsHighlighter);
+        var style = _stroke.Style;
+        var element = new StrokeElement(_stroke.Points, style.Color, style.Thickness, style.IsHighlighter);
         inkCanvas.Children.Remove(_activePolyline);
-        _activePoints = null;
+        _stroke = null;
         _activePolyline = null;
         CommitElement(element, fade: style.IsFading);
     }
@@ -787,10 +769,8 @@ public sealed class SurfaceInputController(
         _shapeStart = pos;
         _previewKind = kind;
         // 시작 시점 스냅샷: 드래그 중 색/굵기/페이딩 토글 변경이 미리보기·커밋 스타일을 어긋내지 않도록 고정.
-        _activeShapeColor = state.CurrentColor;
-        _activeShapeThickness = state.ShapeThickness;
-        _activeShapeFading = state.FadingApplies;
-        _previewShape = AnnotationVisualFactory.CreateShapeVisual(kind, _activeShapeColor, _activeShapeThickness);
+        _activeShapeStyle = GestureStyleSnapshot.ForShape(state);
+        _previewShape = AnnotationVisualFactory.CreateShapeVisual(kind, _activeShapeStyle.Color, _activeShapeStyle.Thickness);
         AnnotationVisualFactory.UpdateShapeVisual(_previewShape, kind, pos, pos);
         inkCanvas.Children.Add(_previewShape);
         host.CaptureMouse();
@@ -810,8 +790,8 @@ public sealed class SurfaceInputController(
         {
             return;
         }
-        var element = new ShapeElement(_previewKind, _shapeStart, end, _activeShapeColor, _activeShapeThickness);
-        CommitElement(element, fade: _activeShapeFading);
+        var element = new ShapeElement(_previewKind, _shapeStart, end, _activeShapeStyle.Color, _activeShapeStyle.Thickness);
+        CommitElement(element, fade: _activeShapeStyle.IsFading);
     }
 
     // ---- 텍스트 도구 (ARCH-2: NOACTIVATE 일시 해제 핸드셰이크로 한국어 IME 지원) ----
@@ -824,14 +804,12 @@ public sealed class SurfaceInputController(
         }
         _textOrigin = pos;
         // 시작 시점 스냅샷: 편집 중 색/폰트 크기/페이딩 토글 변경이 결과 텍스트 스타일을 어긋내지 않도록 고정.
-        _activeTextColor = state.CurrentColor;
-        _activeTextFontSize = state.TextFontSize;
-        _activeTextFading = state.FadingApplies;
+        _activeTextStyle = GestureStyleSnapshot.ForText(state);
         _activeTextBox = new TextBox
         {
             FontFamily = new FontFamily(TextCommitRules.FontFamilyName),
-            FontSize = _activeTextFontSize,
-            Foreground = new SolidColorBrush(_activeTextColor),
+            FontSize = _activeTextStyle.FontSize,
+            Foreground = new SolidColorBrush(_activeTextStyle.Color),
             Background = new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(0x88, 0x80, 0x80, 0x80)),
             BorderThickness = new Thickness(1),
@@ -869,16 +847,16 @@ public sealed class SurfaceInputController(
                 System.Globalization.CultureInfo.CurrentUICulture,
                 FlowDirection.LeftToRight,
                 new Typeface(new FontFamily(TextCommitRules.FontFamilyName), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
-                _activeTextFontSize,
+                _activeTextStyle.FontSize,
                 Brushes.Black,
                 dpi.PixelsPerDip);
             var element = new TextElement(
                 _textOrigin,
                 text,
-                _activeTextColor,
-                _activeTextFontSize,
+                _activeTextStyle.Color,
+                _activeTextStyle.FontSize,
                 TextCommitRules.FloorMeasured(new Size(formatted.WidthIncludingTrailingWhitespace, formatted.Height)));
-            CommitElement(element, fade: _activeTextFading);
+            CommitElement(element, fade: _activeTextStyle.IsFading);
         }
     }
 
@@ -931,7 +909,7 @@ public sealed class SurfaceInputController(
         if (_activePolyline is not null)
         {
             inkCanvas.Children.Remove(_activePolyline);
-            _activePoints = null;
+            _stroke = null;
             _activePolyline = null;
         }
         if (_previewShape is not null)
