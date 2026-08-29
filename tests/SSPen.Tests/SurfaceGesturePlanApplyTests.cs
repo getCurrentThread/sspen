@@ -294,7 +294,11 @@ public class SurfaceGesturePlanApplyTests
                 frame => FramePushes.Add(frame),
                 (deltas, drop) => Commits.Add((deltas, drop)),
                 () => ClickThroughRequests++,
-                new SurfaceInputSeams());
+                // 프로덕션(창)과 **같은 식**으로 캔버스에서 유도한다 (R5).
+                new SurfaceInputSeams
+                {
+                    SurfaceBounds = () => new Rect(0, 0, Canvas.ActualWidth, Canvas.ActualHeight),
+                });
         }
 
         public Canvas Canvas { get; }

@@ -287,7 +287,13 @@ public class SurfaceEntryPointTests
                 frame => GestureGroupFrame = frame,
                 (deltas, drop) => Commits.Add((deltas, drop)),
                 () => ClickThroughRequests++,
-                now is null ? new SurfaceInputSeams() : new SurfaceInputSeams { Now = now });
+                new SurfaceInputSeams
+                {
+                    // 프로덕션(창)과 **같은 식**으로 캔버스에서 유도한다. measure/arrange가 없으므로
+                    // 값은 (0,0,0,0)이고, 그래서 위 문서대로 이 스위트는 어떤 핸들도 잡지 않는다.
+                    SurfaceBounds = () => new Rect(0, 0, Canvas.ActualWidth, Canvas.ActualHeight),
+                    Now = now ?? (() => DateTime.UtcNow),
+                });
         }
 
         public Canvas Canvas { get; }

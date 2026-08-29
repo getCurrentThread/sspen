@@ -100,6 +100,35 @@ public class SelectionGesturePlannerTests
         Assert.Null(plan.Target);
     }
 
+    /// <summary>
+    /// 화면 위쪽에 붙은 요소의 회전 핸들은 서피스 밖(y &lt; 0)으로 나가므로 안쪽으로 클램프되어 그려진다.
+    /// 사다리는 <b>클램프된 자리</b>에서 회전을 돌려줘야 한다 (R5: 그려지는 위치 == 잡히는 위치).
+    ///
+    /// 이 점은 크기 핸들 <c>Top</c>(로컬 (850,2), reach 4)의 사정거리 안에도 있다. 경계를 잘못 넘기면
+    /// (<c>Rect.Empty</c> = 클램프 안 함, <c>(0,0,0,0)</c> = 핸들이 (0,0)으로 붕괴) 회전 히트를 놓치고
+    /// <b>조용히 크기 조절</b>이 되므로, 이 단언은 경계 값이 실제로 쓰였다는 증인이다.
+    /// </summary>
+    [Fact]
+    public void Plan_RotateHandleClampedAtTopEdge_ReturnsRotateHandle()
+    {
+        var a = Stroke(800, 2, 100, 60);
+        double inset = TransformMath.HandleScreenSize / 2;
+        var unclamped = TransformMath.RotateHandleWorld(a.TransformState, a.LocalBounds);
+        var clamped = TransformMath.ClampRotateHandle(unclamped, Surface, inset);
+
+        Assert.Equal(850, unclamped.X, 9);
+        Assert.Equal(2 - TransformMath.RotateHandleScreenOffset, unclamped.Y, 9); // 서피스 밖(y < 0)
+        Assert.Equal(850, clamped.X, 9);
+        Assert.Equal(inset, clamped.Y, 9);
+
+        var plan = SelectionGesturePlanner.Plan(
+            [a], [a], selectionCount: 1, SelectedAmong(a), clamped, shift: false, Surface);
+
+        Assert.Equal(SelectionDragKind.Rotate, plan.Kind);
+        Assert.Equal(HandleKind.Rotate, plan.Handle);
+        Assert.Same(a, plan.Target);
+    }
+
     // ---- R1: 동결 기준과 그려지는 프레임은 서로 다른 값이다 ----
 
     /// <summary>

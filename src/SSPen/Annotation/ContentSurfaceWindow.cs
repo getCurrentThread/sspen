@@ -132,7 +132,9 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             // R5: 해제 제스처가 끝난 **뒤에** 상태를 바꾼다. 마우스 업 핸들러 안에서 곧바로 켜면
             // ApplyState → CancelActiveInput이 같은 콜 스택에서 재진입해 캡처 해제 순서가 뒤엉킨다.
             () => Dispatcher.BeginInvoke(requestClickThrough),
-            new SurfaceInputSeams());
+            // R5: 서피스 경계의 유일 소유자는 이 창이다. 값이 아니라 델리게이트로 넘기는 이유는
+            // 여기서는 아직 레이아웃이 돌지 않아 ActualWidth가 0이기 때문이다 (SurfaceInputSeams 문서 참고).
+            new SurfaceInputSeams { SurfaceBounds = () => this.SurfaceBounds });
 
         Document.ElementAdded += OnElementAdded;
         Document.ElementRemoved += OnElementRemoved;
@@ -350,6 +352,15 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         RedrawDecorations();
     }
 
+    /// <summary>회전 핸들 클램프용 서피스 논리 경계. 렌더와 **같은 값**을 써야 힌트와 그림이 어긋나지 않는다 (R5).</summary>
+    /// <remarks>
+    /// 이 창이 <b>유일 소유자</b>다. 입력 컨트롤러는 <c>SurfaceInputSeams.SurfaceBounds</c>로 이 값을 받아
+    /// 히트 테스트에 쓰므로, 렌더와 힌트가 어긋나는 상태 자체가 표현 불가능하다.
+    /// 대체값 금지: <c>Window.ActualWidth/Height</c>(장식 레이어가 아니라 창 전체),
+    /// <c>MonitorSurfaceInfo.WorkArea</c>(물리 픽셀·작업 영역 원점), 물리 모니터 경계 — 셋 다 값이 다르다.
+    /// </remarks>
+    private Rect SurfaceBounds => new(0, 0, _inkCanvas.ActualWidth, _inkCanvas.ActualHeight);
+
     /// <summary>
     /// 장식 재그리기. 드래그 중에는 선택집합이 불변이라 <c>SelectionChanged</c>가 오지 않으므로
     /// 변형 채널과 입력 컨트롤러가 직접 부른다 (CRIT-08).
@@ -363,7 +374,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             _decorationLayer.Children.Add(AnnotationVisualFactory.BuildMarquee(marquee));
         }
 
-        var surfaceBounds = new Rect(0, 0, _inkCanvas.ActualWidth, _inkCanvas.ActualHeight);
+        var surfaceBounds = SurfaceBounds;
         var owned = SelectionGroup.OwnedBy(Document, _selection);
 
         // 모니터에 걸친 선택은 경계만 그리고 핸들을 숨긴다 (SEL-LIM-5): 두 서피스의 논리 좌표계가
