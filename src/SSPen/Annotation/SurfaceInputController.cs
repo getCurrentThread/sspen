@@ -231,7 +231,7 @@ public sealed class SurfaceInputController(
                 e.Handled = true;
                 return;
             }
-            var owned = OwnedSelection();
+            var owned = SelectionGroup.OwnedBy(document, selection);
             // SEL-LIM-5: 모니터에 걸친 선택은 확대/축소하지 않는다. 고정점이 이 서피스의 논리 좌표라
             // 다른 원점·DPI를 쓰는 문서의 요소에 그대로 먹이면 엉뚱한 곳으로 흩어진다.
             if (SelectionGroup.HandlesGrabbable(owned.Count, selection.Count))
@@ -280,20 +280,6 @@ public sealed class SurfaceInputController(
         GroupRotate,
     }
 
-    /// <summary>이 문서가 소유한 선택 요소. 장식·핸들·그룹 프레임은 모두 소유 서피스가 그린다.</summary>
-    private List<AnnotationElement> OwnedSelection()
-    {
-        var owned = new List<AnnotationElement>();
-        foreach (var element in selection.Elements)
-        {
-            if (document.Elements.Contains(element))
-            {
-                owned.Add(element);
-            }
-        }
-        return owned;
-    }
-
     /// <summary>회전 핸들 클램프용 서피스 논리 경계. 렌더와 **같은 값**을 써야 힌트와 그림이 어긋나지 않는다 (R5).</summary>
     private Rect SurfaceBounds => new(0, 0, inkCanvas.ActualWidth, inkCanvas.ActualHeight);
 
@@ -317,7 +303,7 @@ public sealed class SurfaceInputController(
         // D3: WPF Keyboard.Modifiers는 스레드 로컬이라 이 창(영구 NOACTIVATE)에서 항상 None이다.
         bool shift = KeyboardState.Shift;
 
-        var owned = OwnedSelection();
+        var owned = SelectionGroup.OwnedBy(document, selection);
         // 모니터에 걸친 선택은 이동만 허용한다 (SEL-LIM-5): 서피스마다 원점과 DPI가 달라
         // 두 문서의 논리 경계를 합친 그룹 프레임은 서로소인 좌표계의 합이라 의미가 없다.
         // 술어는 렌더(ContentSurfaceWindow.RedrawDecorations)와 **같은 함수**를 쓴다 — 이름을 따로

@@ -291,6 +291,122 @@ public class SelectionGroupTests
         Assert.False(SelectionGroup.HandlesGrabbable(0, 2));
     }
 
+    // ---- 소유 필터 (SEL-LIM-5) ----
+    //
+    // 이 절은 <see cref="SelectionGroup.HandlesGrabbable"/>의 **입력**을 지킨다. 술어를 하나로 합쳐도
+    // 소유 목록을 서피스마다 따로 만들면 SEL-LIM-5 회귀가 입력 쪽으로 자리만 옮긴다.
+    // 테스트는 일부러 selection.AttachTo(document)를 부르지 않는다 — ElementRemoved 구독이 붙으면
+    // "어느 문서에도 없는 요소"(이관 SuppressInvalidation 창)를 재현할 수 없다.
+
+    /// <summary>
+    /// 모니터에 걸친 선택: 서피스마다 자기 몫만 돌려주고, 두 몫의 합집합이 선택집합과 같아야 한다.
+    /// </summary>
+    [Fact]
+    public void OwnedBy_CrossMonitorSelection_ReturnsOnlyThisDocumentsElements()
+    {
+        var docA = new AnnotationDocument("A");
+        var docB = new AnnotationDocument("B");
+        var a1 = Stroke(0, 0, 10, 10);
+        var a2 = Stroke(20, 0, 10, 10);
+        var b1 = Stroke(40, 0, 10, 10);
+        docA.Add(a1);
+        docA.Add(a2);
+        docB.Add(b1);
+        var selection = new SelectionModel();
+        selection.Set([a1, a2, b1]);
+
+        var ownedA = SelectionGroup.OwnedBy(docA, selection);
+        var ownedB = SelectionGroup.OwnedBy(docB, selection);
+
+        Assert.Equal([a1, a2], ownedA);
+        Assert.Equal([b1], ownedB);
+        Assert.Equal(selection.Count, ownedA.Count + ownedB.Count);
+        Assert.Equal(selection.Elements, [.. ownedA, .. ownedB]);
+    }
+
+    /// <summary>
+    /// 순회 방향 계약: 선택집합이 바깥 루프다. 문서를 바깥으로 뒤집는 "정리"를 잡는 유일한 증인이며,
+    /// 단일 소유 경로의 <c>owned[0]</c>(어느 요소의 8핸들을 그리는가)을 지킨다.
+    /// </summary>
+    [Fact]
+    public void OwnedBy_PreservesSelectionOrder()
+    {
+        var document = new AnnotationDocument("A");
+        var e1 = Stroke(0, 0, 10, 10);
+        var e2 = Stroke(20, 0, 10, 10);
+        var e3 = Stroke(40, 0, 10, 10);
+        document.Add(e1);
+        document.Add(e2);
+        document.Add(e3);
+        var selection = new SelectionModel();
+        selection.Set([e3, e1, e2]); // 문서 순서와 일부러 다르게
+
+        var owned = SelectionGroup.OwnedBy(document, selection);
+
+        Assert.Equal(3, owned.Count);
+        Assert.Same(e3, owned[0]);
+        Assert.Same(e1, owned[1]);
+        Assert.Same(e2, owned[2]);
+    }
+
+    [Fact]
+    public void OwnedBy_ForeignElement_IsExcluded()
+    {
+        var docA = new AnnotationDocument("A");
+        var docB = new AnnotationDocument("B");
+        var mine = Stroke(0, 0, 10, 10);
+        var theirs = Stroke(40, 0, 10, 10);
+        docA.Add(mine);
+        docB.Add(theirs);
+        var selection = new SelectionModel();
+        selection.Set([mine, theirs]);
+
+        var owned = SelectionGroup.OwnedBy(docA, selection);
+
+        Assert.DoesNotContain(theirs, owned);
+        Assert.Contains(mine, owned);
+    }
+
+    /// <summary>
+    /// 이관 창(LD-5 / SEL-AC-5) 재현: <see cref="SelectionTransfer"/>의 SuppressInvalidation 구간에서는
+    /// 요소가 <b>어느 문서에도 없는</b> 프레임이 존재한다. 소유 판정을 ownerLookup 계열 정의
+    /// ("전 서피스 중 누가 소유하는가")로 바꾸면 그 한 프레임 동안 두 정의가 어긋나므로,
+    /// 여기서 참조 동일성 정의를 못박아 둔다.
+    /// </summary>
+    [Fact]
+    public void OwnedBy_ElementInNoDocument_IsExcluded()
+    {
+        var document = new AnnotationDocument("A");
+        var staying = Stroke(0, 0, 10, 10);
+        var inFlight = Stroke(20, 0, 10, 10);
+        document.Add(staying);
+        document.Add(inFlight);
+        var selection = new SelectionModel();
+        selection.Set([staying, inFlight]);
+        document.Remove(inFlight); // 이관 중: 선택에는 남아 있지만 어느 문서에도 없다
+
+        var owned = SelectionGroup.OwnedBy(document, selection);
+
+        Assert.Equal([staying], owned);
+        Assert.Contains(inFlight, selection.Elements);
+    }
+
+    /// <summary>
+    /// 계약 고정: 빈 선택에서도 null이 아닌 빈 목록. 호출부가 <c>owned.Count</c> 단락 평가에 기대
+    /// <c>owned[0]</c>을 인덱싱한다 (SurfaceInputController.IsInsideSelectionFrame).
+    /// </summary>
+    [Fact]
+    public void OwnedBy_EmptySelection_ReturnsEmptyList()
+    {
+        var document = new AnnotationDocument("A");
+        document.Add(Stroke(0, 0, 10, 10));
+
+        var owned = SelectionGroup.OwnedBy(document, new SelectionModel());
+
+        Assert.NotNull(owned);
+        Assert.Empty(owned);
+    }
+
     // ---- 그룹 배율 클램프: 퇴화 축이 그룹 전체를 봉쇄하면 안 된다 ----
 
     /// <summary>

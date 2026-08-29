@@ -148,6 +148,36 @@ public static class SelectionGroup
     public static Point Center(Rect frame) => Center(new GroupFrame(frame, 0));
 
     /// <summary>
+    /// 이 문서가 소유한 선택 요소 (선택된 순서 유지). 선택집합은 전역이지만 장식·핸들·그룹 프레임은
+    /// 모두 <b>소유 서피스</b>가 그리므로, 서피스마다 자기 몫을 걸러 낸다.
+    ///
+    /// <see cref="HandlesGrabbable"/> 바로 옆에 사는 이유: 그 술어의 <b>입력</b>이 여기서 나온다.
+    /// 술어를 하나로 합쳐도 입력이 둘(렌더 루프 / 히트 루프)이면 SEL-LIM-5 회귀는 입력 쪽으로
+    /// 자리만 옮긴다 — 두 소유 목록이 갈라지는 것만으로 "보이지만 잡히지 않는 핸들"이 그대로 돌아온다.
+    ///
+    /// 소속 판정은 <c>document.Elements</c>의 <b>참조 동일성</b>이며, <c>ownerLookup</c> 계열 정의로
+    /// 바꾸지 않는다. 모니터 이관 중에는 요소가 <b>어느 문서에도 없는</b> 프레임이 존재하고
+    /// (<see cref="SelectionTransfer"/>의 <c>SuppressInvalidation</c> 구간: Remove → 리베이스 → Add),
+    /// 그 한 프레임 동안 두 정의가 어긋난다 (LD-5 / SEL-AC-5).
+    ///
+    /// 순회 방향도 계약이다: <b>선택집합을 바깥 루프</b>로 돌아 선택 순서를 보존한다. 뒤집어 문서를
+    /// 바깥으로 돌면 개수는 같지만 순서가 문서 순서로 바뀌어, 단일 소유 경로의 <c>owned[0]</c>과
+    /// 그룹 프레임 렌더 순서가 조용히 달라진다.
+    /// </summary>
+    public static List<AnnotationElement> OwnedBy(AnnotationDocument document, SelectionModel selection)
+    {
+        var owned = new List<AnnotationElement>();
+        foreach (var element in selection.Elements)
+        {
+            if (document.Elements.Contains(element))
+            {
+                owned.Add(element);
+            }
+        }
+        return owned;
+    }
+
+    /// <summary>
     /// 이 서피스에서 <b>핸들을 잡을 수 있는가</b> (SEL-LIM-5의 단일 술어).
     ///
     /// 이 함수가 따로 있는 이유는 계약이 세 곳(장식 렌더 / 히트 테스트 / 휠 확대)에 흩어져 있었고,

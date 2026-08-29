@@ -362,16 +362,8 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             _decorationLayer.Children.Add(AnnotationVisualFactory.BuildMarquee(marquee));
         }
 
-        // 이 문서 소속 선택 요소만 그린다 — 선택집합은 전역이지만 장식은 소유 서피스가 그린다.
         var surfaceBounds = new Rect(0, 0, _inkCanvas.ActualWidth, _inkCanvas.ActualHeight);
-        var owned = new List<AnnotationElement>();
-        foreach (var element in _selection.Elements)
-        {
-            if (Document.Elements.Contains(element))
-            {
-                owned.Add(element);
-            }
-        }
+        var owned = SelectionGroup.OwnedBy(Document, _selection);
 
         // 모니터에 걸친 선택은 경계만 그리고 핸들을 숨긴다 (SEL-LIM-5): 두 서피스의 논리 좌표계가
         // 서로소라 공통 프레임이 성립하지 않으므로, 잡을 수 없는 핸들을 그리면 거짓 어포던스가 된다.
