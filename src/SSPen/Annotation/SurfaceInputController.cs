@@ -48,7 +48,9 @@ public sealed class SurfaceInputController(
     private HandleKind _dragHandle;
     private GroupHandleKind _dragGroupHandle;
     private AnnotationElement? _dragHandleTarget;
-    private Dictionary<long, ElementTransformState>? _dragBaseStates;
+
+    /// <summary>드래그 시작 상태 + R15 집행 (요소 참조를 붙잡는 이유는 DragBaseStates 문서 참조).</summary>
+    private readonly DragBaseStates _base = new(ownerLookup, document);
 
     /// <summary>
     /// 제스처 시작 시점에 <b>동결</b>된 그룹 프레임 (R1). 살아있는 경계로 매 프레임 재계산하면
@@ -396,7 +398,7 @@ public sealed class SurfaceInputController(
             setMarquee(new Rect(_dragStart, pos));
             return;
         }
-        if (_dragBaseStates is not { } baseStates)
+        if (_base.BaseStates is not { } baseStates)
         {
             return;
         }
@@ -414,7 +416,7 @@ public sealed class SurfaceInputController(
                 if (_dragHandleTarget is { } scaleTarget
                     && baseStates.TryGetValue(scaleTarget.Id, out var scaleStart))
                 {
-                    ApplyTransformState(
+                    _base.Apply(
                         scaleTarget,
                         TransformMath.ScaleLocal(scaleStart, scaleTarget.LocalBounds, _dragHandle, pos));
                 }
@@ -424,7 +426,7 @@ public sealed class SurfaceInputController(
                 if (_dragHandleTarget is { } rotateTarget
                     && baseStates.TryGetValue(rotateTarget.Id, out var rotateStart))
                 {
-                    ApplyTransformState(
+                    _base.Apply(
                         rotateTarget,
                         TransformMath.Rotate(
                             rotateStart,
@@ -446,7 +448,7 @@ public sealed class SurfaceInputController(
                 {
                     if (baseStates.TryGetValue(element.Id, out var start))
                     {
-                        ApplyTransformState(
+                        _base.Apply(
                             element, TransformMath.ScaleAbout(start, element.LocalBounds, pivot, factor));
                     }
                 }
@@ -462,7 +464,7 @@ public sealed class SurfaceInputController(
                 // (스레드 로컬 Keyboard.Modifiers는 영구 NOACTIVATE 서피스에서 항상 None).
                 var step = SelectionGroup.RotateStep(_groupFrame, _dragStart, pos, KeyboardState.Shift);
 
-                // 루프보다 **먼저** 미는 이유: 아래 ApplyTransformState가 유발하는 재그리기가
+                // 루프보다 **먼저** 미는 이유: 아래 상태 대입이 유발하는 재그리기가
                 // 이미 새 각도를 보게 한다. 각도는 _dragStart 기준 누적 증분이라 프레임 각에
                 // 더해 나가지 않는다 ("직전 프레임 결과 누적 금지" 규약).
                 setGestureGroupFrame(step.Guide);
@@ -471,7 +473,7 @@ public sealed class SurfaceInputController(
                 {
                     if (baseStates.TryGetValue(element.Id, out var start))
                     {
-                        ApplyTransformState(
+                        _base.Apply(
                             element,
                             TransformMath.RotateAbout(
                                 start, element.LocalBounds, step.Pivot, step.DeltaDegrees));
@@ -490,7 +492,7 @@ public sealed class SurfaceInputController(
     /// 순회 대상은 <c>owned</c>가 아니라 <c>selection.Elements</c>다 — 이 서피스가 소유하지 않은
     /// 요소도 함께 움직여야 선택이 통째로 따라온다 (SEL-LIM-5).
     /// </summary>
-    private void MoveSelection(Dictionary<long, ElementTransformState> baseStates, Vector delta)
+    private void MoveSelection(IReadOnlyDictionary<long, ElementTransformState> baseStates, Vector delta)
     {
         double sourceDpi = host.GetDpi().DpiScaleX;
         foreach (var element in selection.Elements)
@@ -501,7 +503,7 @@ public sealed class SurfaceInputController(
             }
             double targetDpi = dpiOf(ownerLookup(element) ?? document);
             var scaled = SelectionOperations.ScaleDisplacementForDpi(delta, sourceDpi, targetDpi);
-            ApplyTransformState(element, TransformMath.Translate(start, scaled));
+            _base.Apply(element, TransformMath.Translate(start, scaled));
         }
     }
 
@@ -543,17 +545,9 @@ public sealed class SurfaceInputController(
             return;
         }
 
-        if (_dragBaseStates is { } baseStates)
+        if (_base.Active)
         {
-            var pairs = new List<(AnnotationElement, ElementTransformState)>();
-            foreach (var (id, before) in baseStates)
-            {
-                if (FindDragged(id) is { } element)
-                {
-                    pairs.Add((element, before));
-                }
-            }
-            var deltas = TransformCommitPlan.Build(pairs, ownerLookup, document);
+            var deltas = TransformCommitPlan.Build(_base.Pairs, ownerLookup, document);
             if (deltas.Count > 0)
             {
                 // 이관 판정(f7)과 원장 기록은 컴포지션 루트가 소유한다 (SEL-14/P7).
@@ -597,7 +591,7 @@ public sealed class SurfaceInputController(
         {
             if (baseStates.TryGetValue(element.Id, out var start))
             {
-                ApplyTransformState(
+                _base.Apply(
                     element, TransformMath.ScaleAbout(start, element.LocalBounds, _wheel.Pivot, factor));
             }
         }
@@ -655,52 +649,13 @@ public sealed class SurfaceInputController(
         _wheelElements = null;
     }
 
-    /// <summary>드래그 시작 스냅샷에 담긴 id를 현재 요소로 되돌린다 (선택집합 또는 핸들 대상).</summary>
-    private AnnotationElement? FindDragged(long id)
-    {
-        if (_dragHandleTarget is { } target && target.Id == id)
-        {
-            return target;
-        }
-        foreach (var element in selection.Elements)
-        {
-            if (element.Id == id)
-            {
-                return element;
-            }
-        }
-        return null;
-    }
-
-    /// <summary>드래그 시작 상태 스냅샷. 핸들 대상은 선택집합에 없을 수 없지만 방어적으로 함께 넣는다.</summary>
-    private void SnapshotDragStates()
-    {
-        _dragBaseStates = [];
-        foreach (var element in selection.Elements)
-        {
-            _dragBaseStates[element.Id] = element.TransformState;
-        }
-        if (_dragHandleTarget is { } target)
-        {
-            _dragBaseStates[target.Id] = target.TransformState;
-        }
-    }
-
-    /// <summary>
-    /// 상태 대입 뒤에는 **반드시** 소유 문서의 알림이 따라와야 한다 (R15) — 그래야 시각물과 장식이 함께 움직인다.
-    /// 다른 모니터 소속 요소도 그 요소의 소유 문서를 통해 알린다 (다중 선택 이동).
-    /// </summary>
-    private void ApplyTransformState(AnnotationElement element, ElementTransformState next)
-    {
-        element.TransformState = next;
-        (ownerLookup(element) ?? document).RaiseElementTransformChanged(element);
-    }
+    private void SnapshotDragStates() => _base.Snapshot(selection, _dragHandleTarget);
 
     private void ResetSelectGesture()
     {
         _dragKind = SelectionDragKind.None;
         _dragHandleTarget = null;
-        _dragBaseStates = null;
+        _base.Reset();
         _groupFrame = Rect.Empty;
         // 각도의 유일한 소멸 지점 — 이후 장식은 다시 살아있는 축 정렬 경계로 그린다 (SEL-LIM-6).
         setGestureGroupFrame(null);
@@ -896,17 +851,8 @@ public sealed class SurfaceInputController(
         {
             CommitText();
         }
-        // 진행 중이던 변형은 시작 상태로 롤백한다 — 원장에 없는 중간 변형이 화면에 남으면 실행취소로 지울 수 없다.
-        if (_dragBaseStates is { } baseStates)
-        {
-            foreach (var (id, start) in baseStates)
-            {
-                if (FindDragged(id) is { } element)
-                {
-                    ApplyTransformState(element, start);
-                }
-            }
-        }
+        // 진행 중이던 변형은 시작 상태로 롤백한다 (DragBaseStates 참조).
+        _base.RollbackAll();
         if (_dragKind != SelectionDragKind.None)
         {
             setMarquee(null);
