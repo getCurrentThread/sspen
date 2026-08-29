@@ -69,8 +69,17 @@ public sealed record SurfaceInputSeams
 /// 선택 도구의 판정은 순수 협력자들이 소유한다: 히트 우선순위 사다리는
 /// <see cref="SelectionGesturePlanner"/>, 시작 상태 스냅샷과 R15 집행은 <see cref="DragBaseStates"/>,
 /// 제스처 판정 상수·술어는 <see cref="SelectionGestureRules"/>, 그룹 기하는 <see cref="SelectionGroup"/>,
-/// 휠 확대/축소 정책 전체(세션·시작 상태·잡은 요소·유휴 확정)는 <see cref="WheelScaleController"/>가 소유한다.
+/// 휠 확대/축소 정책 전체(세션·시작 상태·잡은 요소·유휴 확정)는 <see cref="WheelScaleController"/>가,
+/// 선택 전체 이동 계산은 <see cref="SelectionOperations"/>가, 원장에 실을 델타 목록은
+/// <see cref="TransformCommitPlan"/>이 소유한다.
+///
+/// 획·도형·텍스트 쪽도 마찬가지다: 시작 시점 스타일 동결과 획 누적은
+/// <see cref="GestureStyleSnapshot"/>/<see cref="StrokeAccumulator"/>, 미리보기 끝점과 커밋 판정은
+/// <see cref="ShapeGestureRules"/>/<see cref="TextCommitRules"/>가 가진다.
+///
 /// 이 클래스에 남는 것은 진행 중 필드와 창·문서·원장으로 흘려보내는 배선뿐이다 (ARCH-2).
+/// 그 배선 중 <b>순서 자체가 계약</b>인 것은 <see cref="CancelActiveInput"/> 하나이며,
+/// 다섯 가지 취소 의미와 그 순서 의무는 그 메서드의 문서가 소유한다.
 /// </summary>
 public sealed class SurfaceInputController(
     Canvas inkCanvas,
@@ -668,6 +677,21 @@ public sealed class SurfaceInputController(
         CommitElement(element, fade: style.IsFading);
     }
 
+    /// <summary>
+    /// 진행 중 획 <b>폐기</b> (커밋이 아니다 — 원장 항목이 없으므로 미리보기 시각물만 지운다).
+    /// <c>Children.Remove</c>가 WPF라 헤드리스 코어로 내리지 않고 얇은 UI 어댑터로 남긴다.
+    /// </summary>
+    private void DiscardStroke()
+    {
+        if (_activePolyline is null)
+        {
+            return;
+        }
+        inkCanvas.Children.Remove(_activePolyline);
+        _stroke = null;
+        _activePolyline = null;
+    }
+
     private void StartShape(ShapeKind kind, Point pos)
     {
         _shapeStart = pos;
@@ -696,6 +720,17 @@ public sealed class SurfaceInputController(
         }
         var element = new ShapeElement(_previewKind, _shapeStart, end, _activeShapeStyle.Color, _activeShapeStyle.Thickness);
         CommitElement(element, fade: _activeShapeStyle.IsFading);
+    }
+
+    /// <summary>진행 중 도형 <b>폐기</b> (커밋이 아니다 — <see cref="DiscardStroke"/>와 같은 이유).</summary>
+    private void DiscardShape()
+    {
+        if (_previewShape is null)
+        {
+            return;
+        }
+        inkCanvas.Children.Remove(_previewShape);
+        _previewShape = null;
     }
 
     // ---- 텍스트 도구 (ARCH-2: NOACTIVATE 일시 해제 핸드셰이크로 한국어 IME 지원) ----
@@ -811,25 +846,38 @@ public sealed class SurfaceInputController(
     /// </summary>
     public void FlushPendingTransforms() => WheelScale.Flush(commit: true);
 
-    /// <summary>gen-7 자문(MED): 비인터랙티브 전환으로 버튼 업이 유실돼도 유령 드래그 삭제가 없도록 리셋.</summary>
+    /// <summary>
+    /// 진행 중인 모든 입력을 **정해진 순서로** 마감한다.
+    /// gen-7 자문(MED): 비인터랙티브 전환으로 버튼 업이 유실돼도 유령 드래그 삭제가 없도록 리셋한다.
+    ///
+    /// 취소의 의미가 다섯 가지로 <b>서로 다르다</b> — 균일한 <c>Cancel()</c> 인터페이스로 묶으면 전부 틀어진다.
+    /// <list type="bullet">
+    ///   <item>획·도형 = <b>폐기</b>. 미리보기 시각물만 있고 원장 항목이 없으므로 그냥 지운다.</item>
+    ///   <item>텍스트 = <b>커밋</b>. ARCH-2 NOACTIVATE 핸드셰이크로 이미 활성화된 편집이고,
+    ///         입력한 글자를 폐기하면 사용자 데이터가 사라진다.</item>
+    ///   <item>변형(드래그) = <b>롤백</b> (R15). 원장에 없는 중간 변형이 화면에 남으면 실행취소로 지울 수 없다.</item>
+    ///   <item>휠 = <b>확정</b> (R7/f3). 방치하면 원장에 없는 변형이 남고, 롤백하면 화면에서 이미
+    ///         커진 결과가 소리 없이 되돌아간다.</item>
+    ///   <item>제스처 각도 = <b>소멸</b>. <see cref="ResetSelectGesture"/> 한 곳에서만 사라진다 (SEL-LIM-6).</item>
+    /// </list>
+    ///
+    /// 순서가 곧 계약이다. 롤백은 휠 확정보다 <b>앞</b>이고(뒤에 두면 원장의 after가 곧 롤백될 화면과
+    /// 어긋난 채 실린다), <see cref="ResetSelectGesture"/>는 휠 확정 <b>뒤</b>이며(먼저 부르면 시작 상태
+    /// 스냅샷이 사라져 롤백이 조용히 무동작이 된다), 캡처 해제(ARCH-6)는 언제나 <b>마지막</b>이다.
+    ///
+    /// <b>이 메서드는 <see cref="BeginSelectGesture"/> 머리의 <c>setGestureGroupFrame(null)</c>과
+    /// 한 곳으로 합칠 수 없다.</b> 그쪽은 각도만 지우는 것이고 여기는 커밋/롤백 의미를 가진다 —
+    /// 합치는 순간 진행 중 변형이 커밋도 롤백도 되지 않고 화면에 남는다 (그 함수의 주석 참고).
+    /// </summary>
     public void CancelActiveInput()
     {
         _eraserDragging = false;
         _hadSelectionOnPress = false;
-        if (_activePolyline is not null)
-        {
-            inkCanvas.Children.Remove(_activePolyline);
-            _stroke = null;
-            _activePolyline = null;
-        }
-        if (_previewShape is not null)
-        {
-            inkCanvas.Children.Remove(_previewShape);
-            _previewShape = null;
-        }
+        DiscardStroke();
+        DiscardShape();
         if (_activeTextBox is not null)
         {
-            CommitText();
+            CommitText(); // 텍스트만 폐기가 아니라 커밋이다 (ARCH-2).
         }
         // 진행 중이던 변형은 시작 상태로 롤백한다 (DragBaseStates 참조).
         _base.RollbackAll();
