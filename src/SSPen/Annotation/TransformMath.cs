@@ -43,7 +43,30 @@ public readonly record struct TransformDelta(
 /// </summary>
 public static class TransformMath
 {
-    /// <summary>배율 절댓값 하한. 0/0 → NaN 행렬은 <c>Math.Clamp</c>를 통과하고 요소를 화면에서 증발시킨다 (R16).</summary>
+    /// <summary>
+    /// 배율 절댓값 하한. 0/0 → NaN 행렬은 <c>Math.Clamp</c>를 통과하고 요소를 화면에서 증발시킨다 (R16).
+    ///
+    /// <b>이 상수는 이름보다 넓게 쓰인다.</b> 값을 바꾸려는 사람이 파급을 한눈에 보도록 실태를 적어 둔다.
+    /// 아래 두 무리는 <b>차원이 다르다</b> — 배율은 무차원이고 퇴화 가드는 픽셀·픽셀²이다.
+    /// 그런데도 오늘은 한 리터럴을 공유하므로 <b>독립 조정이 불가능하다</b>.
+    /// 이 기록은 <b>보존이지 승인이 아니다</b>. 나누고 싶으면 아래 목록 전부를 한 커밋에서 옮겨라 —
+    /// 절반만 새 이름을 붙이면 같은 값에 이름이 둘 생겨 드리프트가 오히려 늘어난다.
+    ///
+    /// <list type="bullet">
+    /// <item><b>배율 하한(본래 의미, 무차원)</b> — <see cref="ClampMagnitude"/>(R14/D5),
+    ///   <see cref="HitHandle"/>의 축별 도달거리 역산(0 나눗셈 방어),
+    ///   <see cref="ClampGroupFactor"/>의 구성원 하한과 바닥값.</item>
+    /// <item><b>퇴화 엡실론(재사용, 길이 px)</b> — <see cref="NonDegenerate"/>의 최소 폭,
+    ///   <see cref="RotateHandleWorld"/>의 방향 벡터 길이(R5), <see cref="Rotate"/>의 회전 반경 2개,
+    ///   <see cref="ScaleLocal"/>의 로컬 스팬 2개, <see cref="SelectionGroup.RotationDelta"/>의 회전 반경 2개.</item>
+    /// <item><b>퇴화 엡실론(재사용, 길이제곱 px²)</b> — <c>SelectionGroup.ScaleFactor</c>의 정사영 축 길이제곱.</item>
+    /// </list>
+    ///
+    /// 실측 기준: 두 파일 9개 메서드에서 16회 참조한다(선언·주석 줄 제외). <see cref="Rotate"/>와
+    /// <see cref="SelectionGroup.RotationDelta"/>는 <b>의도상 쌍둥이</b>(단일 요소 회전 / 그룹 회전의 같은 퇴화 가드)이므로
+    /// 한쪽만 다른 상수로 바꾸지 않는다. 위치가 아니라 <b>메서드 이름</b>으로 적은 이유는 줄 번호가 썩기 때문이다 —
+    /// <c>grep -rn MinScale src/SSPen/Annotation/</c>가 이 목록과 어긋나면 목록을 고쳐라.
+    /// </summary>
     public const double MinScale = 0.01;
 
     /// <summary>

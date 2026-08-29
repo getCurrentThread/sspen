@@ -380,6 +380,17 @@ public static class SelectionGroup
         return new GroupRotateStep(pivot, delta, GestureFrame(frozen, rotating: true, delta));
     }
 
+    /// <summary>
+    /// <see cref="RotateStep"/>가 쓰는 회전 <b>증분</b> 계산. 증분을 스냅하는(결과 각이 아니라) 이유는
+    /// 바로 위 <see cref="RotateStep"/> 문서에 있다 — 여기서 되풀이하지 않는다.
+    /// 프로덕션 호출부는 <see cref="RotateStep"/> 하나뿐이고, 가이드와 잉크가 한 값을 공유하도록
+    /// <b>프레임당 한 번만</b> 불러야 한다 (R1).
+    ///
+    /// <paramref name="pivot"/>까지의 거리를 <see cref="TransformMath.MinScale"/>과 비교하는 것은
+    /// <b>배율 하한이 아니라 길이 퇴화 가드</b>다 — 커서가 피벗에 얹히면 각도가 NaN이 되어 요소가
+    /// 화면에서 증발한다 (R16). <see cref="TransformMath.Rotate"/>의 같은 가드와 의도상 쌍둥이이므로
+    /// 한쪽만 다른 상수로 바꾸지 않는다 (<see cref="TransformMath.MinScale"/> 문서의 실태 목록 참고).
+    /// </summary>
     public static double RotationDelta(Point pivot, Point from, Point to, bool shift)
     {
         var before = from - pivot;

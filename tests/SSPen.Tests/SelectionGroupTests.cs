@@ -914,6 +914,43 @@ public class SelectionGroupTests
         Assert.Equal(0, delta, 9);
     }
 
+    /// <summary>
+    /// 시작 각이 제각각인 구성원도 <b>같은 증분</b>만큼 돈다 (R1). Shift 스냅이 결과 각이 아니라 증분에 걸리므로,
+    /// 10도·70도·23도로 미리 돌려 둔 요소가 45도 증분을 나란히 받아 55도·115도·68도가 된다.
+    ///
+    /// 여기를 <see cref="TransformMath.Rotate"/>의 결과 각 스냅으로 갈아끼우면 구성원마다 스냅 잔차가 달라
+    /// 증분이 35도/35도/37도로 갈라지고 그룹이 한 덩어리로 돌지 않는다 — 이 단언이 그 대체를 막는다.
+    /// 시작 각도 결과 각도 15도 배수가 아니도록 골랐다.
+    /// </summary>
+    [Fact]
+    public void RotationDelta_MixedAngleMembers_AdvanceByTheSameIncrement()
+    {
+        AnnotationElement[] members = [Stroke(0, 0, 120, 60), Stroke(200, 100, 60, 40), Stroke(-40, 160, 80, 80)];
+        double[] startAngles = [10, 70, 23];
+        for (int i = 0; i < members.Length; i++)
+        {
+            members[i].TransformState = members[i].TransformState with { AngleDegrees = startAngles[i] };
+        }
+
+        var frame0 = SelectionGroup.Frame(members)!.Value;
+        var pivot = SelectionGroup.Center(frame0);
+        var from = pivot + new Vector(100, 0);
+        var to = pivot + TransformMath.RotateVector(new Vector(100, 0), 38); // 38도 → 45도로 스냅
+
+        double delta = SelectionGroup.RotationDelta(pivot, from, to, shift: true);
+
+        Assert.Equal(45, delta, 9);
+        for (int i = 0; i < members.Length; i++)
+        {
+            members[i].TransformState = TransformMath.RotateAbout(
+                members[i].TransformState, members[i].LocalBounds, pivot, delta);
+            Assert.Equal(
+                startAngles[i] + 45,
+                members[i].TransformState.AngleDegrees,
+                9);
+        }
+    }
+
     // -- 설계 방화벽 --
 
     /// <summary>
