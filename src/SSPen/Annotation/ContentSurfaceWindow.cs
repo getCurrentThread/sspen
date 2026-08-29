@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using SSPen.Diagnostics;
 using SSPen.Interop;
 
@@ -134,7 +135,12 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             () => Dispatcher.BeginInvoke(requestClickThrough),
             // R5: 서피스 경계의 유일 소유자는 이 창이다. 값이 아니라 델리게이트로 넘기는 이유는
             // 여기서는 아직 레이아웃이 돌지 않아 ActualWidth가 0이기 때문이다 (SurfaceInputSeams 문서 참고).
-            new SurfaceInputSeams { SurfaceBounds = () => this.SurfaceBounds });
+            new SurfaceInputSeams
+            {
+                SurfaceBounds = () => this.SurfaceBounds,
+                // R7: 휠 유휴 디바운스도 창이 소유한다 — DispatcherTimer를 아는 곳은 여기 하나뿐이다.
+                IdleScheduler = new DispatcherIdleScheduler(Dispatcher),
+            });
 
         Document.ElementAdded += OnElementAdded;
         Document.ElementRemoved += OnElementRemoved;
@@ -580,5 +586,34 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         };
         animation.Completed += (_, _) => onCompleted();
         visual.BeginAnimation(OpacityProperty, animation);
+    }
+
+    /// <summary>
+    /// <see cref="IIdleScheduler"/>의 WPF 어댑터 (R7). <c>DispatcherTimer</c> +
+    /// <c>DispatcherPriority.Background</c> + Stop 후 Start 디바운스 — 원래
+    /// <c>SurfaceInputController.StepWheelScale</c>에 있던 관용구 그대로다.
+    ///
+    /// <c>Task</c>/<c>await</c>로 바꾸지 않는다: 확정 경로가 <c>TransformState</c>를 쓰고
+    /// 소유 문서에 알리고 <see cref="UndoLedger"/>에 append 한다 — 전부 UI 스레드 전용이다.
+    /// </summary>
+    private sealed class DispatcherIdleScheduler(Dispatcher dispatcher) : IIdleScheduler
+    {
+        private DispatcherTimer? _timer;
+
+        public event Action? Tick;
+
+        public void Restart(TimeSpan interval)
+        {
+            _timer ??= new DispatcherTimer(DispatcherPriority.Background, dispatcher);
+            _timer.Interval = interval;
+            _timer.Tick -= OnTimerTick;
+            _timer.Tick += OnTimerTick;
+            _timer.Stop();
+            _timer.Start();
+        }
+
+        public void Cancel() => _timer?.Stop();
+
+        private void OnTimerTick(object? sender, EventArgs e) => Tick?.Invoke();
     }
 }

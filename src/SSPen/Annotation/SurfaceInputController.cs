@@ -3,7 +3,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using System.Windows.Threading;
 using SSPen.Interop;
 
 namespace SSPen.Annotation;
@@ -52,6 +51,12 @@ public sealed record SurfaceInputSeams
     /// 매 히트 테스트마다 호출한다 — 필드에 캐시하지 말 것.
     /// </summary>
     public required Func<Rect> SurfaceBounds { get; init; }
+
+    /// <summary>
+    /// 휠 유휴 디바운스 (R7). 창이 유일 소유자이므로 충실한 프로덕션 기본값이 없다 — 그래서 <c>required</c>다.
+    /// 기본값을 두면 배선 누락이 컴파일 에러가 아니라 첫 노치의 NRE가 된다.
+    /// </summary>
+    public required IIdleScheduler IdleScheduler { get; init; }
 }
 
 /// <summary>
@@ -60,7 +65,8 @@ public sealed record SurfaceInputSeams
 ///
 /// 선택 도구의 판정은 순수 협력자들이 소유한다: 히트 우선순위 사다리는
 /// <see cref="SelectionGesturePlanner"/>, 시작 상태 스냅샷과 R15 집행은 <see cref="DragBaseStates"/>,
-/// 제스처 판정 상수·술어는 <see cref="SelectionGestureRules"/>, 그룹 기하는 <see cref="SelectionGroup"/>이다.
+/// 제스처 판정 상수·술어는 <see cref="SelectionGestureRules"/>, 그룹 기하는 <see cref="SelectionGroup"/>,
+/// 휠 확대/축소 정책 전체(세션·시작 상태·잡은 요소·유휴 확정)는 <see cref="WheelScaleController"/>가 소유한다.
 /// 이 클래스에 남는 것은 진행 중 필드와 창·문서·원장으로 흘려보내는 배선뿐이다 (ARCH-2).
 /// </summary>
 public sealed class SurfaceInputController(
@@ -103,17 +109,18 @@ public sealed class SurfaceInputController(
     /// <summary>빈 곳 제스처를 시작할 때 선택이 있었는가 (R5: 제자리 클릭이면 업에서 클릭 통과로 전환).</summary>
     private bool _hadSelectionOnPress;
 
-    // 휠 확대/축소 (R7): 연속 노치를 하나의 원장 항목으로 묶는다.
-    private readonly WheelScaleSession _wheel = new();
-    private Dictionary<long, ElementTransformState>? _wheelBaseStates;
+    private WheelScaleController? _wheel;
 
     /// <summary>
-    /// 휠 세션이 잡은 요소들. <b>선택집합을 다시 조회하지 않는 이유</b>: 휠 확정은 유휴 타이머로
-    /// 비동기 발생하므로, 그 사이 ESC나 클릭 통과 전환으로 선택이 비면 요소를 되찾지 못해
-    /// <b>화면에는 커진 채 원장에는 없는</b> 변형이 남아 실행취소로 지울 수 없게 된다.
+    /// 휠 확대/축소 (R7): 연속 노치를 하나의 원장 항목으로 묶는다.
+    ///
+    /// 필드 이니셜라이저로 만들 수 없어 최초 사용 시점에 한 번만 만든다 — R15의 <b>유일</b> 집행 지점인
+    /// <c>_base.Apply</c>를 넘겨야 하는데 필드 이니셜라이저는 다른 인스턴스 필드를 참조할 수 없고(CS0236),
+    /// 주 생성자에는 본문이 없다. <see cref="DragBaseStates"/>를 한 벌 더 만들어 피하면
+    /// <c>TransformState</c> 집행자가 둘이 되므로 그쪽이 더 나쁘다.
     /// </summary>
-    private List<AnnotationElement>? _wheelElements;
-    private DispatcherTimer? _wheelTimer;
+    private WheelScaleController WheelScale => _wheel ??= new(
+        ownerLookup, document, _base.Apply, commitTransform, seams.Now, seams.IdleScheduler);
 
     // 진행 중 획/도형/텍스트 상태
     private StrokeAccumulator? _stroke;
@@ -326,7 +333,9 @@ public sealed class SurfaceInputController(
             // 다른 원점·DPI를 쓰는 문서의 요소에 그대로 먹이면 엉뚱한 곳으로 흩어진다.
             if (SelectionGroup.HandlesGrabbable(owned.Count, selection.Count))
             {
-                StepWheelScale(owned, pos, notches);
+                // dragActive를 여기서 다시 유도해 넘긴다 — 위 조기 반환 덕분에 오늘은 항상 false지만,
+                // 그 반환이 언젠가 사라져도 드래그 중 휠이 조용히 되살아나지 않게 하는 이중 방어다 (R7).
+                WheelScale.Step(owned, pos, notches, dragActive: _dragKind != SelectionDragKind.None);
                 return true;
             }
             return false;
@@ -364,7 +373,7 @@ public sealed class SurfaceInputController(
     /// </summary>
     private void BeginSelectGesture(Point pos, bool shift)
     {
-        CancelWheelScale(commit: true); // 휠 확대 중 클릭은 그 확대를 먼저 확정한다 (원장 순서 보존).
+        WheelScale.Flush(commit: true); // 휠 확대 중 클릭은 그 확대를 먼저 확정한다 (원장 순서 보존).
 
         // 캡처를 잃어 버튼 업이 유실된 제스처가 그려지는 프레임에 각도를 남길 수 있다.
         // 마우스 다운 시점에는 각도가 반드시 0이어야 한다 — 그래야 아래 히트 테스트,
@@ -613,98 +622,6 @@ public sealed class SurfaceInputController(
         ResetSelectGesture();
     }
 
-    // ---- 휠 확대/축소 (R7) ----
-
-    /// <summary>
-    /// 휠 노치 1회. 첫 노치에서 시작 상태와 고정점을 <b>동결</b>하고, 이후 노치는 그 시작 상태에
-    /// 누적 배율을 곱한다 (드래그와 같은 "직전 프레임 누적 금지" 규약 — 누적하면 부동소수 오차가 쌓인다).
-    /// </summary>
-    private void StepWheelScale(List<AnnotationElement> owned, Point cursor, int notches)
-    {
-        if (!_wheel.Active)
-        {
-            if (SelectionGroup.Frame(owned) is not { } frame)
-            {
-                return;
-            }
-            _wheelBaseStates = [];
-            _wheelElements = [.. owned];
-            foreach (var element in owned)
-            {
-                _wheelBaseStates[element.Id] = element.TransformState;
-            }
-            _wheel.Begin(SelectionGestureRules.WheelPivot(frame, cursor), seams.Now());
-        }
-        if (_wheelBaseStates is not { } baseStates || _wheelElements is not { } elements)
-        {
-            return;
-        }
-
-        double raw = _wheel.Step(notches, seams.Now());
-        double factor = TransformMath.ClampGroupFactor(raw, baseStates.Values);
-        _wheel.SetFactor(factor); // 한계 밖 누적을 지워 천장에서 첫 역방향 노치부터 반응하게 한다 (R7).
-        foreach (var element in elements)
-        {
-            if (baseStates.TryGetValue(element.Id, out var start))
-            {
-                _base.Apply(
-                    element, TransformMath.ScaleAbout(start, element.LocalBounds, _wheel.Pivot, factor));
-            }
-        }
-
-        _wheelTimer ??= new DispatcherTimer(DispatcherPriority.Background, inkCanvas.Dispatcher)
-        {
-            Interval = WheelScaleSession.IdleTimeout,
-        };
-        _wheelTimer.Tick -= OnWheelIdleTick;
-        _wheelTimer.Tick += OnWheelIdleTick;
-        _wheelTimer.Stop();
-        _wheelTimer.Start();
-    }
-
-    private void OnWheelIdleTick(object? sender, EventArgs e)
-    {
-        if (_wheel.DueToCommit(seams.Now()))
-        {
-            CancelWheelScale(commit: true);
-        }
-    }
-
-    /// <summary>
-    /// 휠 세션 마감. <paramref name="commit"/>이면 <b>원장 1항목</b>으로 싣는다 (f3/SEL-12).
-    /// 이관 판정은 건너뛴다 — 휠은 요소를 어디에도 "놓지" 않았고, 커서가 옆 모니터 위에 있다는
-    /// 이유로 선택 전체가 이관되면 사용자 의도와 정반대다.
-    /// </summary>
-    private void CancelWheelScale(bool commit)
-    {
-        _wheelTimer?.Stop();
-        if (!_wheel.Active)
-        {
-            _wheelBaseStates = null;
-            _wheelElements = null;
-            return;
-        }
-        if (commit && _wheelBaseStates is { } baseStates && _wheelElements is { } elements)
-        {
-            var pairs = new List<(AnnotationElement, ElementTransformState)>();
-            foreach (var element in elements)
-            {
-                if (baseStates.TryGetValue(element.Id, out var before))
-                {
-                    pairs.Add((element, before));
-                }
-            }
-            var deltas = TransformCommitPlan.Build(pairs, ownerLookup, document);
-            if (deltas.Count > 0)
-            {
-                commitTransform(deltas, null);
-            }
-        }
-        _wheel.End();
-        _wheelBaseStates = null;
-        _wheelElements = null;
-    }
-
     private void ResetSelectGesture()
     {
         _dragKind = SelectionDragKind.None;
@@ -859,7 +776,7 @@ public sealed class SurfaceInputController(
     {
         // 요소를 없애기 전에 진행 중인 휠 확대를 확정한다 — 안 그러면 유휴 타이머가 뒤늦게 깨어나
         // 이미 지워진 요소의 변형을 지우기 항목 뒤에 실어 실행취소 1회가 무동작이 된다 (R7).
-        CancelWheelScale(commit: true);
+        WheelScale.Flush(commit: true);
         var element = document.HitTestNearest(pos, tolerance: SelectionGestureRules.EraseHitTolerancePixels);
         if (element is null)
         {
@@ -889,7 +806,7 @@ public sealed class SurfaceInputController(
     /// 요소의 변형을 삭제 항목 뒤에 실어 실행취소 1회가 아무 일도 하지 않는 유령 스텝이 된다.
     /// 그런 조작 직전에 이걸 부르면 확대가 삭제보다 앞 항목이 되어 실행취소 순서가 맞는다.
     /// </summary>
-    public void FlushPendingTransforms() => CancelWheelScale(commit: true);
+    public void FlushPendingTransforms() => WheelScale.Flush(commit: true);
 
     /// <summary>gen-7 자문(MED): 비인터랙티브 전환으로 버튼 업이 유실돼도 유령 드래그 삭제가 없도록 리셋.</summary>
     public void CancelActiveInput()
@@ -920,7 +837,7 @@ public sealed class SurfaceInputController(
         // 휠 확정은 드래그 롤백 **뒤**다. 앞에 두면 원장의 after가 곧 롤백될 화면과 어긋난 채 실린다.
         // 확정하는 이유: 롤백하면 화면에서 이미 커진 결과가 소리 없이 되돌아가고, 방치하면
         // 원장에 없는 변형이 남아 실행취소로 지울 수 없게 된다.
-        CancelWheelScale(commit: true);
+        WheelScale.Flush(commit: true);
         ResetSelectGesture();
         host.ReleaseMouseCapture();
     }

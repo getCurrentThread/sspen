@@ -293,8 +293,13 @@ public class SurfaceEntryPointTests
                     // 값은 (0,0,0,0)이고, 그래서 위 문서대로 이 스위트는 어떤 핸들도 잡지 않는다.
                     SurfaceBounds = () => new Rect(0, 0, Canvas.ActualWidth, Canvas.ActualHeight),
                     Now = now ?? (() => DateTime.UtcNow),
+                    // R7: 실제 DispatcherTimer는 펌프 없는 STA 쓰레드에서 영영 틱하지 않는다.
+                    IdleScheduler = Idle,
                 });
         }
+
+        /// <summary>휠 유휴 디바운스 가짜 (R7) — 만료는 테스트가 직접 일으킨다.</summary>
+        public FakeIdleScheduler Idle { get; } = new();
 
         public Canvas Canvas { get; }
 

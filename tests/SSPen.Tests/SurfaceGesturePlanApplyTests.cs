@@ -298,8 +298,12 @@ public class SurfaceGesturePlanApplyTests
                 new SurfaceInputSeams
                 {
                     SurfaceBounds = () => new Rect(0, 0, Canvas.ActualWidth, Canvas.ActualHeight),
+                    IdleScheduler = Idle,
                 });
         }
+
+        /// <summary>휠 유휴 디바운스 가짜 (R7) — 만료는 테스트가 직접 일으킨다.</summary>
+        public FakeIdleScheduler Idle { get; } = new();
 
         public Canvas Canvas { get; }
 

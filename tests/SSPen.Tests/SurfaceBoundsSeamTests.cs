@@ -162,8 +162,15 @@ public class SurfaceBoundsSeamTests
                 _ => { },
                 (deltas, drop) => Commits.Add((deltas, drop)),
                 () => { },
-                new SurfaceInputSeams { SurfaceBounds = surfaceBounds });
+                new SurfaceInputSeams
+                {
+                    SurfaceBounds = surfaceBounds,
+                    IdleScheduler = Idle,
+                });
         }
+
+        /// <summary>휠 유휴 디바운스 가짜 (R7) — 만료는 테스트가 직접 일으킨다.</summary>
+        public FakeIdleScheduler Idle { get; } = new();
 
         public Canvas Canvas { get; }
 
