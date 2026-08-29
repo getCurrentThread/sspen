@@ -63,6 +63,9 @@ public sealed record SurfaceInputSeams
 /// 마우스/키보드 입력 상태 머신 (획·도형·텍스트·지우개). 창 참조 없이 <see cref="ISurfaceHost"/>로만
 /// 창과 통신한다 (ARCH-2/ARCH-6 핸드셰이크만 위임).
 ///
+/// 마우스 다운이 무엇이 되는가와 휠 한 노치의 중재는 순수 표 <see cref="SurfaceInputRouter"/>가
+/// 소유한다 (D4/R7) — 여기 남는 것은 그 판정의 적용부다.
+///
 /// 선택 도구의 판정은 순수 협력자들이 소유한다: 히트 우선순위 사다리는
 /// <see cref="SelectionGesturePlanner"/>, 시작 상태 스냅샷과 R15 집행은 <see cref="DragBaseStates"/>,
 /// 제스처 판정 상수·술어는 <see cref="SelectionGestureRules"/>, 그룹 기하는 <see cref="SelectionGroup"/>,
@@ -205,50 +208,55 @@ public sealed class SurfaceInputController(
     /// </summary>
     public bool PointerDown(Point pos, bool shift, bool overActiveEditor)
     {
-        if (!state.IsInteractive)
+        // 판정은 순수 표가 소유한다 (D4/ARCH-2). 여기 남는 것은 적용부와 Handled 배선뿐이다.
+        var gesture = SurfaceInputRouter.RouteDown(
+            state.ActiveTool,
+            state.IsInteractive,
+            textEditing: _activeTextBox is not null,
+            overActiveEditor: overActiveEditor);
+
+        if (gesture == SurfaceGesture.Ignore)
         {
             return false;
         }
 
-        // 텍스트 편집 중 바깥 클릭 → 확정 (Round 13).
-        if (_activeTextBox is not null && !overActiveEditor)
+        if (gesture == SurfaceGesture.CommitTextOnly)
         {
             CommitText();
-            return false;
+            return false; // Handled 미대입 — 오늘 이 클릭은 소비되지 않는다 (ARCH-2).
         }
 
-        switch (state.ActiveTool)
+        switch (gesture)
         {
-            case ToolKind.Pen:
-            case ToolKind.Highlighter:
+            case SurfaceGesture.StartStroke:
                 StartStroke(pos);
                 break;
-            case ToolKind.Line:
+            case SurfaceGesture.StartLine:
                 StartShape(ShapeKind.Line, pos);
                 break;
-            case ToolKind.Arrow:
+            case SurfaceGesture.StartArrow:
                 StartShape(ShapeKind.Arrow, pos);
                 break;
-            case ToolKind.Rectangle:
+            case SurfaceGesture.StartRectangle:
                 StartShape(ShapeKind.Rectangle, pos);
                 break;
-            case ToolKind.Ellipse:
+            case SurfaceGesture.StartEllipse:
                 StartShape(ShapeKind.Ellipse, pos);
                 break;
-            case ToolKind.Text:
+            case SurfaceGesture.BeginTextEdit:
                 BeginTextEdit(pos);
                 break;
-            case ToolKind.Eraser:
+            case SurfaceGesture.EraseAndDrag:
                 // 사용자 조타: 클릭 + 드래그 삭제. 캡처로 창 밖까지 추적.
                 EraseAt(pos);
                 _eraserDragging = true;
                 host.CaptureMouse();
                 break;
-            case ToolKind.Select:
+            case SurfaceGesture.BeginSelect:
                 BeginSelectGesture(pos, shift);
                 break;
         }
-        return true;
+        return SurfaceInputRouter.MarksHandled(gesture);
     }
 
     public void PointerMove(Point pos, bool shift, bool leftPressed)
@@ -311,43 +319,38 @@ public sealed class SurfaceInputController(
     /// 설정이 꺼진 비선택 도구(WI-16)는 오늘 Handled를 세우지 않고 휠을 통과시킨다.</summary>
     public bool Wheel(Point pos, int notches)
     {
-        if (!state.IsInteractive)
+        // 중재는 순수 표가 소유한다 (R7/SEL-5/WI-16). SEL-LIM-5 게이트만 여기 남는다.
+        switch (SurfaceInputRouter.RouteWheel(
+            state.ActiveTool,
+            state.IsInteractive,
+            dragActive: _dragKind != SelectionDragKind.None,
+            state.WheelAdjustsPenSize))
         {
-            return false;
-        }
-
-        // R7: 선택 도구에서 선택집합이 있으면 휠은 **선택 크기 조절**이다.
-        // 원래 이 자리에서 굵기가 조정될 수 없었다 — SEL-5가 선택 도구의 스타일 쓰기를 차단하므로
-        // StepThickness가 조용히 무동작이었다. 즉 죽어 있던 입력을 되살리는 것이지 뺏는 것이 아니다.
-        if (state.ActiveTool == ToolKind.Select)
-        {
-            // 드래그 중 휠은 **삼키기만** 한다. 두 세션이 같은 요소를 동시에 잡으면 시작 상태
-            // 스냅샷이 둘로 갈라져, 마우스 업이 항목 1을 싣고 450ms 뒤 유휴 타이머가 항목 2를
-            // 더 실어 한 번의 드래그가 실행취소 2번이 된다 (그중 하나는 아무 일도 하지 않는 유령 스텝).
-            if (_dragKind != SelectionDragKind.None)
-            {
+            case WheelVerdict.SwallowOnly:
                 return true;
-            }
-            var owned = SelectionGroup.OwnedBy(document, selection);
-            // SEL-LIM-5: 모니터에 걸친 선택은 확대/축소하지 않는다. 고정점이 이 서피스의 논리 좌표라
-            // 다른 원점·DPI를 쓰는 문서의 요소에 그대로 먹이면 엉뚱한 곳으로 흩어진다.
-            if (SelectionGroup.HandlesGrabbable(owned.Count, selection.Count))
-            {
-                // dragActive를 여기서 다시 유도해 넘긴다 — 위 조기 반환 덕분에 오늘은 항상 false지만,
-                // 그 반환이 언젠가 사라져도 드래그 중 휠이 조용히 되살아나지 않게 하는 이중 방어다 (R7).
-                WheelScale.Step(owned, pos, notches, dragActive: _dragKind != SelectionDragKind.None);
-                return true;
-            }
-            return false;
-        }
 
-        // 마우스 휠로 펜 크기 조정 (WI-16 설정 연동).
-        if (state.WheelAdjustsPenSize)
-        {
-            state.StepThickness(notches);
-            return true;
+            case WheelVerdict.ScaleSelection:
+                var owned = SelectionGroup.OwnedBy(document, selection);
+                // SEL-LIM-5: 모니터에 걸친 선택은 확대/축소하지 않는다. 고정점이 이 서피스의 논리 좌표라
+                // 다른 원점·DPI를 쓰는 문서의 요소에 그대로 먹이면 엉뚱한 곳으로 흩어진다.
+                if (SelectionGroup.HandlesGrabbable(owned.Count, selection.Count))
+                {
+                    // dragActive를 여기서 다시 유도해 넘긴다 — 위 SwallowOnly 판정 덕분에 오늘은 항상
+                    // false지만, 그 행이 언젠가 사라져도 드래그 중 휠이 조용히 되살아나지 않게 하는
+                    // 이중 방어다 (R7).
+                    WheelScale.Step(owned, pos, notches, dragActive: _dragKind != SelectionDragKind.None);
+                    return true;
+                }
+                return false;
+
+            case WheelVerdict.StepThickness:
+                // 마우스 휠로 펜 크기 조정 (WI-16 설정 연동).
+                state.StepThickness(notches);
+                return true;
+
+            default:
+                return false;
         }
-        return false;
     }
 
     /// <summary>ESC 진입점 — 열린 텍스트 상자를 확정한다. 반환값이 <c>e.Handled</c> 판정이다 (ARCH-2).</summary>
