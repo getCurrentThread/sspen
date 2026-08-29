@@ -368,7 +368,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
 
         // 모니터에 걸친 선택은 경계만 그리고 핸들을 숨긴다 (SEL-LIM-5): 두 서피스의 논리 좌표계가
         // 서로소라 공통 프레임이 성립하지 않으므로, 잡을 수 없는 핸들을 그리면 거짓 어포던스가 된다.
-        // 술어는 히트 테스트(SurfaceInputController.BeginSelectGesture)와 **같은 함수**를 쓴다 —
+        // 술어는 히트 테스트(SelectionGesturePlanner.Plan)와 **같은 함수**를 쓴다 —
         // 소유 요소가 1개인 서피스는 아래 요소별 경로를 타므로, 그룹 분기에만 걸어두면 그쪽에 구멍이 난다.
         bool handles = SelectionGroup.HandlesGrabbable(owned.Count, _selection.Count);
 

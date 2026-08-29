@@ -39,6 +39,11 @@ public sealed record SurfaceInputSeams
 /// <summary>
 /// 마우스/키보드 입력 상태 머신 (획·도형·텍스트·지우개). 창 참조 없이 <see cref="ISurfaceHost"/>로만
 /// 창과 통신한다 (ARCH-2/ARCH-6 핸드셰이크만 위임).
+///
+/// 선택 도구의 판정은 순수 협력자들이 소유한다: 히트 우선순위 사다리는
+/// <see cref="SelectionGesturePlanner"/>, 시작 상태 스냅샷과 R15 집행은 <see cref="DragBaseStates"/>,
+/// 제스처 판정 상수·술어는 <see cref="SelectionGestureRules"/>, 그룹 기하는 <see cref="SelectionGroup"/>이다.
+/// 이 클래스에 남는 것은 진행 중 필드와 창·문서·원장으로 흘려보내는 배선뿐이다 (ARCH-2).
 /// </summary>
 public sealed class SurfaceInputController(
     Canvas inkCanvas,
@@ -335,8 +340,12 @@ public sealed class SurfaceInputController(
     private Rect SurfaceBounds => new(0, 0, inkCanvas.ActualWidth, inkCanvas.ActualHeight);
 
     /// <summary>
-    /// 히트 우선순위 (SEL-7): 핸들 → 요소 → 빈 곳. 핸들이 먼저인 이유는 핸들이 요소 경계
-    /// **바깥**에도 놓이기 때문이다 — 순서를 뒤집으면 빈 곳 분기가 회전 핸들을 가로채 잡힌 적이 없게 된다.
+    /// 마우스 다운 적용부. 판정은 전부 <see cref="SelectionGesturePlanner.Plan"/>이 하고(히트 우선순위
+    /// SEL-7), 여기서는 그 계획을 <b>고정된 순서로</b> 옮겨 적기만 한다.
+    ///
+    /// 순서가 계약이다 — 필드마다 도는 루프로 바꾸면 <c>SelectHit</c>과 스냅샷 순서가 뒤집혀
+    /// "고르자마자 끌기"가 조용히 무동작이 된다 (SEL-AC-9: <see cref="MoveSelection"/>은 시작 상태가
+    /// 없는 요소를 예외도 로그도 없이 건너뛴다).
     /// </summary>
     private void BeginSelectGesture(Point pos, bool shift)
     {
@@ -353,119 +362,65 @@ public sealed class SurfaceInputController(
         _dragStart = pos;
 
         var owned = SelectionGroup.OwnedBy(document, selection);
-        // 모니터에 걸친 선택은 이동만 허용한다 (SEL-LIM-5): 서피스마다 원점과 DPI가 달라
-        // 두 문서의 논리 경계를 합친 그룹 프레임은 서로소인 좌표계의 합이라 의미가 없다.
-        // 술어는 렌더(ContentSurfaceWindow.RedrawDecorations)와 **같은 함수**를 쓴다 — 이름을 따로
-        // 두면 "그리는 조건"과 "잡히는 조건"이 다시 갈라져 보이지만 잡히지 않는 핸들이 생긴다.
-        bool grabbable = SelectionGroup.HandlesGrabbable(owned.Count, selection.Count);
+        var plan = SelectionGesturePlanner.Plan(
+            document.Elements, owned, selection.Count, selection.Contains, pos, shift, SurfaceBounds);
 
-        // 1) 핸들 히트 — 핸들이 프레임 **바깥**에도 놓이므로 반드시 가장 먼저다 (SEL-7).
-        if (grabbable && owned.Count >= SelectionGroup.MinGroupCount)
+        if (plan.ToggleHit is { } toggle)
         {
-            if (SelectionGroup.Frame(owned) is { } frame
-                && SelectionGroup.HitHandle(frame, pos, SurfaceBounds) is { } groupHandle)
-            {
-                _groupFrame = frame;
-                _dragGroupHandle = groupHandle;
-                _dragKind = groupHandle == GroupHandleKind.Rotate
-                    ? SelectionDragKind.GroupRotate
-                    : SelectionDragKind.GroupScale;
-                SnapshotDragStates();
-                // 그려지는 프레임을 미는 것은 **회전뿐**이다. 회전은 축 정렬 합집합을 부풀려
-                // 잡은 핸들이 커서 밑에서 빠져나가지만, 등방 스케일은 축 정렬 사상이라 살아있는
-                // 합집합이 그대로 정답이다. 오히려 동결하면 구성원 배율이 바닥에 클램프될 때
-                // 이상적 사상과 실제 합집합이 어긋나 마우스 업에서 프레임이 튄다.
-                // (_groupFrame 자체는 배율·피벗의 기준이므로 두 경우 모두 동결한다.)
-                // 밀어 넣는 것은 **크기뿐**이고, 각도는 아래 UpdateSelectGesture가 매 프레임 갱신한다.
-                setGestureGroupFrame(SelectionGroup.GestureFrame(
-                    _groupFrame, _dragKind == SelectionDragKind.GroupRotate, deltaDegrees: 0));
-                host.CaptureMouse();
-                return;
-            }
-        }
-        else if (grabbable && owned.Count == 1)
-        {
-            var candidate = owned[0];
-            if (TransformMath.HitHandle(candidate.TransformState, candidate.LocalBounds, pos, SurfaceBounds)
-                is { } handle)
-            {
-                _dragHandle = handle;
-                _dragHandleTarget = candidate;
-                _dragKind = handle == HandleKind.Rotate ? SelectionDragKind.Rotate : SelectionDragKind.Scale;
-                SnapshotDragStates();
-                host.CaptureMouse();
-                return;
-            }
+            selection.Toggle(toggle);
+            return; // 토글은 이동을 시작하지 않는다 (SEL-AC-3).
         }
 
-        // 커서 밑의 요소를 **먼저** 구한다 — 아래 두 분기가 같은 값을 봐야 우선순위가 일관된다.
-        var hit = SelectionGeometry.HitForSelect(document.Elements, pos, SelectionGestureRules.SelectHitTolerancePixels);
-
-        // 2) 선택 프레임 **내부** 클릭 → 이동 (R6). 이미 선택한 것을 옮기려고 잉크 실선을 다시
-        //    정확히 겨냥할 필요가 없어진다. Shift는 토글 의도이므로 이 분기를 건너뛴다.
-        //    단, 프레임 안이라도 **선택되지 않은 다른 요소** 위라면 3번에 양보한다 — 안 그러면
-        //    큰 선택 하나가 그 프레임 안의 모든 요소를 영구히 가려 다시는 고를 수 없다.
-        if (!shift
-            && owned.Count > 0
-            && SelectionGestureRules.ShouldMoveFromFrameInterior(
-                IsInsideSelectionFrame(owned, pos), hit is not null, hit is not null && selection.Contains(hit)))
-        {
-            _dragKind = SelectionDragKind.Move;
-            SnapshotDragStates();
-            host.CaptureMouse();
-            return;
-        }
-
-        // 3) 요소 히트 — Shift는 토글(SEL-AC-3), 그 외는 단일 선택 후 이동 준비.
-        //    R6: 잉크 정확 히트 우선 → 없으면 경계 상자 내부 중 면적 최소.
-        if (hit is not null)
-        {
-            if (shift)
-            {
-                selection.Toggle(hit);
-                return; // 토글은 이동을 시작하지 않는다.
-            }
-            if (!selection.Contains(hit))
-            {
-                selection.Set([hit]);
-            }
-            _dragKind = SelectionDragKind.Move;
-            SnapshotDragStates();
-            host.CaptureMouse();
-            return;
-        }
-
-        // 4) 빈 곳 — Shift가 아니면 해제하고 마퀴를 시작한다.
-        //    R5의 클릭 통과 전환은 **여기서 하지 않는다**: 지금 켜면 IsInteractive가 false로 떨어져
-        //    막 시작한 마퀴가 그대로 얼어붙는다. 판정은 마우스 업(EndSelectGesture)이 맡는다.
-        // Shift+빈 곳은 **누적 의도**다 — 기존 선택을 유지한 채 마퀴로 더하려는 것이므로
-        // 제자리에서 뗐다고 해제·클릭 통과로 넘어가면 안 된다.
-        _hadSelectionOnPress = !shift && selection.Count > 0;
-        if (!shift)
+        if (plan.ClearSelection)
         {
             selection.Clear();
         }
-        _dragKind = SelectionDragKind.Marquee;
-        setMarquee(new Rect(pos, pos));
-        host.CaptureMouse();
-    }
-
-    /// <summary>
-    /// 커서가 선택 표시 안쪽인가 (R6). 다중 선택은 축 정렬 그룹 프레임,
-    /// 단일 선택은 회전을 반영한 로컬 프레임(OBB) — <b>화면에 그려진 점선 경계와 같은 영역</b>이어야 한다.
-    ///
-    /// 이 판정은 <b>마우스 다운에서만</b> 물어보고, 그 시점에는 <see cref="BeginSelectGesture"/> 머리에서
-    /// 제스처 프레임을 null로 지웠으므로 화면에 그려진 것도 같은 축 정렬 합집합이다 — 그래서 회전 각도가
-    /// 붙어도 "그려진 점선 경계와 같은 영역"이 유지된다. 각도를 지속 상태로 승격하는 순간 이 등가성이
-    /// 깨지므로, 그때는 <see cref="SelectionGeometry.ContainsInFrame"/>처럼 볼록 사각형 판정으로 바꿔야 한다.
-    /// </summary>
-    private bool IsInsideSelectionFrame(List<AnnotationElement> owned, Point pos)
-    {
-        if (owned.Count >= SelectionGroup.MinGroupCount)
+        // ★ 스냅샷보다 반드시 **앞**이다 (GesturePlan.SelectHit 문서 — SEL-AC-9).
+        if (plan.SelectHit is { } pick)
         {
-            return SelectionGroup.Frame(owned) is { } frame && frame.Contains(pos);
+            selection.Set([pick]);
         }
-        return SelectionGeometry.ContainsInFrame(owned[0], pos);
+
+        _dragKind = plan.Kind;
+        // 핸들 두 필드는 non-null일 때만 쓴다: 오늘도 ResetSelectGesture가 이 둘을 지우지 않고
+        // 각자 자기 _dragKind 아래에서만 읽히므로, 무조건 기본값으로 덮으면 근거 없는 동작 변화가 된다.
+        if (plan.Handle is { } handle)
+        {
+            _dragHandle = handle;
+        }
+        if (plan.GroupHandle is { } groupHandle)
+        {
+            _dragGroupHandle = groupHandle;
+        }
+        _dragHandleTarget = plan.Target;
+        if (plan.FrozenBasis is { } frozen)
+        {
+            _groupFrame = frozen;
+        }
+
+        // 마퀴는 시작 상태를 잡지 않는다 (오늘도 4)번 분기에 스냅샷이 없다) — 잡으면
+        // CancelActiveInput의 롤백이 선택 전원에 무의미한 상태 대입과 알림을 뿌린다 (R15).
+        if (plan.Kind != SelectionDragKind.None && !plan.StartsMarquee)
+        {
+            _base.Snapshot(selection, plan.Target);
+        }
+
+        // 그려지는 프레임은 회전일 때만 밀린다 (판정은 플래너 안 GestureFrame 한 번의 호출이 소유).
+        // null이면 밀지 않는다 — 머리에서 이미 null을 밀었고 창이 같은 값을 덧걸러 낸다.
+        if (plan.DrawnFrame is { } guide)
+        {
+            setGestureGroupFrame(guide);
+        }
+
+        if (plan.StartsMarquee)
+        {
+            _hadSelectionOnPress = plan.HadSelectionOnPress;
+            setMarquee(new Rect(pos, pos));
+        }
+        if (plan.Captures)
+        {
+            host.CaptureMouse();
+        }
     }
 
     /// <summary>
@@ -733,8 +688,6 @@ public sealed class SurfaceInputController(
         _wheelBaseStates = null;
         _wheelElements = null;
     }
-
-    private void SnapshotDragStates() => _base.Snapshot(selection, _dragHandleTarget);
 
     private void ResetSelectGesture()
     {
