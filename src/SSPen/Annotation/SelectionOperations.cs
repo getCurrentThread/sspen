@@ -110,4 +110,29 @@ public static class SelectionOperations
             Translation = new Vector(mapped.X - center.X, mapped.Y - center.Y),
         };
     }
+
+    /// <summary>
+    /// 모니터 간 이동 변위의 DPI 환산 (D1). 요소 기하는 자기 소유 서피스의 논리 단위로 굳어 있는데
+    /// 변위는 게스처가 일어난 서피스의 논리 단위이므로, 두 모니터의 배율이 다르면 같은 손동작이
+    /// 서로 다른 물리 거리로 번역된다. 물리 거리를 보존하는 환산은
+    /// <c>d_target = d_source · (srcDpi / tgtDpi)</c>이며, 이관(<see cref="RebaseState"/>)이 쓰는
+    /// 비율 <c>r = sourceDpi / targetDpi</c>와 <b>같은 값</b>이다 (ARCH-20). 두 식이 갈라지지 않도록
+    /// 일부러 같은 파일에 이웃으로 둔다 — 파일이 갈리면 가드 차이가 영원히 안 보인다.
+    ///
+    /// 대상 배율이 <b>높을수록 논리 변위는 작아진다</b>: 150% 모니터에서는 1 논리 단위가 1.5 물리
+    /// 픽셀이므로, 같은 물리 거리를 유지하려면 논리 변위를 <c>1/1.5</c>로 줄여야 한다.
+    ///
+    /// <see cref="RebaseState"/>와 가드가 다른 이유: 이쪽은 <c>targetDpi</c>가 주입 델리게이트
+    /// (<c>AppController.DpiOf</c>)에서 오고, 그 델리게이트가 0을 내면 변위가 ±∞가 되어 요소가
+    /// 화면 밖으로 사라진다. 오늘 그 델리게이트는 못 찾으면 1을 돌려주므로 0은 오지 않지만,
+    /// 주입 지점이라 가드를 보존한다. 배율이 같을 때는 <c>×1.0</c> 왕복조차 넣지 않고
+    /// <b>원본 벡터를 그대로</b> 돌려준다.
+    ///
+    /// 이 리그는 3대 모두 100%(r=1)라 통합 테스트가 이 식을 절대 잡지 못한다 — 헤드리스 증인이
+    /// 유일한 방어선이며 <b>반드시 r ≠ 1</b>로 검증해야 한다 (R18, AGENTS.md:109).
+    /// </summary>
+    public static Vector ScaleDisplacementForDpi(Vector delta, double sourceDpi, double targetDpi) =>
+        targetDpi > 0 && Math.Abs(targetDpi - sourceDpi) > 1e-9
+            ? new Vector(delta.X * sourceDpi / targetDpi, delta.Y * sourceDpi / targetDpi)
+            : delta;
 }

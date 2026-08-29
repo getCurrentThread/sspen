@@ -531,13 +531,12 @@ public sealed class SurfaceInputController(
     }
 
     /// <summary>
-    /// 선택 전체 이동 (SEL-AC-9).
+    /// 선택 전체 이동 (SEL-AC-9). 모니터에 걸친 선택에서도 이동만은 허용되므로(SEL-LIM-5)
+    /// 다른 모니터 소속 요소가 섞일 수 있고, 그때 필요한 DPI 환산(D1)은
+    /// <see cref="SelectionOperations.ScaleDisplacementForDpi"/>가 소유한다.
     ///
-    /// D1: 다른 모니터 소속 요소에는 <b>DPI 환산</b>이 필요하다. 요소 기하는 자기 소유 서피스의 논리
-    /// 단위로 굳어 있는데 변위는 게스처가 일어난 서피스의 논리 단위이므로, 두 모니터의 배율이 다르면
-    /// 같은 손동작이 서로 다른 물리 거리로 번역된다. 물리 거리를 보존하는 환산은
-    /// <c>d_target = d_source · (srcDpi / tgtDpi)</c>이며, 이관(<c>SelectionOperations.RebaseState</c>)이
-    /// 쓰는 비율과 같은 형태다. 이 리그는 3대 모두 100%(r=1)라 통합 테스트가 절대 잡지 못한다.
+    /// 순회 대상은 <c>owned</c>가 아니라 <c>selection.Elements</c>다 — 이 서피스가 소유하지 않은
+    /// 요소도 함께 움직여야 선택이 통째로 따라온다 (SEL-LIM-5).
     /// </summary>
     private void MoveSelection(Dictionary<long, ElementTransformState> baseStates, Vector delta)
     {
@@ -549,9 +548,7 @@ public sealed class SurfaceInputController(
                 continue;
             }
             double targetDpi = dpiOf(ownerLookup(element) ?? document);
-            var scaled = targetDpi > 0 && Math.Abs(targetDpi - sourceDpi) > 1e-9
-                ? new Vector(delta.X * sourceDpi / targetDpi, delta.Y * sourceDpi / targetDpi)
-                : delta;
+            var scaled = SelectionOperations.ScaleDisplacementForDpi(delta, sourceDpi, targetDpi);
             ApplyTransformState(element, TransformMath.Translate(start, scaled));
         }
     }

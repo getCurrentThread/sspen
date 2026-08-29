@@ -295,4 +295,96 @@ public class SelectionOperationsTests
         Assert.Equal(sourcePhysicalX, targetPhysicalX, 1e-6);
         Assert.Equal(sourcePhysicalY, targetPhysicalY, 1e-6);
     }
+
+    // ---- ScaleDisplacementForDpi (D1, R18) ----
+
+    /// <summary>
+    /// 대상 배율이 더 높으면 논리 변위는 <b>줄어든다</b> (D1). 150%에서는 1 논리 단위가 1.5 물리
+    /// 픽셀이므로 같은 물리 거리를 유지하려면 <c>×(1/1.5)</c>가 되어야 한다.
+    /// 이 리그는 3대 모두 100%라 <c>r ≠ 1</c>은 헤드리스에서만 검증된다 (R18).
+    /// </summary>
+    [Fact]
+    public void ScaleDisplacementForDpi_TargetHigherDpi_ShrinksDelta()
+    {
+        var scaled = SelectionOperations.ScaleDisplacementForDpi(new Vector(30, -60), 1.0, 1.5);
+
+        Assert.Equal(30 * 2.0 / 3.0, scaled.X, Tolerance);
+        Assert.Equal(-60 * 2.0 / 3.0, scaled.Y, Tolerance);
+    }
+
+    /// <summary>대상 배율이 더 낮으면 논리 변위는 <b>커진다</b> (D1). 위 사례의 역방향이다.</summary>
+    [Fact]
+    public void ScaleDisplacementForDpi_TargetLowerDpi_GrowsDelta()
+    {
+        var scaled = SelectionOperations.ScaleDisplacementForDpi(new Vector(30, -60), 1.5, 1.0);
+
+        Assert.Equal(45, scaled.X, Tolerance);
+        Assert.Equal(-90, scaled.Y, Tolerance);
+    }
+
+    /// <summary>
+    /// 이 리전의 핵심 증인 (D1). 식의 형태가 아니라 D1이 지키려는 <b>물리 거리 보존</b>을 직접
+    /// 단언한다: <c>d_source · srcDpi == d_target · tgtDpi</c>. 비율을 뒤집거나 통째로 빼면 둘 다
+    /// 여기서 걸린다. 반드시 <c>r ≠ 1</c>로 검증한다 — <c>r = 1</c>이면 올바른 식과 비율을 뺀
+    /// 순진한 식이 수치적으로 같아 아무것도 증명하지 못한다 (R18).
+    /// </summary>
+    [Fact]
+    public void ScaleDisplacementForDpi_PreservesPhysicalDistance()
+    {
+        const double sourceDpi = 1.0;
+        const double targetDpi = 1.75;
+        var delta = new Vector(37, -13);
+
+        var scaled = SelectionOperations.ScaleDisplacementForDpi(delta, sourceDpi, targetDpi);
+
+        Assert.Equal(delta.X * sourceDpi, scaled.X * targetDpi, Tolerance);
+        Assert.Equal(delta.Y * sourceDpi, scaled.Y * targetDpi, Tolerance);
+    }
+
+    /// <summary>
+    /// 배율이 같으면 <c>×1.0</c> 왕복조차 넣지 않고 원본 벡터를 그대로 돌려준다 (D1).
+    /// 단독으로는 아무것도 증명하지 않는 계약 고정이다 — 증인은 위 세 개다 (R18).
+    /// </summary>
+    [Fact]
+    public void ScaleDisplacementForDpi_SameDpi_IsIdentity()
+    {
+        var delta = new Vector(30, -60);
+
+        var scaled = SelectionOperations.ScaleDisplacementForDpi(delta, 1.25, 1.25);
+
+        Assert.Equal(delta, scaled);
+    }
+
+    /// <summary>
+    /// <c>targetDpi > 0</c> 가드의 유일한 증인 (D1). <c>targetDpi</c>는 주입 델리게이트에서 오므로
+    /// 0이 들어오면 변위가 ±∞가 되어 요소가 화면 밖으로 사라진다. 가드를 빼면 여기서 걸린다.
+    /// </summary>
+    [Fact]
+    public void ScaleDisplacementForDpi_ZeroTargetDpi_IsIdentity()
+    {
+        var delta = new Vector(30, -60);
+
+        var scaled = SelectionOperations.ScaleDisplacementForDpi(delta, 1.0, 0);
+
+        Assert.Equal(delta, scaled);
+        Assert.True(double.IsFinite(scaled.X));
+        Assert.True(double.IsFinite(scaled.Y));
+    }
+
+    /// <summary>
+    /// 같은 비율의 두 소유자가 갈라지지 않았음을 고정한다 (ARCH-20). "같은 비율"만 못박고
+    /// "같은 함수"를 요구하지는 않는다 — <see cref="SelectionOperations.RebaseState"/>는 비율을
+    /// 스케일과 사상된 점에 적용하고 이쪽은 생 변위에 적용하므로, 둘은 이웃이어야지 한 몸이
+    /// 되어서는 안 된다.
+    /// </summary>
+    [Fact]
+    public void ScaleDisplacementForDpi_MatchesRebaseStateRatio()
+    {
+        var rebased = SelectionOperations.RebaseState(
+            new ElementTransformState(1, 1, 0, default), Bounds(), Center, 1.0, Left, 1.5);
+
+        var scaled = SelectionOperations.ScaleDisplacementForDpi(new Vector(1, 0), 1.0, 1.5);
+
+        Assert.Equal(rebased.ScaleX, scaled.X, Tolerance);
+    }
 }
