@@ -48,9 +48,6 @@ public sealed class SurfaceInputController(
     Action<IReadOnlyList<TransformDelta>, Point?> commitTransform,
     Action requestClickThrough)
 {
-    /// <summary>선택 히트 허용 오차 (지우개와 같은 감각으로 통일).</summary>
-    private const double SelectTolerance = 6;
-
     // 선택 도구 드래그 상태 (SEL-7)
     private SelectionDragKind _dragKind;
     private Point _dragStart;
@@ -367,7 +364,7 @@ public sealed class SurfaceInputController(
         }
 
         // 커서 밑의 요소를 **먼저** 구한다 — 아래 두 분기가 같은 값을 봐야 우선순위가 일관된다.
-        var hit = SelectionGeometry.HitForSelect(document.Elements, pos, SelectTolerance);
+        var hit = SelectionGeometry.HitForSelect(document.Elements, pos, SelectionGestureRules.SelectHitTolerancePixels);
 
         // 2) 선택 프레임 **내부** 클릭 → 이동 (R6). 이미 선택한 것을 옮기려고 잉크 실선을 다시
         //    정확히 겨냥할 필요가 없어진다. Shift는 토글 의도이므로 이 분기를 건너뛴다.
@@ -830,7 +827,7 @@ public sealed class SurfaceInputController(
         inkCanvas.Children.Remove(_previewShape);
         _previewShape = null;
 
-        if ((end - _shapeStart).Length < 3)
+        if ((end - _shapeStart).Length < SelectionGestureRules.ClickThresholdPixels)
         {
             return; // 클릭만으로는 도형을 만들지 않는다.
         }
@@ -916,7 +913,7 @@ public sealed class SurfaceInputController(
         // 요소를 없애기 전에 진행 중인 휠 확대를 확정한다 — 안 그러면 유휴 타이머가 뒤늦게 깨어나
         // 이미 지워진 요소의 변형을 지우기 항목 뒤에 실어 실행취소 1회가 무동작이 된다 (R7).
         CancelWheelScale(commit: true);
-        var element = document.HitTestNearest(pos, tolerance: 6);
+        var element = document.HitTestNearest(pos, tolerance: SelectionGestureRules.EraseHitTolerancePixels);
         if (element is null)
         {
             return;

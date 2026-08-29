@@ -3,7 +3,7 @@ using System.Windows;
 namespace SSPen.Annotation;
 
 /// <summary>
-/// 선택 제스처의 순수 판정 규칙 (R2/R5/R7). UI와 분리되어 헤드리스 유닛 테스트 대상이다.
+/// 선택 제스처의 순수 판정 규칙과 입력 거리 임계 (R2/R5/R6/R7). UI와 분리되어 헤드리스 유닛 테스트 대상이다.
 ///
 /// 이 파일의 존재 이유는 <b>R5의 트리거 위치</b>다. "선택이 취소되면 클릭 통과"를
 /// <see cref="SelectionModel.SelectionChanged"/>에 걸면 안 된다 — 그 이벤트는 원인을 싣지 않는
@@ -15,10 +15,30 @@ namespace SSPen.Annotation;
 public static class SelectionGestureRules
 {
     /// <summary>
-    /// '제자리 클릭'과 '드래그'를 가르는 논리 픽셀 거리.
-    /// 도형 커밋이 이미 쓰는 3px 임계와 같은 값으로 맞춘다 (<c>CommitShape</c>).
+    /// '제자리 클릭'과 '드래그'를 가르는 논리 픽셀 거리 (R2).
+    /// 도형 커밋이 쓰던 3px 임계와 같은 값이었고, 이제 <c>SurfaceInputController.CommitShape</c>가
+    /// 이 상수를 직접 읽는다 — 두 값이 다시 갈라질 수 없다.
     /// </summary>
     public const double ClickThresholdPixels = 3;
+
+    /// <summary>
+    /// 선택 히트 허용 오차 (지우개와 같은 감각으로 통일). 논리 픽셀 (R6).
+    /// <see cref="SelectionGeometry.HitForSelect"/>에 먹인다.
+    ///
+    /// <see cref="EraseHitTolerancePixels"/>와 <b>오늘은 값이 같지만 같은 상수가 아니다.</b>
+    /// 두 경로는 랭킹 규칙이 의도적으로 다르다 — 지우개는 '가장 가까운 것',
+    /// 선택은 '가장 위 → 면적 최소'다 (<see cref="SelectionGeometry.HitTopmost"/> 문서).
+    /// 하나로 합치면 지우개 감도를 만질 때 선택 감도가 조용히 따라 움직인다.
+    /// </summary>
+    public const double SelectHitTolerancePixels = 6;
+
+    /// <summary>
+    /// 지우개 히트 허용 오차. 논리 픽셀.
+    /// <see cref="AnnotationDocument.HitTestNearest"/>에 먹인다.
+    /// 선택 쪽 값(<see cref="SelectHitTolerancePixels"/>)과 오늘 같은 이유는 감각 통일이지
+    /// 같은 양이기 때문이 아니다 — 독립 조정 가능해야 한다.
+    /// </summary>
+    public const double EraseHitTolerancePixels = 6;
 
     /// <summary>
     /// 눌렀다 뗀 것이 <b>드래그가 아니라 제자리 클릭</b>인가.

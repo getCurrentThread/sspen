@@ -151,6 +151,19 @@ public class SelectionGestureRuleTests
 
     // ---- R6: 관대 히트 ----
 
+    /// <summary>
+    /// 선택/지우개 허용 오차가 오늘 같은 값(6px)이라는 사실을 <b>보이게</b> 고정한다 — 감각 통일이 의도이기 때문이다.
+    /// 두 경로의 랭킹 규칙은 의도적으로 다르므로(지우개는 '가장 가까운 것', 선택은 '가장 위 → 면적 최소')
+    /// 상수를 하나로 합치면 안 된다. 값을 <b>일부러</b> 갈라놓는 날이 오면 이 테스트는 고칠 것이 아니라
+    /// 지우는 것이 맞다.
+    /// </summary>
+    [Fact]
+    public void SelectAndEraseTolerance_AreEqualToday()
+    {
+        Assert.Equal(6d, SelectionGestureRules.SelectHitTolerancePixels);
+        Assert.Equal(6d, SelectionGestureRules.EraseHitTolerancePixels);
+    }
+
     /// <summary>사각형 도형은 외곽선만 명중이었다 — 내부 클릭이 이제 잡혀야 한다.</summary>
     [Fact]
     public void HitForSelect_InsideRectangleShape_IsHit()
