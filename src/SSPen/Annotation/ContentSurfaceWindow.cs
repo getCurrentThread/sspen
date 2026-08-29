@@ -131,7 +131,8 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             (deltas, drop) => commitTransform(deltas, drop is { } p ? ToPhysical(p) : null),
             // R5: 해제 제스처가 끝난 **뒤에** 상태를 바꾼다. 마우스 업 핸들러 안에서 곧바로 켜면
             // ApplyState → CancelActiveInput이 같은 콜 스택에서 재진입해 캡처 해제 순서가 뒤엉킨다.
-            () => Dispatcher.BeginInvoke(requestClickThrough));
+            () => Dispatcher.BeginInvoke(requestClickThrough),
+            new SurfaceInputSeams());
 
         Document.ElementAdded += OnElementAdded;
         Document.ElementRemoved += OnElementRemoved;

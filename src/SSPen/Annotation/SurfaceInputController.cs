@@ -23,6 +23,20 @@ public interface ISurfaceHost
 }
 
 /// <summary>
+/// 컨트롤러를 헤드리스로 구동하기 위해 뽑아낸 이음매 모음. 지금은 <b>시계 하나</b>뿐이다 —
+/// <see cref="WheelScaleSession"/>와 <see cref="FadeSchedulerCore"/>가 이미 시계를 주입받는데
+/// 컨트롤러가 그 경계에서 <c>DateTime.UtcNow</c>로 다시 하드코딩하고 있었다.
+/// </summary>
+public sealed record SurfaceInputSeams
+{
+    /// <summary>
+    /// 주입 시계. 휠 노치 코얼레싱의 450ms 유휴 판정과 페이드 예약 마감이 전부 이 값에서 나온다 (R7).
+    /// 프로덕션 값을 <b>충실히 감싸므로</b> 기본값이 정당하다 — 배선을 빠뜨려도 동작이 달라지지 않는다.
+    /// </summary>
+    public Func<DateTime> Now { get; init; } = () => DateTime.UtcNow;
+}
+
+/// <summary>
 /// 마우스/키보드 입력 상태 머신 (획·도형·텍스트·지우개). 창 참조 없이 <see cref="ISurfaceHost"/>로만
 /// 창과 통신한다 (ARCH-2/ARCH-6 핸드셰이크만 위임).
 /// </summary>
@@ -40,7 +54,8 @@ public sealed class SurfaceInputController(
     // 마퀴(setMarquee)와 타입을 묶지 않는다 — 마퀴는 설계상 영원히 축 정렬이다 (SEL-B-1).
     Action<GroupFrame?> setGestureGroupFrame,
     Action<IReadOnlyList<TransformDelta>, Point?> commitTransform,
-    Action requestClickThrough)
+    Action requestClickThrough,
+    SurfaceInputSeams seams)
 {
     // 선택 도구 드래그 상태 (SEL-7)
     private SelectionDragKind _dragKind;
@@ -89,19 +104,87 @@ public sealed class SurfaceInputController(
     private Point _textOrigin;
     private TextStyle _activeTextStyle;    // 텍스트 시작 시점 페이딩 판정 (사용자 요청 17차)
 
+    // ---- WPF 이벤트 어댑터 ----
+    //
+    // 좌표·버튼 상태·휠 부호·Shift·IsMouseOver만 벗겨 아래 Point 진입점에 넘긴다.
+    //
+    // D3: WPF Keyboard.Modifiers는 스레드 로컬이라 이 창(영구 NOACTIVATE)에서 항상 None이고,
+    // 전역 핫키로 도구를 켠 정상 흐름에서 Shift 스냅(수평/수직/정비율)·다중 선택·마퀴 누적이
+    // 조용히 죽는다. 그래서 KeyboardState(GetAsyncKeyState)로 읽는다.
+    // 이벤트당 **한 번만** 읽는 것은 동작 보존이다 — 옮기기 전의 Shift 읽기 지점들은 한 이벤트가
+    // 그중 최대 하나에만 도달하도록 if/else-if 사다리와 switch로 서로 배타적이었다.
+    //
+    // Handled는 **반환값이 참일 때만** 세운다. `e.Handled = 반환값`으로 대입하면 상위에서
+    // 이미 세워 둔 Handled를 false로 되돌려, 오늘 서피스가 통과시키는 입력의 소비 여부가 바뀐다.
+
     public void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
-        if (!state.IsInteractive)
+        if (PointerDown(e.GetPosition(inkCanvas), KeyboardState.Shift))
+        {
+            e.Handled = true;
+        }
+    }
+
+    public void OnMouseMove(MouseEventArgs e)
+    {
+        // 눌리지 않은 이동을 여기서 끊는다 — 호버 이동마다 GetPosition/GetAsyncKeyState를
+        // 부르지 않기 위해서다. 판정의 주인은 아래 PointerMove의 leftPressed 가드다.
+        if (e.LeftButton != MouseButtonState.Pressed)
         {
             return;
         }
-        var pos = e.GetPosition(inkCanvas);
+        PointerMove(e.GetPosition(inkCanvas), KeyboardState.Shift, leftPressed: true);
+    }
+
+    public void OnMouseLeftButtonUp(MouseButtonEventArgs e) =>
+        PointerUp(e.GetPosition(inkCanvas), KeyboardState.Shift);
+
+    public void OnMouseWheel(MouseWheelEventArgs e)
+    {
+        if (Wheel(e.GetPosition(inkCanvas), e.Delta > 0 ? +1 : -1))
+        {
+            e.Handled = true;
+        }
+    }
+
+    public void OnKeyDown(KeyEventArgs e)
+    {
+        // 키 판정은 어댑터가 소유한다 — Escape()는 "열린 텍스트 상자를 확정한다"이므로
+        // 다른 키에 대해 부르면 편집 중 텍스트가 조용히 커밋된다.
+        if (e.Key == Key.Escape && Escape())
+        {
+            e.Handled = true;
+        }
+    }
+
+    // ---- Point 진입점 (WPF 이벤트 인자 없이 헤드리스로 구동 가능) ----
+
+    /// <summary>
+    /// 마우스 다운 진입점. 반환값이 곧 <c>e.Handled</c> 판정이다 — 비인터랙티브와
+    /// 텍스트 바깥 클릭은 Handled를 <b>세우지 않는다</b>(그 클릭은 소비되지 않는다).
+    /// void로 두고 어댑터가 무조건 대입하면 서피스가 오늘 통과시키는 클릭을 삼킨다.
+    /// </summary>
+    public bool PointerDown(Point pos, bool shift) => PointerDown(pos, shift, IsOverActiveTextBox());
+
+    /// <summary>
+    /// <paramref name="overActiveEditor"/>는 <c>Point</c>에서 유도할 수 없는 WPF 히트테스트 입력이다 (ARCH-2).
+    /// <c>TextBox.IsMouseOver</c>는 입력 매니저가 <b>살아있는 비주얼 트리</b>에 대해 유지하는 플래그이고,
+    /// 그 상자는 BorderThickness(1)·MinWidth=24라 measure/arrange가 돌지 않는 헤드리스에서는
+    /// ActualWidth가 0이다 — Canvas.GetLeft/GetTop 기하로 대체하는 것은 헤드리스 편의를 위해
+    /// 프로덕션 동작을 바꾸는 것이므로 금지한다.
+    /// </summary>
+    public bool PointerDown(Point pos, bool shift, bool overActiveEditor)
+    {
+        if (!state.IsInteractive)
+        {
+            return false;
+        }
 
         // 텍스트 편집 중 바깥 클릭 → 확정 (Round 13).
-        if (_activeTextBox is not null && !IsOverActiveTextBox(e))
+        if (_activeTextBox is not null && !overActiveEditor)
         {
             CommitText();
-            return;
+            return false;
         }
 
         switch (state.ActiveTool)
@@ -132,19 +215,18 @@ public sealed class SurfaceInputController(
                 host.CaptureMouse();
                 break;
             case ToolKind.Select:
-                BeginSelectGesture(pos);
+                BeginSelectGesture(pos, shift);
                 break;
         }
-        e.Handled = true;
+        return true;
     }
 
-    public void OnMouseMove(MouseEventArgs e)
+    public void PointerMove(Point pos, bool shift, bool leftPressed)
     {
-        if (e.LeftButton != MouseButtonState.Pressed)
+        if (!leftPressed)
         {
             return;
         }
-        var pos = e.GetPosition(inkCanvas);
 
         if (_stroke is not null && _activePolyline is not null)
         {
@@ -155,10 +237,7 @@ public sealed class SurfaceInputController(
         }
         else if (_previewShape is not null)
         {
-            // D3: 선택 경로와 같은 이유로 KeyboardState를 쓴다 — Keyboard.Modifiers는 스레드 로컬이라
-            // 이 창(영구 NOACTIVATE)에서는 항상 None이고, 전역 핫키로 도형 도구를 켠 정상 흐름에서
-            // Shift 스냅(수평/수직/정비율)이 조용히 죽는다.
-            var end = ShapeGestureRules.ResolveEnd(_previewKind, _shapeStart, pos, KeyboardState.Shift);
+            var end = ShapeGestureRules.ResolveEnd(_previewKind, _shapeStart, pos, shift);
             AnnotationVisualFactory.UpdateShapeVisual(_previewShape, _previewKind, _shapeStart, end);
         }
         else if (_eraserDragging && state.ActiveTool == ToolKind.Eraser && state.IsInteractive)
@@ -168,13 +247,13 @@ public sealed class SurfaceInputController(
         }
         else if (_dragKind != SelectionDragKind.None && state.IsInteractive)
         {
-            UpdateSelectGesture(pos);
+            UpdateSelectGesture(pos, shift);
         }
     }
 
-    public void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+    public void PointerUp(Point pos, bool shift)
     {
-        // D4: 이동 경로(:OnMouseMove)에만 있던 인터랙티브 가드를 업에도 건다. 비인터랙티브로 전환된 뒤
+        // D4: 이동 경로(:PointerMove)에만 있던 인터랙티브 가드를 업에도 건다. 비인터랙티브로 전환된 뒤
         // 도착한 버튼 업이 제스처를 확정하면 보이지 않는 조작이 원장에 실린다.
         if (!state.IsInteractive)
         {
@@ -188,21 +267,23 @@ public sealed class SurfaceInputController(
         }
         else if (_previewShape is not null)
         {
-            CommitShape(e.GetPosition(inkCanvas));
+            CommitShape(pos, shift);
         }
         else if (_dragKind != SelectionDragKind.None)
         {
-            EndSelectGesture(e.GetPosition(inkCanvas));
+            EndSelectGesture(pos, shift);
         }
         _eraserDragging = false;
         host.ReleaseMouseCapture();
     }
 
-    public void OnMouseWheel(MouseWheelEventArgs e)
+    /// <summary>휠 진입점. 반환값이 <c>e.Handled</c> 판정이다 — 모니터에 걸친 선택(SEL-LIM-5)과
+    /// 설정이 꺼진 비선택 도구(WI-16)는 오늘 Handled를 세우지 않고 휠을 통과시킨다.</summary>
+    public bool Wheel(Point pos, int notches)
     {
         if (!state.IsInteractive)
         {
-            return;
+            return false;
         }
 
         // R7: 선택 도구에서 선택집합이 있으면 휠은 **선택 크기 조절**이다.
@@ -215,35 +296,37 @@ public sealed class SurfaceInputController(
             // 더 실어 한 번의 드래그가 실행취소 2번이 된다 (그중 하나는 아무 일도 하지 않는 유령 스텝).
             if (_dragKind != SelectionDragKind.None)
             {
-                e.Handled = true;
-                return;
+                return true;
             }
             var owned = SelectionGroup.OwnedBy(document, selection);
             // SEL-LIM-5: 모니터에 걸친 선택은 확대/축소하지 않는다. 고정점이 이 서피스의 논리 좌표라
             // 다른 원점·DPI를 쓰는 문서의 요소에 그대로 먹이면 엉뚱한 곳으로 흩어진다.
             if (SelectionGroup.HandlesGrabbable(owned.Count, selection.Count))
             {
-                StepWheelScale(owned, e.GetPosition(inkCanvas), e.Delta > 0 ? +1 : -1);
-                e.Handled = true;
+                StepWheelScale(owned, pos, notches);
+                return true;
             }
-            return;
+            return false;
         }
 
         // 마우스 휠로 펜 크기 조정 (WI-16 설정 연동).
         if (state.WheelAdjustsPenSize)
         {
-            state.StepThickness(e.Delta > 0 ? +1 : -1);
-            e.Handled = true;
+            state.StepThickness(notches);
+            return true;
         }
+        return false;
     }
 
-    public void OnKeyDown(KeyEventArgs e)
+    /// <summary>ESC 진입점 — 열린 텍스트 상자를 확정한다. 반환값이 <c>e.Handled</c> 판정이다 (ARCH-2).</summary>
+    public bool Escape()
     {
-        if (e.Key == Key.Escape && _activeTextBox is not null)
+        if (_activeTextBox is null)
         {
-            CommitText();
-            e.Handled = true;
+            return false;
         }
+        CommitText();
+        return true;
     }
 
     // ---- 선택 도구 입력 상태 머신 (SEL-7) ----
@@ -255,7 +338,7 @@ public sealed class SurfaceInputController(
     /// 히트 우선순위 (SEL-7): 핸들 → 요소 → 빈 곳. 핸들이 먼저인 이유는 핸들이 요소 경계
     /// **바깥**에도 놓이기 때문이다 — 순서를 뒤집으면 빈 곳 분기가 회전 핸들을 가로채 잡힌 적이 없게 된다.
     /// </summary>
-    private void BeginSelectGesture(Point pos)
+    private void BeginSelectGesture(Point pos, bool shift)
     {
         CancelWheelScale(commit: true); // 휠 확대 중 클릭은 그 확대를 먼저 확정한다 (원장 순서 보존).
 
@@ -268,8 +351,6 @@ public sealed class SurfaceInputController(
         setGestureGroupFrame(null);
 
         _dragStart = pos;
-        // D3: WPF Keyboard.Modifiers는 스레드 로컬이라 이 창(영구 NOACTIVATE)에서 항상 None이다.
-        bool shift = KeyboardState.Shift;
 
         var owned = SelectionGroup.OwnedBy(document, selection);
         // 모니터에 걸친 선택은 이동만 허용한다 (SEL-LIM-5): 서피스마다 원점과 DPI가 달라
@@ -391,7 +472,7 @@ public sealed class SurfaceInputController(
     /// 매 프레임 **드래그 시작 상태에서 재계산**한다 (직전 프레임 결과 누적 금지).
     /// 누적하면 부동소수 오차가 프레임마다 쌓여 요소가 서서히 어긋나고, 취소 복원 기준도 사라진다.
     /// </summary>
-    private void UpdateSelectGesture(Point pos)
+    private void UpdateSelectGesture(Point pos, bool shift)
     {
         if (_dragKind == SelectionDragKind.Marquee)
         {
@@ -433,7 +514,7 @@ public sealed class SurfaceInputController(
                             rotateTarget.LocalBounds,
                             _dragStart,
                             pos,
-                            KeyboardState.Shift));
+                            shift));
                 }
                 break;
 
@@ -460,9 +541,9 @@ public sealed class SurfaceInputController(
                 // 피벗·각도·가이드 프레임을 **한 번에** 받는다. 따로 구하면 가이드와 잉크가 서로 다른
                 // 값을 쓰는 상태가 표현 가능해지는데, 그 어긋남이 바로 "그룹을 회전해도 테두리 가이드가
                 // 같이 안 도는" 증상이었다 (SelectionGroup.GroupRotateStep 참고).
-                // D3: KeyboardState를 쓰는 이유는 이 파일의 다른 Shift 판정과 같다
-                // (스레드 로컬 Keyboard.Modifiers는 영구 NOACTIVATE 서피스에서 항상 None).
-                var step = SelectionGroup.RotateStep(_groupFrame, _dragStart, pos, KeyboardState.Shift);
+                // D3: Shift는 이벤트 진입점(어댑터)이 KeyboardState로 한 번 읽어 여기까지 흘린다 —
+                // 스레드 로컬 Keyboard.Modifiers는 영구 NOACTIVATE 서피스에서 항상 None이다.
+                var step = SelectionGroup.RotateStep(_groupFrame, _dragStart, pos, shift);
 
                 // 루프보다 **먼저** 미는 이유: 아래 상태 대입이 유발하는 재그리기가
                 // 이미 새 각도를 보게 한다. 각도는 _dragStart 기준 누적 증분이라 프레임 각에
@@ -507,7 +588,7 @@ public sealed class SurfaceInputController(
         }
     }
 
-    private void EndSelectGesture(Point pos)
+    private void EndSelectGesture(Point pos, bool shift)
     {
         if (_dragKind == SelectionDragKind.Marquee)
         {
@@ -530,7 +611,7 @@ public sealed class SurfaceInputController(
 
             _hadSelectionOnPress = false;
             var hits = SelectionGeometry.HitMarquee(document.Elements, new Rect(_dragStart, pos));
-            if (KeyboardState.Shift)
+            if (shift)
             {
                 foreach (var element in hits)
                 {
@@ -577,14 +658,14 @@ public sealed class SurfaceInputController(
             {
                 _wheelBaseStates[element.Id] = element.TransformState;
             }
-            _wheel.Begin(SelectionGestureRules.WheelPivot(frame, cursor), DateTime.UtcNow);
+            _wheel.Begin(SelectionGestureRules.WheelPivot(frame, cursor), seams.Now());
         }
         if (_wheelBaseStates is not { } baseStates || _wheelElements is not { } elements)
         {
             return;
         }
 
-        double raw = _wheel.Step(notches, DateTime.UtcNow);
+        double raw = _wheel.Step(notches, seams.Now());
         double factor = TransformMath.ClampGroupFactor(raw, baseStates.Values);
         _wheel.SetFactor(factor); // 한계 밖 누적을 지워 천장에서 첫 역방향 노치부터 반응하게 한다 (R7).
         foreach (var element in elements)
@@ -608,7 +689,7 @@ public sealed class SurfaceInputController(
 
     private void OnWheelIdleTick(object? sender, EventArgs e)
     {
-        if (_wheel.DueToCommit(DateTime.UtcNow))
+        if (_wheel.DueToCommit(seams.Now()))
         {
             CancelWheelScale(commit: true);
         }
@@ -706,13 +787,13 @@ public sealed class SurfaceInputController(
         host.CaptureMouse();
     }
 
-    private void CommitShape(Point rawEnd)
+    private void CommitShape(Point rawEnd, bool shift)
     {
         if (_previewShape is null)
         {
             return;
         }
-        var end = ShapeGestureRules.ResolveEnd(_previewKind, _shapeStart, rawEnd, KeyboardState.Shift);
+        var end = ShapeGestureRules.ResolveEnd(_previewKind, _shapeStart, rawEnd, shift);
         inkCanvas.Children.Remove(_previewShape);
         _previewShape = null;
 
@@ -790,7 +871,13 @@ public sealed class SurfaceInputController(
         }
     }
 
-    private bool IsOverActiveTextBox(MouseButtonEventArgs e) =>
+    /// <summary>
+    /// 커서가 편집 중 텍스트 상자 위인가 (ARCH-2). <c>IsMouseOver</c>는 WPF 입력 매니저가
+    /// <b>살아있는 비주얼 트리</b>에 대해 유지하는 히트테스트 플래그이지 <c>Point</c>에서
+    /// 유도할 수 있는 값이 아니다 — 그래서 3인자 <see cref="PointerDown(Point, bool, bool)"/>이
+    /// 이 판정을 인자로 받는다.
+    /// </summary>
+    private bool IsOverActiveTextBox() =>
         _activeTextBox is not null && _activeTextBox.IsMouseOver;
 
     // ---- 지우개 (클릭 + 드래그 삭제 — 사용자 조타 12차로 Round 13 클릭 전용에서 확장) ----
@@ -819,7 +906,7 @@ public sealed class SurfaceInputController(
     {
         document.Add(element);
         ledger.RecordAdd(element);
-        fading.OnElementCommitted(element, DateTime.UtcNow, fade);
+        fading.OnElementCommitted(element, seams.Now(), fade);
     }
 
     /// <summary>
