@@ -681,7 +681,8 @@ public class SelectionRedTeamTests
     {
         // UndoLedger.RecordTransform 자체는 "델타가 비어 있지 않으면" 무조건 기록한다 —
         // "값이 실제로 바뀌었는지"는 검사하지 않는다. 이 계약을 명시적으로 고정한다.
-        // (실사용 시 no-op 방지는 SurfaceInputController.EndSelectGesture의 `before == after` 필터가 담당 —
+        // (실사용 시 no-op 방지는 TransformCommitPlan.Build의 `before == after` 필터가 담당하며,
+        //  그 증인은 TransformCommitPlanTests.Build_UnchangedElement_EmitsNothing이다 —
         //  순수 원장 계층 자체는 방어하지 않는다는 것이 여기서 확인해야 할 red-team 발견.)
         var doc = new AnnotationDocument("M1");
         var selection = new SelectionModel();

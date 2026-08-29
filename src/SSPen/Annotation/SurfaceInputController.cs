@@ -246,25 +246,6 @@ public sealed class SurfaceInputController(
 
     // ---- 선택 도구 입력 상태 머신 (SEL-7) ----
 
-    private enum SelectionDragKind
-    {
-        None,
-        Marquee,
-        Move,
-
-        /// <summary>단일 선택 전용: 요소 로컬 축 기준 <b>비등방</b> 크기 조절 (8핸들).</summary>
-        Scale,
-
-        /// <summary>단일 선택 전용: 요소 자기 중심 회전.</summary>
-        Rotate,
-
-        /// <summary>다중 선택: 그룹 프레임 대각 앵커 기준 <b>등방</b> 확대/축소 (R1).</summary>
-        GroupScale,
-
-        /// <summary>다중 선택: 그룹 프레임 중심 기준 회전 (R1).</summary>
-        GroupRotate,
-    }
-
     /// <summary>회전 핸들 클램프용 서피스 논리 경계. 렌더와 **같은 값**을 써야 힌트와 그림이 어긋나지 않는다 (R5).</summary>
     private Rect SurfaceBounds => new(0, 0, inkCanvas.ActualWidth, inkCanvas.ActualHeight);
 
@@ -564,24 +545,19 @@ public sealed class SurfaceInputController(
 
         if (_dragBaseStates is { } baseStates)
         {
-            // 실제로 바뀐 요소만 원장에 싣는다 — 제자리 클릭이 빈 undo 항목을 만들면 안 된다 (f3).
-            var deltas = new List<TransformDelta>();
+            var pairs = new List<(AnnotationElement, ElementTransformState)>();
             foreach (var (id, before) in baseStates)
             {
-                var element = FindDragged(id);
-                if (element is null || before == element.TransformState)
+                if (FindDragged(id) is { } element)
                 {
-                    continue;
+                    pairs.Add((element, before));
                 }
-                var owner = ownerLookup(element) ?? document;
-                deltas.Add(new TransformDelta(element, before, element.TransformState, owner, owner));
             }
+            var deltas = TransformCommitPlan.Build(pairs, ownerLookup, document);
             if (deltas.Count > 0)
             {
                 // 이관 판정(f7)과 원장 기록은 컴포지션 루트가 소유한다 (SEL-14/P7).
-                // 놓은 지점을 넘기는 것은 **이동일 때뿐**이다: 크기/회전은 커서가 요소를 끌고 다닌 것이
-                // 아니라 핸들을 돌린 것이므로, 회전 핸들이 옆 모니터에 닿았다고 요소를 이관하면 안 된다.
-                commitTransform(deltas, _dragKind == SelectionDragKind.Move ? pos : null);
+                commitTransform(deltas, TransformCommitPlan.CarriesDropPoint(_dragKind) ? pos : null);
             }
         }
         ResetSelectGesture();
@@ -660,16 +636,15 @@ public sealed class SurfaceInputController(
         }
         if (commit && _wheelBaseStates is { } baseStates && _wheelElements is { } elements)
         {
-            var deltas = new List<TransformDelta>();
+            var pairs = new List<(AnnotationElement, ElementTransformState)>();
             foreach (var element in elements)
             {
-                if (!baseStates.TryGetValue(element.Id, out var before) || before == element.TransformState)
+                if (baseStates.TryGetValue(element.Id, out var before))
                 {
-                    continue;
+                    pairs.Add((element, before));
                 }
-                var owner = ownerLookup(element) ?? document;
-                deltas.Add(new TransformDelta(element, before, element.TransformState, owner, owner));
             }
+            var deltas = TransformCommitPlan.Build(pairs, ownerLookup, document);
             if (deltas.Count > 0)
             {
                 commitTransform(deltas, null);
