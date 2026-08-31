@@ -41,6 +41,7 @@ public sealed class SettingsWindow : Window
     private readonly RadioButton _boardBlack;
     private readonly CheckBox _halo;
     private readonly TextBox _saveFolder;
+    private readonly List<(string DeviceName, CheckBox CheckBox)> _monitorCheckBoxes = [];
 
     // 바로가기 색상 편집 보류분 (사용자 요청 17차): 확인을 눌러야 적용된다 —
     // 취소로 닫으면 아무것도 바뀌지 않는 다른 항목들과 동일하게 동작하게 한다.
@@ -60,7 +61,7 @@ public sealed class SettingsWindow : Window
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-        _runAtLogin = new CheckBox { Content = Strings.SettingsRunAtLogin, IsChecked = s.RunAtLogin, Margin = RowMargin };
+        _runAtLogin = new CheckBox { Content = Strings.SettingsRunAtLogin, IsChecked = RunAtLogin.IsEnabled(), Margin = RowMargin };
         _checkUpdate = new CheckBox { Content = Strings.SettingsCheckUpdate, IsChecked = s.CheckUpdateOnStart, Margin = RowMargin };
         _wheelSize = new CheckBox { Content = Strings.SettingsWheelSize, IsChecked = s.WheelAdjustsPenSize, Margin = RowMargin };
         // 도구별 색·굵기 개별/동기화 (사용자 조타: 기본 개별).
@@ -86,6 +87,31 @@ public sealed class SettingsWindow : Window
         folderRow.Children.Add(_saveFolder);
         folderRow.Children.Add(browse);
 
+        var monitors = Interop.MonitorTopology.Enumerate();
+        var monitorSection = new StackPanel { Margin = new Thickness(0, 4, 0, 4) };
+        monitorSection.Children.Add(SectionHeader(Strings.SettingsMonitors));
+        monitorSection.Children.Add(new TextBlock
+        {
+            Text = Strings.SettingsMonitorsHint,
+            Margin = new Thickness(4, 0, 4, 6),
+            Foreground = Brushes.Gray,
+            FontSize = 11,
+        });
+        for (int i = 0; i < monitors.Count; i++)
+        {
+            var m = monitors[i];
+            string label = $"{i + 1}번 화면: {m.DeviceName} ({m.Bounds.Width}×{m.Bounds.Height})" + (m.IsPrimary ? $" {Strings.PrimaryMonitorBadge}" : "");
+            bool isChecked = !s.DisabledMonitors.Contains(m.DeviceName);
+            var cb = new CheckBox
+            {
+                Content = label,
+                IsChecked = isChecked,
+                Margin = RowMargin,
+            };
+            _monitorCheckBoxes.Add((m.DeviceName, cb));
+            monitorSection.Children.Add(cb);
+        }
+
         var stack = new StackPanel { Margin = new Thickness(14) };
         stack.Children.Add(SectionHeader(Strings.SettingsGeneral));
         stack.Children.Add(_runAtLogin);
@@ -100,6 +126,7 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(_halo);
         stack.Children.Add(RowLabel(Strings.SettingsSaveFolder));
         stack.Children.Add(folderRow);
+        stack.Children.Add(monitorSection);
         stack.Children.Add(SectionHeader(Strings.SettingsQuickColors));
         stack.Children.Add(BuildQuickColorRow());
         stack.Children.Add(SectionHeader(Strings.SettingsHotkeys));
@@ -309,6 +336,18 @@ public sealed class SettingsWindow : Window
         updated.SaveFolder = _saveFolder.Text == Capture.CaptureFileNaming.DefaultSaveFolder()
             ? string.Empty
             : _saveFolder.Text;
+
+        var disabled = _monitorCheckBoxes
+            .Where(item => item.CheckBox.IsChecked != true)
+            .Select(item => item.DeviceName)
+            .ToList();
+        // 모든 모니터가 비활성화되는 것을 방지: 최소 1개는 켠다
+        if (_monitorCheckBoxes.Count > 0 && disabled.Count == _monitorCheckBoxes.Count)
+        {
+            disabled.RemoveAt(0);
+        }
+        updated.DisabledMonitors = disabled;
+
         _host.ApplyGeneralSettings(updated);
     }
 }

@@ -1,50 +1,86 @@
-name: CI
+name: CI Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [ main, master ]
   pull_request:
-    branches: [main]
+    branches: [ main, master ]
   workflow_dispatch:
 
-env:
-  DOTNET_NOLOGO: true
-  DOTNET_CLI_TELEMETRY_OPTOUT: true
-  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-
 jobs:
-  build-test:
-    # WPF(net10.0-windows) 이므로 windows 러너에서만 빌드된다.
-    name: 빌드 + 단위 테스트
+  build-and-test:
+    name: Build, Test & Package (windows-latest)
     runs-on: windows-latest
-    steps:
-      - name: 체크아웃
-        uses: actions/checkout@v5
 
-      - name: .NET 10 SDK 설치
-        uses: actions/setup-dotnet@v5
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      - name: 복원
+      - name: Restore Dependencies
         run: dotnet restore SSPen.sln
 
-      - name: 빌드 (Release)
+      - name: Build Solution
         run: dotnet build SSPen.sln -c Release --no-restore
 
-      # 통합 테스트(tests/SSPen.IntegrationTests)는 3x1920x1080 토폴로지와 대화형 데스크톱을
-      # 하드 단언하므로 CI에서 실행하지 않는다 — 빌드만 검증한다.
-      - name: 단위 테스트
-        run: >
-          dotnet test tests/SSPen.Tests/SSPen.Tests.csproj
-          -c Release --no-build
-          --logger "trx;LogFileName=unit-tests.trx"
-          --results-directory artifacts/test-results
+      - name: Run Unit & Simulation Tests
+        run: dotnet test tests/SSPen.Tests/SSPen.Tests.csproj -c Release --no-build --verbosity normal --logger "trx;LogFileName=unit-test-results.trx"
 
-      - name: 테스트 결과 업로드
-        if: always()
-        uses: actions/upload-artifact@v5
+      - name: Run Integration Tests
+        run: dotnet test tests/SSPen.IntegrationTests/SSPen.IntegrationTests.csproj -c Release --no-build --verbosity normal --logger "trx;LogFileName=integration-test-results.trx"
+        continue-on-error: false
+
+      - name: Publish Self-Contained Win-x64
+        run: dotnet publish src/SSPen/SSPen.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64 -v minimal -nologo
+
+      - name: Verify Self-Contained Integrity
+        shell: pwsh
+        run: |
+          $publishDir = "publish/win-x64"
+          $required = @('SSPen.exe', 'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'wpfgfx_cor3.dll')
+          foreach ($file in $required) {
+              if (-not (Test-Path (Join-Path $publishDir $file))) {
+                  throw "Self-contained publish missing required file: $file"
+              }
+          }
+          $runtimeConfig = Get-Content (Join-Path $publishDir 'SSPen.runtimeconfig.json') -Raw | ConvertFrom-Json
+          if ($runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'framework' -or
+              $runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'frameworks') {
+              throw 'runtimeconfig contains framework-dependent references'
+          }
+          if ($runtimeConfig.runtimeOptions.PSObject.Properties.Name -notcontains 'includedFrameworks') {
+              throw 'runtimeconfig missing includedFrameworks'
+          }
+          Write-Host "Self-contained publish verification passed successfully."
+
+      - name: Setup Inno Setup
+        uses: sbobovyc/setup-inno@v1
+
+      - name: Build Inno Setup Installer
+        shell: pwsh
+        run: |
+          $iscc = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+              "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+              $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue)?.Source
+          }
+          if (-not $iscc) {
+              throw "ISCC.exe not found on runner."
+          }
+          & $iscc "installer/SSPen.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC compilation failed with code $LASTEXITCODE" }
+          Write-Host "Installer built successfully."
+
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: unit-test-results
-          path: artifacts/test-results/*.trx
-          if-no-files-found: warn
+          name: SSPen-Setup-Installer
+          path: publish/installer/*.exe
+          if-no-files-found: error

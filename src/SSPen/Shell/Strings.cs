@@ -77,6 +77,11 @@ public static class Strings
     // 보드 기본색 (사용자 요청 17차): 보드 버튼을 눌렀을 때 켜지는 색.
     public const string SettingsBoardDefault = "보드 버튼을 누를 때 켜질 보드";
 
+    // 판서 화면 선택
+    public const string SettingsMonitors = "판서 화면";
+    public const string SettingsMonitorsHint = "판서 서피스를 띄울 화면을 선택합니다.";
+    public const string PrimaryMonitorBadge = "(주 화면)";
+
     // 바로가기 색상 편집 (사용자 요청 17차).
     public const string SettingsQuickColors = "바로가기 색상";
     public const string SettingsQuickColorsHint = "칸을 눌러 색을 바꿉니다 (Ctrl+Shift+1~6).";

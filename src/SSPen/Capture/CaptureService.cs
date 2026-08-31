@@ -12,6 +12,20 @@ namespace SSPen.Capture;
 /// </summary>
 public static class CaptureService
 {
+    private static readonly AsyncLocal<Func<PhysicalRect, BitmapSource>?> _captureProviderForTesting = new();
+
+    /// <summary>테스트용 가상 캡처 프로바이더 주입 Seam (AsyncLocal 격리).</summary>
+    public static void SetCaptureProviderForTesting(Func<PhysicalRect, BitmapSource>? provider)
+    {
+        _captureProviderForTesting.Value = provider;
+    }
+
+    /// <summary>테스트용 가상 캡처 프로바이더 초기화.</summary>
+    public static void ResetCaptureProviderForTesting()
+    {
+        _captureProviderForTesting.Value = null;
+    }
+
     /// <summary>영역의 비트맵 내 오프셋 (순수 사각형 수학, 음수 원점 회귀 방지 — R2).</summary>
     public static (int X, int Y) RegionToBitmapOffset(PhysicalRect region, PhysicalRect virtualScreen) =>
         (region.X - virtualScreen.X, region.Y - virtualScreen.Y);
@@ -31,6 +45,11 @@ public static class CaptureService
             throw new ArgumentException("빈 영역은 캡처할 수 없습니다.", nameof(region));
         }
 
+        if (_captureProviderForTesting.Value is not null)
+        {
+            return _captureProviderForTesting.Value(region);
+        }
+
         nint screenDc = NativeMethods.GetDC(0);
         if (screenDc == 0)
         {
@@ -42,13 +61,34 @@ public static class CaptureService
         try
         {
             memDc = NativeMethods.CreateCompatibleDC(screenDc);
+            if (memDc == 0)
+            {
+                int err = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                throw new InvalidOperationException($"CreateCompatibleDC 실패 (Win32Error: {err})");
+            }
             bitmap = NativeMethods.CreateCompatibleBitmap(screenDc, region.Width, region.Height);
+            if (bitmap == 0)
+            {
+                int err = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                throw new InvalidOperationException($"CreateCompatibleBitmap 실패 (size: {region.Width}x{region.Height}, Win32Error: {err})");
+            }
             previous = NativeMethods.SelectObject(memDc, bitmap);
+            if (previous == 0)
+            {
+                int err = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                throw new InvalidOperationException($"SelectObject 실패 (Win32Error: {err})");
+            }
             if (!NativeMethods.BitBlt(
                 memDc, 0, 0, region.Width, region.Height,
                 screenDc, region.X, region.Y, NativeMethods.SRCCOPY | NativeMethods.CAPTUREBLT))
             {
-                throw new InvalidOperationException("BitBlt 실패");
+                if (!NativeMethods.BitBlt(
+                    memDc, 0, 0, region.Width, region.Height,
+                    screenDc, region.X, region.Y, NativeMethods.SRCCOPY))
+                {
+                    int error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                    throw new InvalidOperationException($"BitBlt 실패 (region: {region}, Win32Error: {error})");
+                }
             }
             var source = Imaging.CreateBitmapSourceFromHBitmap(
                 bitmap, 0, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());

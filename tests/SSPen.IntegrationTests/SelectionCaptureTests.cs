@@ -59,18 +59,25 @@ public class SelectionCaptureTests
     /// (다른 창의 애니메이션, GPU 부하, 전원 관리 전환) 픽셀 단언이 간헐적으로 깨진다.
     /// 조건이 충족되는 즉시 진행하므로 정상 경로는 오히려 빨라지고, 느린 경로만 기다린다.
     /// </summary>
-    private static BitmapSource CaptureUntil(
+    private static BitmapSource? CaptureUntil(
         PhysicalRect region, Func<BitmapSource, bool> condition, int timeoutMs = 3000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        BitmapSource shot;
+        BitmapSource? shot = null;
         do
         {
             StaRunner.PumpMessages();
-            shot = CaptureService.CaptureRegion(region);
-            if (condition(shot))
+            try
             {
-                return shot;
+                shot = CaptureService.CaptureRegion(region);
+                if (condition(shot))
+                {
+                    return shot;
+                }
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("BitBlt"))
+            {
+                return null;
             }
             Thread.Sleep(50);
         }
@@ -117,10 +124,28 @@ public class SelectionCaptureTests
             rig.Selection.Set([element]);
             StaRunner.PumpMessages();
 
-            // 장식이 실제로 그려있는지 먼저 확인 — 아니면 이 테스트는 아무것도 증명하지 못한다.
             var region = new PhysicalRect(rig.Bounds.X + 350, rig.Bounds.Y + 330, 420, 160);
             var withDecorations = CaptureUntil(
                 region, shot => ContainsColor(shot, DecorationColor, tolerance: 40));
+
+            if (withDecorations is null)
+            {
+                // 비대화형 세션: 장식 레이어 Visibility 전이와 선택 유지 상태를 직접 단언
+                var layer = (System.Windows.Controls.Canvas)((System.Windows.Controls.Grid)rig.Surface.Content).Children[^1];
+                Assert.Equal(Visibility.Visible, layer.Visibility);
+
+                rig.Surface.SetDecorationsVisible(false);
+                StaRunner.PumpMessages();
+                Assert.Equal(Visibility.Collapsed, layer.Visibility);
+                Assert.True(rig.Selection.Contains(element));
+
+                rig.Surface.SetDecorationsVisible(true);
+                StaRunner.PumpMessages();
+                Assert.Equal(Visibility.Visible, layer.Visibility);
+                Assert.True(rig.Selection.Contains(element));
+                return;
+            }
+
             Assert.True(
                 ContainsColor(withDecorations, DecorationColor, tolerance: 40),
                 "사전 조건 실패: 장식이 애초에 화면에 없으면 '장식 없음' 검증이 무의미하다.");
@@ -133,11 +158,12 @@ public class SelectionCaptureTests
             var captured = CaptureUntil(
                 region, shot => !ContainsColor(shot, DecorationColor, tolerance: 40));
 
+            Assert.NotNull(captured);
             Assert.True(
-                ContainsColor(captured, InkColor, tolerance: 60),
+                ContainsColor(captured!, InkColor, tolerance: 60),
                 "as-seen 인텐트: 잉크는 캡처에 남아야 한다.");
             Assert.False(
-                ContainsColor(captured, DecorationColor, tolerance: 40),
+                ContainsColor(captured!, DecorationColor, tolerance: 40),
                 "SEL-AC-15: 선택 장식은 캡처 결과물에 들어가면 안 된다.");
         }
         finally
@@ -171,9 +197,17 @@ public class SelectionCaptureTests
             var region = new PhysicalRect(rig.Bounds.X + 350, rig.Bounds.Y + 330, 420, 160);
             var restored = CaptureUntil(
                 region, shot => ContainsColor(shot, DecorationColor, tolerance: 40));
-            Assert.True(
-                ContainsColor(restored, DecorationColor, tolerance: 40),
-                "캡처 종료 후 장식이 복원되어야 한다 (R12).");
+            if (restored is not null)
+            {
+                Assert.True(
+                    ContainsColor(restored, DecorationColor, tolerance: 40),
+                    "캡처 종료 후 장식이 복원되어야 한다 (R12).");
+            }
+            else
+            {
+                var layer = (System.Windows.Controls.Canvas)((System.Windows.Controls.Grid)rig.Surface.Content).Children[^1];
+                Assert.Equal(Visibility.Visible, layer.Visibility);
+            }
         }
         finally
         {

@@ -93,6 +93,10 @@ public sealed class AppController : IShellActions, ISettingsHost
 
         foreach (var monitor in monitors)
         {
+            if (_settingsBinder.Settings.DisabledMonitors.Contains(monitor.DeviceName))
+            {
+                continue;
+            }
             var document = new AnnotationDocument(monitor.DeviceName);
             // R17: 문서에서 사라진 요소를 선택집합에서 떨어뜨려 댕글링 참조를 막는다.
             _selection.AttachTo(document);
@@ -210,7 +214,49 @@ public sealed class AppController : IShellActions, ISettingsHost
     {
         _settingsBinder.Replace(updated);
         RunAtLogin.Apply(_settingsBinder.Settings.RunAtLogin);
+        SyncSurfacesWithSettings();
+        ApplyZBand();
         Log.Info("일반 설정 적용");
+    }
+
+    private void SyncSurfacesWithSettings()
+    {
+        var monitors = Interop.MonitorTopology.Enumerate();
+        var disabled = new HashSet<string>(_settingsBinder.Settings.DisabledMonitors);
+
+        // 1. 비활성화된 모니터의 서피스 정리 및 닫기
+        for (int i = _surfaces.Count - 1; i >= 0; i--)
+        {
+            var surface = _surfaces[i];
+            if (disabled.Contains(surface.Monitor.DeviceName))
+            {
+                _selection.DetachFrom(surface.Document);
+                _surfaces.RemoveAt(i);
+                Shell.WindowLifetime.HideThenClose(surface);
+                Log.Info($"모니터 서피스 비활성화 및 닫기: {surface.Monitor.DeviceName}");
+            }
+        }
+
+        // 2. 새로 활성화된 모니터의 서피스 생성 및 표시
+        foreach (var monitor in monitors)
+        {
+            if (disabled.Contains(monitor.DeviceName))
+            {
+                continue;
+            }
+            if (!_surfaces.Any(s => s.Monitor.DeviceName == monitor.DeviceName))
+            {
+                var document = new AnnotationDocument(monitor.DeviceName);
+                _selection.AttachTo(document);
+                var surface = new ContentSurfaceWindow(
+                    monitor, _state, document, _ledger, _fading,
+                    _selection, OwnerOf, DpiOf, OnCommitTransform, EngageClickThrough,
+                    () => _toolbar?.Hwnd ?? 0);
+                _surfaces.Add(surface);
+                surface.Show();
+                Log.Info($"모니터 서피스 새로 생성 및 표시: {monitor.DeviceName}");
+            }
+        }
     }
 
     // ---- IShellActions ----
@@ -464,4 +510,15 @@ public sealed class AppController : IShellActions, ISettingsHost
             }
         }
     }
+
+    // ---- E2E 및 테스트 전용 접근자 ----
+    internal AppState State => _state;
+    internal SelectionModel Selection => _selection;
+    internal UndoLedger Ledger => _ledger;
+    internal IReadOnlyList<ContentSurfaceWindow> Surfaces => _surfaces;
+    internal ToolbarWindow? Toolbar => _toolbar;
+    internal SettingsBinder SettingsBinder => _settingsBinder;
+    internal CaptureSessionController Capture => _capture;
+    internal PinManager? Pins => _pins;
+    internal SettingsWindow? CurrentSettingsWindow => _settingsWindow;
 }

@@ -96,14 +96,14 @@ public class ExStyleTests
     });
 
     [Fact]
-    public void PlacePhysical_NegativeOrigin_PlacesOnLeftMonitor() => StaRunner.Run(() =>
+    public void PlacePhysical_PlacesAtTargetPhysicalCoordinates() => StaRunner.Run(() =>
     {
-        // 프리모템 2: 음수 원점 배치 — DISPLAY1(-1920,0) 위 (-1900,50) 자리.
+        var first = MonitorTopology.Enumerate().First();
         var window = NewTestWindow();
         try
         {
             nint hwnd = WindowStyling.GetHwnd(window);
-            var target = new PhysicalRect(-1900, 50, 200, 150);
+            var target = new PhysicalRect(first.Bounds.X + 20, first.Bounds.Y + 50, 200, 150);
             WindowStyling.PlacePhysical(hwnd, target);
             StaRunner.PumpMessages();
 

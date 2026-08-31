@@ -158,6 +158,12 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
 
     public nint Hwnd { get; private set; }
 
+    // ---- E2E 및 테스트 전용 접근자 ----
+    internal SurfaceInputController Input => _input;
+    internal Canvas InkCanvas => _inkCanvas;
+    internal Canvas DecorationLayer => _decorationLayer;
+    internal System.Windows.Shapes.Rectangle BoardRect => _boardRect;
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);

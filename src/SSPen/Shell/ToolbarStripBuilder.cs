@@ -278,6 +278,23 @@ public static class ToolbarStripBuilder
                 grid.Children.Add(swatch);
             }
 
+            grid.MouseWheel += (_, e) =>
+            {
+                int currentIdx = -1;
+                for (int i = 0; i < state.QuickColors.Count; i++)
+                {
+                    if (state.QuickColors[i] == state.CurrentColor)
+                    {
+                        currentIdx = i;
+                        break;
+                    }
+                }
+                if (currentIdx < 0) currentIdx = 0;
+                int nextIdx = ToolbarStateMap.NextQuickColorSlotByWheel(currentIdx, e.Delta, state.QuickColors.Count);
+                state.CurrentColor = state.QuickColors[nextIdx];
+                e.Handled = true;
+            };
+
             // 현재 색 대형 스와치: 전폭 플러시, 클릭 시 확장 팔레트. 하단 라운드 모서리를 피해 아래 여백.
             var currentColorSwatch = new Border
             {
@@ -327,11 +344,22 @@ public static class ToolbarStripBuilder
 
         // 그룹 2: 그리기 도구 (도형·펜·형광펜은 각자 그룹 색 배지, 플라이아웃 어포던스 삼각형).
         var shapesButton = MakeButton(ToolbarButtonId.Shapes, Strings.Shapes, Icons.Shapes, onRotateShapes, hasFlyout: true, badgeGroup: ToolStyleGroup.Shape);
+        shapesButton.MouseWheel += (_, e) =>
+        {
+            state.ActiveTool = ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, state.ActiveTool, e.Delta);
+            e.Handled = true;
+        };
         flyouts.ShapesFlyout.PlacementTarget = shapesButton;
         flyouts.HoverOpen(shapesButton, flyouts.ShapesFlyout);
         menu.Children.Add(shapesButton);
+
         // 펜 그룹 버튼 (사용자 조타: 펜·형광펜·텍스트를 한 그룹으로 — Epic Pen 펜+A 플라이아웃 대응).
         var penButton = MakeButton(ToolbarButtonId.Pen, Strings.Pen, Icons.Pen, onRotatePenGroup, hasFlyout: true, badgeGroup: ToolStyleGroup.Pen, hotkeyId: "pen");
+        penButton.MouseWheel += (_, e) =>
+        {
+            state.ActiveTool = ToolbarStateMap.NextInCycle(ToolbarStateMap.PenCycle, state.ActiveTool, e.Delta);
+            e.Handled = true;
+        };
         flyouts.PenFlyout.PlacementTarget = penButton;
         flyouts.HoverOpen(penButton, flyouts.PenFlyout);
         menu.Children.Add(penButton);

@@ -175,6 +175,8 @@ public sealed class CaptureSessionController
         System.Windows.Media.CompositionTarget.Rendering -= hook;
     }
 
+    internal void CancelCaptureSession() => EndCaptureSession();
+
     private void EndCaptureSession()
     {
         if (_captureOverlay is not null)

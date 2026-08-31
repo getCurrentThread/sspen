@@ -77,4 +77,10 @@ public sealed class AppSettings
 
     /// <summary>핫키 재지정 오버라이드 (id → 정의). 비어 있으면 스펙 기본 맵.</summary>
     public Dictionary<string, HotkeyDef> Hotkeys { get; set; } = [];
+
+    /// <summary>
+    /// 판서 서피스를 띄우지 않을 모니터 DeviceName 목록.
+    /// 비어 있으면 연결된 모든 모니터에 판서 서피스를 띄운다.
+    /// </summary>
+    public List<string> DisabledMonitors { get; set; } = [];
 }

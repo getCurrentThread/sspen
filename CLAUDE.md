@@ -26,24 +26,27 @@ dotnet build SSPen.sln -c Debug
 # run
 dotnet run --project src/SSPen
 
-# unit tests — headless-safe, run these by default
+# all tests (solution-wide, safe on any machine)
+dotnet test SSPen.sln
+
+# unit & simulation tests (headless-safe, fast)
 dotnet test tests/SSPen.Tests/SSPen.Tests.csproj
 dotnet test tests/SSPen.Tests/SSPen.Tests.csproj --filter "FullyQualifiedName~HitTestTests"
 
-# integration tests — machine-bound: hard-asserts a 3x1920x1080 monitor topology with
-# virtual-screen origin (-1920,0) and an interactive desktop. Do not run these unless the
-# machine matches; do not add --filter workarounds to force them elsewhere.
+# integration tests (Win32 OS-bound)
 dotnet test tests/SSPen.IntegrationTests/SSPen.IntegrationTests.csproj
+
+# end-to-end user workflow tests (AppController & UI actor simulation)
+dotnet test tests/SSPen.E2ETests/SSPen.E2ETests.csproj
+
+# all-in-one local verification & packaging pipeline (build + all tests + publish verify + installer)
+powershell -ExecutionPolicy Bypass -File build/verify.ps1
 
 # publish (self-contained win-x64) + verify + Inno Setup installer
 powershell -ExecutionPolicy Bypass -File build/publish.ps1
 ```
 
-**Never run `dotnet test SSPen.sln`** — it pulls in the integration project and fails outside the
-bound topology. Always target the unit test csproj explicitly.
-
-CI (`.github/workflows/ci.yml`) runs `dotnet restore` → `dotnet build -c Release` → the unit test
-project only, on `windows-latest`. It does not run the integration suite.
+CI (`.github/workflows/ci.yml`) runs on `windows-latest` for every push and PR: `dotnet restore` → `dotnet build -c Release` → unit/simulation tests → integration tests → self-contained publish validation → Inno Setup installer packaging.
 
 ## Conventions worth repeating from AGENTS.md
 

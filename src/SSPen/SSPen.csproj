@@ -53,4 +53,10 @@
     <EmbeddedResource Include="Assets\AppIcon.ico" LogicalName="SSPen.AppIcon.ico" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="SSPen.Tests" />
+    <InternalsVisibleTo Include="SSPen.IntegrationTests" />
+    <InternalsVisibleTo Include="SSPen.E2ETests" />
+  </ItemGroup>
+
 </Project>

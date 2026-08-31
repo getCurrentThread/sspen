@@ -31,6 +31,14 @@ public class MonitorTransferTests
 
     private static Rig CreateRig()
     {
+        var monitors = new List<MonitorSurfaceInfo>
+        {
+            new(@"\\.\DISPLAY1", new PhysicalRect(-1920, 0, 1920, 1080), new PhysicalRect(-1920, 0, 1920, 1080), false),
+            new(@"\\.\DISPLAY2", new PhysicalRect(0, 0, 1920, 1080), new PhysicalRect(0, 0, 1920, 1032), true),
+            new(@"\\.\DISPLAY3", new PhysicalRect(1920, 0, 1920, 1080), new PhysicalRect(1920, 0, 1920, 1080), false),
+        };
+        MonitorTopology.SetProviderForTesting(() => monitors);
+
         var state = new AppState { ActiveTool = ToolKind.Select };
         var selection = new SelectionModel();
         var surfaces = new List<ContentSurfaceWindow>();
@@ -41,7 +49,7 @@ public class MonitorTransferTests
 
         var ledger = new UndoLedger(Owner, selection);
 
-        foreach (var monitor in MonitorTopology.Enumerate())
+        foreach (var monitor in monitors)
         {
             var document = new AnnotationDocument(monitor.DeviceName);
             selection.AttachTo(document);
@@ -88,6 +96,7 @@ public class MonitorTransferTests
 
     private static void CloseAll(Rig rig)
     {
+        MonitorTopology.ResetProviderForTesting();
         foreach (var surface in rig.Surfaces)
         {
             surface.Close();

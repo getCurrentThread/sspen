@@ -14,11 +14,76 @@ public static class ToolbarStateMap
     /// <summary>펜 그룹 재클릭 로테이션 순서 (펜→형광펜→텍스트) — Epic Pen 펜+A 대응 (사용자 조타).</summary>
     public static readonly ToolKind[] PenCycle = [ToolKind.Pen, ToolKind.Highlighter, ToolKind.Text];
 
+    /// <summary>툴바 휠 스크롤 도구 순환 순서.</summary>
+    public static readonly ToolKind[] WheelToolCycle =
+    [
+        ToolKind.Select,
+        ToolKind.Pen,
+        ToolKind.Highlighter,
+        ToolKind.Eraser,
+        ToolKind.Line,
+        ToolKind.Arrow,
+        ToolKind.Rectangle,
+        ToolKind.Ellipse,
+        ToolKind.Text,
+    ];
+
     /// <summary>그룹 버튼 재클릭 로테이션 (사용자 조타): 비활성 → 첫 도구, 활성 → 다음 하위 도구 순환.</summary>
     public static ToolKind NextInCycle(ToolKind[] cycle, ToolKind current)
     {
         int idx = Array.IndexOf(cycle, current);
         return idx < 0 ? cycle[0] : cycle[(idx + 1) % cycle.Length];
+    }
+
+    /// <summary>
+    /// 그룹 내 휠 스크롤 순환 (delta > 0 이전 도구/위쪽, delta < 0 다음 도구/아래쪽).
+    /// </summary>
+    public static ToolKind NextInCycle(ToolKind[] cycle, ToolKind current, int delta)
+    {
+        if (delta == 0)
+        {
+            return current;
+        }
+        int idx = Array.IndexOf(cycle, current);
+        if (idx < 0)
+        {
+            return delta < 0 ? cycle[0] : cycle[^1];
+        }
+        int step = delta < 0 ? 1 : -1;
+        int next = (idx + step + cycle.Length) % cycle.Length;
+        return cycle[next];
+    }
+
+    /// <summary>
+    /// 퀵컬러 슬롯 번호 휠 순환 (0..count-1).
+    /// </summary>
+    public static int NextQuickColorSlotByWheel(int currentSlot, int delta, int count)
+    {
+        if (count <= 0 || delta == 0)
+        {
+            return currentSlot;
+        }
+        int step = delta < 0 ? 1 : -1;
+        return (currentSlot + step + count) % count;
+    }
+
+    /// <summary>
+    /// 툴바 휠 스크롤에 따른 도구 순환 (delta > 0 이전 도구/위쪽, delta < 0 다음 도구/아래쪽).
+    /// </summary>
+    public static ToolKind NextToolByWheel(ToolKind current, int delta)
+    {
+        if (delta == 0)
+        {
+            return current;
+        }
+        int idx = Array.IndexOf(WheelToolCycle, current);
+        if (idx < 0)
+        {
+            return delta < 0 ? WheelToolCycle[0] : WheelToolCycle[^1];
+        }
+        int step = delta < 0 ? 1 : -1;
+        int next = (idx + step + WheelToolCycle.Length) % WheelToolCycle.Length;
+        return WheelToolCycle[next];
     }
 
     public static bool IsActive(AppState state, ToolbarButtonId id, bool menuCollapsed) => id switch

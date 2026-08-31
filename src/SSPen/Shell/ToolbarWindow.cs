@@ -57,6 +57,17 @@ public sealed class ToolbarWindow : Window
         logo.MouseLeftButtonDown += (_, _) => DragMove();
 
         Content = host;
+
+        MouseWheel += (_, e) =>
+        {
+            if (_menuCollapsed)
+            {
+                return;
+            }
+            _state.ActiveTool = ToolbarStateMap.NextToolByWheel(_state.ActiveTool, e.Delta);
+            e.Handled = true;
+        };
+
         _state.Changed += () => Dispatcher.Invoke(() =>
         {
             _parts.RefreshActiveStates(_state);

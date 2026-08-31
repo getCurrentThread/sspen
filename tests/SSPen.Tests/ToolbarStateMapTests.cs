@@ -157,4 +157,63 @@ public class ToolbarStateMapTests
 
         Assert.Equal(ToolStyleGroup.Shape, group);
     }
+
+    [Fact]
+    public void NextToolByWheel_ZeroDelta_ReturnsSameTool()
+    {
+        Assert.Equal(ToolKind.Pen, ToolbarStateMap.NextToolByWheel(ToolKind.Pen, 0));
+    }
+
+    [Fact]
+    public void NextToolByWheel_ScrollDown_CyclesInOrder()
+    {
+        var current = ToolKind.Select;
+        var expectedOrder = ToolbarStateMap.WheelToolCycle;
+
+        for (int i = 1; i < expectedOrder.Length; i++)
+        {
+            current = ToolbarStateMap.NextToolByWheel(current, -120);
+            Assert.Equal(expectedOrder[i], current);
+        }
+
+        // 마지막에서 다시 첫 번째로 순환
+        current = ToolbarStateMap.NextToolByWheel(current, -120);
+        Assert.Equal(ToolKind.Select, current);
+    }
+
+    [Fact]
+    public void NextToolByWheel_ScrollUp_CyclesInReverseOrder()
+    {
+        var current = ToolKind.Select;
+
+        // 첫 번째에서 위로 스크롤 시 마지막 도구(Text)로 이동
+        current = ToolbarStateMap.NextToolByWheel(current, 120);
+        Assert.Equal(ToolKind.Text, current);
+
+        current = ToolbarStateMap.NextToolByWheel(current, 120);
+        Assert.Equal(ToolKind.Ellipse, current);
+    }
+
+    [Fact]
+    public void NextToolByWheel_FromNone_StartsAtFirstOrLast()
+    {
+        Assert.Equal(ToolKind.Select, ToolbarStateMap.NextToolByWheel(ToolKind.None, -120));
+        Assert.Equal(ToolKind.Text, ToolbarStateMap.NextToolByWheel(ToolKind.None, 120));
+    }
+
+    [Fact]
+    public void NextInCycle_WithDelta_CyclesForwardAndBackward()
+    {
+        Assert.Equal(ToolKind.Arrow, ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, ToolKind.Line, -120));
+        Assert.Equal(ToolKind.Ellipse, ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, ToolKind.Line, 120));
+        Assert.Equal(ToolKind.Line, ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, ToolKind.Line, 0));
+    }
+
+    [Fact]
+    public void NextQuickColorSlotByWheel_CyclesSlots()
+    {
+        Assert.Equal(1, ToolbarStateMap.NextQuickColorSlotByWheel(0, -120, 6));
+        Assert.Equal(5, ToolbarStateMap.NextQuickColorSlotByWheel(0, 120, 6));
+        Assert.Equal(0, ToolbarStateMap.NextQuickColorSlotByWheel(0, 0, 6));
+    }
 }

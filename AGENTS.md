@@ -60,14 +60,15 @@ Run from repo root:
 ```powershell
 dotnet build SSPen.sln -c Debug
 dotnet run --project src/SSPen
-dotnet test tests/SSPen.Tests/SSPen.Tests.csproj                    # safe anywhere
+dotnet test SSPen.sln                                                # all tests (safe on any machine)
+dotnet test tests/SSPen.Tests/SSPen.Tests.csproj                     # headless unit & simulation tests
 dotnet test tests/SSPen.Tests/SSPen.Tests.csproj --filter "FullyQualifiedName~HitTestTests"
-dotnet test tests/SSPen.IntegrationTests/SSPen.IntegrationTests.csproj   # bound machine only
-dotnet publish src/SSPen/SSPen.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
-powershell -ExecutionPolicy Bypass -File build/publish.ps1                # publish + verify + installer
+dotnet test tests/SSPen.IntegrationTests/SSPen.IntegrationTests.csproj # Win32 integration tests
+powershell -ExecutionPolicy Bypass -File build/verify.ps1             # all-in-one local verification & packaging
+powershell -ExecutionPolicy Bypass -File build/publish.ps1            # publish + verify + installer
 ```
 
-**Caution**: `dotnet test SSPen.sln` also runs the integration tests, which hard-assert the specific 3-monitor topology and need an interactive desktop — they fail everywhere else. Default to the unit project.
+CI (`.github/workflows/ci.yml`) runs on `windows-latest` for every push/PR: restore → build → unit/simulation tests → integration tests → self-contained publish validation → Inno Setup installer packaging.
 
 ## Code Conventions & Common Patterns
 
@@ -103,10 +104,10 @@ powershell -ExecutionPolicy Bypass -File build/publish.ps1                # publ
 ## Testing & QA
 
 - **Framework**: xUnit (`[Fact]`, `[Theory]`/`[InlineData]`). Class naming `<Subject>Tests`; method naming `Method_Scenario_ExpectedOutcome` (e.g. `Load_CorruptJson_QuarantinesAndReturnsDefaults`). Implicit AAA with blank-line separation; private static factory helpers; `IDisposable` for temp-dir cleanup.
-- **Unit tests** (`tests/SSPen.Tests/`): pure logic only — coordinate/DPI math, hit-testing, undo ledger, fade scheduling (injected clock, `Due(now)`), Shift constraints, capture rect math, file naming (injected `exists`), settings round-trip against a per-test temp dir. Windows-only (WPF types) but headless-safe.
-- **Integration tests** (`tests/SSPen.IntegrationTests/`): real windows, real BitBlt pixel assertions, real `RegisterHotKey`, real exstyle read-back. Every test body runs through `StaRunner.Run` (STA thread, 60 s hard timeout, exception rethrow via `ExceptionDispatchInfo`); use `StaRunner.PumpMessages()` to drain the dispatcher. **Machine-bound**: hard-asserts 3×1920×1080 monitors with virtual screen origin (−1920,0); interactive session only; excluded from headless CI by design.
+- **Unit & Simulation tests** (`tests/SSPen.Tests/`): pure logic and virtual-topology simulations — coordinate/DPI math, virtual multi-monitor/mixed-DPI topology simulations (`VirtualTopologySimulationTests`), hit-testing, undo ledger, fade scheduling (injected clock, `Due(now)`), Shift constraints, capture rect math, file naming (injected `exists`), settings round-trip against a per-test temp dir. Windows-only (WPF types) but headless-safe and 100% deterministic.
+- **Integration tests** (`tests/SSPen.IntegrationTests/`): real windows, real BitBlt pixel assertions, real `RegisterHotKey`, real exstyle read-back, multi-surface transfer. Every test body runs through `StaRunner.Run` (STA thread, 60 s hard timeout, exception rethrow via `ExceptionDispatchInfo`); use `StaRunner.PumpMessages()` to drain the dispatcher. Uses dynamic topology enumeration and seams (`MonitorTopology.SetProviderForTesting`) so tests succeed on any hardware configuration.
 - **Integration parallelism is disabled** (`AssemblyInfo.cs`, `DisableTestParallelization = true`). The suite contends over one shared resource — the physical screen — so a class that shows a fullscreen topmost surface will corrupt another class's BitBlt pixel assertions. That failure only appears in a full-suite run and passes per-class, so do not re-enable it.
-- **Mixed-DPI transfer is unverifiable on this rig** (all three monitors are 100%, so `r = 1` and an omitted DPI correction still passes every integration test). The only defense is the headless `RebaseState_*` witnesses, which must use `r ≠ 1`; a same-DPI assertion there proves nothing because the correct and naive formulas coincide when `r = 1`.
+- **Mixed-DPI simulation**: Mixed-DPI transfer and coordinate rebasing are thoroughly verified in headless `VirtualTopologySimulationTests` and `CoordinateSpaceTests` with `r ≠ 1`.
 - When adding features, put the logic in a pure, injectable core (matching the existing split) and unit-test it; reserve integration tests for genuine Win32/WPF runtime behavior.
 
 ## Agent Tool-Call Rules (learned the hard way)

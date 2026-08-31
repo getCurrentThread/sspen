@@ -14,8 +14,31 @@ public sealed record MonitorSurfaceInfo(string DeviceName, PhysicalRect Bounds, 
 /// </summary>
 public static class MonitorTopology
 {
+    private static readonly AsyncLocal<Func<IReadOnlyList<MonitorSurfaceInfo>>?> _enumeratorForTesting = new();
+    private static readonly AsyncLocal<Func<PhysicalRect>?> _virtualScreenForTesting = new();
+
+    /// <summary>테스트용 가상 모니터 토폴로지 주입 Seam (AsyncLocal 격리).</summary>
+    public static void SetProviderForTesting(
+        Func<IReadOnlyList<MonitorSurfaceInfo>>? enumerator,
+        Func<PhysicalRect>? virtualScreen = null)
+    {
+        _enumeratorForTesting.Value = enumerator;
+        _virtualScreenForTesting.Value = virtualScreen;
+    }
+
+    /// <summary>테스트용 가상 모니터 토폴로지 초기화.</summary>
+    public static void ResetProviderForTesting()
+    {
+        _enumeratorForTesting.Value = null;
+        _virtualScreenForTesting.Value = null;
+    }
+
     public static IReadOnlyList<MonitorSurfaceInfo> Enumerate()
     {
+        if (_enumeratorForTesting.Value is not null)
+        {
+            return _enumeratorForTesting.Value();
+        }
         var monitors = new List<MonitorSurfaceInfo>();
         NativeMethods.MonitorEnumProc callback = (nint hMonitor, nint _, ref NativeMethods.RECT _, nint _) =>
         {
@@ -47,9 +70,24 @@ public static class MonitorTopology
     }
 
     /// <summary>가상 스크린 전체 물리 사각형 (음수 원점 포함).</summary>
-    public static PhysicalRect VirtualScreen() => new(
-        NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN),
-        NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN),
-        NativeMethods.GetSystemMetrics(NativeMethods.SM_CXVIRTUALSCREEN),
-        NativeMethods.GetSystemMetrics(NativeMethods.SM_CYVIRTUALSCREEN));
+    public static PhysicalRect VirtualScreen()
+    {
+        if (_virtualScreenForTesting.Value is not null)
+        {
+            return _virtualScreenForTesting.Value();
+        }
+        if (_enumeratorForTesting.Value is not null)
+        {
+            var monitors = _enumeratorForTesting.Value();
+            if (monitors.Count > 0)
+            {
+                return CoordinateSpace.Union(monitors.Select(m => m.Bounds));
+            }
+        }
+        return new(
+            NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN),
+            NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN),
+            NativeMethods.GetSystemMetrics(NativeMethods.SM_CXVIRTUALSCREEN),
+            NativeMethods.GetSystemMetrics(NativeMethods.SM_CYVIRTUALSCREEN));
+    }
 }

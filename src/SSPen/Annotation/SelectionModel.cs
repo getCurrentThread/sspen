@@ -85,6 +85,8 @@ public sealed class SelectionModel
     /// </summary>
     public void AttachTo(AnnotationDocument document) => document.ElementRemoved += OnElementRemoved;
 
+    public void DetachFrom(AnnotationDocument document) => document.ElementRemoved -= OnElementRemoved;
+
     /// <summary>
     /// 소유권 이동 구간에서만 무효화를 억제한다 (LD-5). <b>적용 지점은 딱 둘</b>:
     /// P7 이관 절차와 P6 <c>TransformOperation.Undo</c>의 소유권 이동 분기.
