@@ -97,6 +97,25 @@ public static class Strings
     public const string SettingsPressKeys = "키 조합을 누르세요";
     public const string SettingsOk = "확인";
     public const string SettingsCancel = "취소";
+    public const string SettingsCheckUpdateNow = "지금 확인";
+    public const string SettingsCurrentVersion = "현재 버전";
+
+    // 업데이트
+    public const string UpdateTitle = "SS Pen 업데이트";
+    public const string UpdateAvailable = "새로운 버전이 있습니다.";
+    public const string UpdateCurrentVersionLabel = "현재 버전:";
+    public const string UpdateLatestVersionLabel = "최신 버전:";
+    public const string UpdateReleaseNotesLabel = "변경 내용:";
+    public const string UpdateNow = "지금 업데이트";
+    public const string UpdateLater = "나중에";
+    public const string UpdateOpenWebPage = "웹페이지 열기";
+    public const string UpdateDownloading = "업데이트 다운로드 중...";
+    public const string UpdateInstalling = "무음 설치 및 재시작 준비 중...";
+    public const string UpdateFailedTitle = "업데이트 오류";
+    public const string UpdateFailedMessage = "업데이트를 다운로드하거나 설치하지 못했습니다.\n웹페이지에서 직접 다운로드하시겠습니까?\n\n오류: ";
+    public const string UpdateLatestAlready = "현재 최신 버전을 사용 중입니다.";
+    public const string UpdateChecking = "업데이트를 확인하는 중...";
+    public const string TrayCheckUpdate = "업데이트 확인";
 
     // 진단/경고 (한국어 전용 제약)
     public const string HotkeyConflictWarning = "다음 단축키를 등록하지 못했습니다 (다른 앱과 충돌): ";

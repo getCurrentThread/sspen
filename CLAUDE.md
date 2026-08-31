@@ -46,7 +46,25 @@ powershell -ExecutionPolicy Bypass -File build/verify.ps1
 powershell -ExecutionPolicy Bypass -File build/publish.ps1
 ```
 
-CI (`.github/workflows/ci.yml`) runs on `windows-latest` for every push and PR: `dotnet restore` → `dotnet build -c Release` → unit/simulation tests → integration tests → self-contained publish validation → Inno Setup installer packaging.
+CI (`.github/workflows/ci.yml`) runs on `windows-latest` for every push and PR: `dotnet restore` → `dotnet build -c Release` → unit/simulation tests → integration tests → self-contained publish validation → Inno Setup installer packaging. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which publishes the self-contained build, the installer and a portable zip to a GitHub release.
+
+## Publish & installer gotchas
+
+`build/publish.ps1` is the only supported path: it publishes, then *proves* self-containment twice
+(publish-folder assertions plus a launch with `DOTNET_ROOT` masked to an empty dir), then compiles
+`installer/SSPen.iss`. `publish/` and `artifacts/` are gitignored, so a deploy produces nothing to commit.
+
+Two facts about the installer that are not visible from the `.iss` source alone:
+
+- **`AppId` reuse wins over `DefaultDirName`.** The AppId is shared with earlier installs that used a
+  different product name, so Inno upgrades in place at the *recorded* location. On a machine with such an
+  install, the app lands in `%LOCALAPPDATA%\Programs\SSAFY Pen\` even though the script says `SS Pen`.
+  Verify the real path from the `InstallLocation` value under `HKCU:\...\Uninstall\*`, not from the script.
+- **Uninstall deletes user data.** `[UninstallDelete]` removes `%APPDATA%\SS Pen` — settings *and* logs.
+  Uninstall/reinstall is therefore not a safe way to "clean up" an install.
+
+The installed `SSPen.exe` carries the source commit in its `ProductVersion` (`1.3.0+<sha>`); use that to
+confirm which build is actually installed.
 
 ## Conventions worth repeating from AGENTS.md
 

@@ -23,6 +23,9 @@ public interface ISettingsHost
 
     /// <summary>일반 설정 적용 + 저장 (확인 버튼).</summary>
     void ApplyGeneralSettings(AppSettings updated);
+
+    /// <summary>업데이트 확인 및 안내 대화상자 표시.</summary>
+    void CheckForUpdates();
 }
 
 /// <summary>
@@ -64,7 +67,7 @@ public sealed class SettingsWindow : Window
         Topmost = true;
 
         _runAtLogin = new CheckBox { Content = Strings.SettingsRunAtLogin, IsChecked = RunAtLogin.IsEnabled(), Margin = RowMargin };
-        _checkUpdate = new CheckBox { Content = Strings.SettingsCheckUpdate, IsChecked = s.CheckUpdateOnStart, Margin = RowMargin };
+        _checkUpdate = new CheckBox { Content = Strings.SettingsCheckUpdate, IsChecked = s.CheckUpdateOnStart, VerticalAlignment = VerticalAlignment.Center };
         _wheelSize = new CheckBox { Content = Strings.SettingsWheelSize, IsChecked = s.WheelAdjustsPenSize, Margin = RowMargin };
         // 도구별 색·굵기 개별/동기화 (사용자 조타: 기본 개별).
         _syncStyles = new CheckBox { Content = Strings.SettingsSyncToolStyles, IsChecked = s.SyncToolStyles, Margin = RowMargin };
@@ -88,6 +91,28 @@ public sealed class SettingsWindow : Window
         var folderRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = RowMargin };
         folderRow.Children.Add(_saveFolder);
         folderRow.Children.Add(browse);
+
+        var updateRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = RowMargin };
+        updateRow.Children.Add(_checkUpdate);
+        var checkNowBtn = new Button
+        {
+            Content = Strings.SettingsCheckUpdateNow,
+            Margin = new Thickness(10, 0, 0, 0),
+            Padding = new Thickness(6, 1, 6, 1),
+            FontSize = 11,
+        };
+        checkNowBtn.Click += (_, _) => _host.CheckForUpdates();
+        var curVer = Updates.UpdateService.CurrentVersion;
+        var versionLabel = new TextBlock
+        {
+            Text = $"(v{curVer})",
+            Foreground = Brushes.Gray,
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(6, 0, 0, 0),
+        };
+        updateRow.Children.Add(checkNowBtn);
+        updateRow.Children.Add(versionLabel);
 
         var monitors = Interop.MonitorTopology.Enumerate();
         var monitorSection = new StackPanel { Margin = new Thickness(0, 4, 0, 4) };
@@ -117,7 +142,7 @@ public sealed class SettingsWindow : Window
         var stack = new StackPanel { Margin = new Thickness(14) };
         stack.Children.Add(SectionHeader(Strings.SettingsGeneral));
         stack.Children.Add(_runAtLogin);
-        stack.Children.Add(_checkUpdate);
+        stack.Children.Add(updateRow);
         stack.Children.Add(_wheelSize);
         stack.Children.Add(_syncStyles);
         stack.Children.Add(_boardAll);

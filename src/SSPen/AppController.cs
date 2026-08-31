@@ -7,6 +7,7 @@ using SSPen.Interop;
 using SSPen.Pin;
 using SSPen.Settings;
 using SSPen.Shell;
+using SSPen.Updates;
 
 namespace SSPen;
 
@@ -29,6 +30,7 @@ public sealed class AppController : IShellActions, ISettingsHost
     private readonly List<ContentSurfaceWindow> _surfaces = [];
     private readonly SettingsBinder _settingsBinder;
     private readonly CaptureSessionController _capture;
+    private readonly UpdateService _updateService;
     private ShellHotkeys? _shellHotkeys;
     private ToolbarWindow? _toolbar;
     private HotkeyService? _hotkeys;
@@ -47,6 +49,7 @@ public sealed class AppController : IShellActions, ISettingsHost
         _selection.AttachTo(_state);
         _fading = new FadingInkController(_fadeCore);
         _settingsBinder = new SettingsBinder(_state, _fading);
+        _updateService = new UpdateService(_dispatcher, ExitApp);
         _capture = new CaptureSessionController(
             dispatcher: _dispatcher,
             toolbarVisible: () => _toolbarVisible && _toolbar?.Visibility == Visibility.Visible,
@@ -143,7 +146,7 @@ public sealed class AppController : IShellActions, ISettingsHost
         _hotkeys = new HotkeyService();
         _hotkeys.SetBindings(_shellHotkeys.BuildHotkeyMap());
 
-        _tray = new TrayIcon(_state, OpenSettings, ExitApp);
+        _tray = new TrayIcon(_state, OpenSettings, ExitApp, () => CheckForUpdates(isManual: true));
         _tray.WarnHotkeyConflicts(_hotkeys.FailedBindings);
         _hotkeys.RegistrationFailuresChanged += failed => _tray?.WarnHotkeyConflicts(failed);
 
@@ -168,6 +171,18 @@ public sealed class AppController : IShellActions, ISettingsHost
         _state.Changed += UpdateRenderTickSubscription;
         UpdateRenderTickSubscription();
         ApplyZBand();
+
+        if (_settingsBinder.Settings.CheckUpdateOnStart)
+        {
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                CheckForUpdates(isManual: false);
+            };
+            timer.Start();
+        }
+
         Log.Info("셸 준비 완료 (서피스 " + _surfaces.Count + "개)");
     }
 
@@ -209,6 +224,44 @@ public sealed class AppController : IShellActions, ISettingsHost
     public void SuppressHotkeys() => _hotkeys?.Suppress();
 
     public void RestoreHotkeys() => _hotkeys?.Restore();
+
+    public void CheckForUpdates() => CheckForUpdates(isManual: true);
+
+    private void CheckForUpdates(bool isManual)
+    {
+        _updateService.CheckForUpdates(result =>
+        {
+            if (result.Success && result.HasUpdate && result.ReleaseInfo is not null)
+            {
+                var dialog = new UpdateDialog(result.ReleaseInfo, _updateService);
+                dialog.Show();
+                dialog.Activate();
+            }
+            else if (!result.Success)
+            {
+                if (isManual)
+                {
+                    MessageBox.Show(
+                        result.ErrorMessage ?? Strings.UpdateFailedTitle,
+                        Strings.AppName,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+                else
+                {
+                    Log.Warn($"자동 업데이트 확인 실패: {result.ErrorMessage}");
+                }
+            }
+            else if (isManual)
+            {
+                MessageBox.Show(
+                    Strings.UpdateLatestAlready,
+                    Strings.AppName,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+        });
+    }
 
     public void ApplyGeneralSettings(AppSettings updated)
     {

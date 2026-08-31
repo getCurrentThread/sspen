@@ -15,12 +15,15 @@ public sealed class TrayIcon : IDisposable
     private readonly AppState _state;
     private readonly ToolStripMenuItem _toggleItem;
 
-    public TrayIcon(AppState state, Action openSettings, Action exitApp)
+    public TrayIcon(AppState state, Action openSettings, Action exitApp, Action checkUpdate)
     {
         _state = state;
 
         _toggleItem = new ToolStripMenuItem();
         _toggleItem.Click += (_, _) => _state.SurfacesVisible = !_state.SurfacesVisible;
+
+        var checkUpdateItem = new ToolStripMenuItem(Strings.TrayCheckUpdate);
+        checkUpdateItem.Click += (_, _) => checkUpdate();
 
         var settingsItem = new ToolStripMenuItem(Strings.TraySettings);
         settingsItem.Click += (_, _) => openSettings();
@@ -31,6 +34,7 @@ public sealed class TrayIcon : IDisposable
         var menu = new ContextMenuStrip();
         menu.Items.Add(_toggleItem);
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(checkUpdateItem);
         menu.Items.Add(settingsItem);
         menu.Items.Add(exitItem);
         menu.Opening += (_, _) => RefreshToggleText();
