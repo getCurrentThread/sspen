@@ -74,6 +74,7 @@ public sealed class ToolbarWindow : Window
             // 원형 유지: 분할 전 RefreshActiveStates는 보드 플라이아웃 강조도 함께 갱신했다
             // (핫키 Alt+Shift+W/B로 보드가 바뀔 때 열려 있는 플라이아웃 강조 동기화).
             _flyouts.HighlightBoardSelection();
+            _flyouts.HighlightThicknessSelection();
         });
         // 캡처 세션 등으로 툴바가 숨겨지면 Popup은 자체 HWND라 함께 사라지지 않으므로 직접 닫는다
         // (아키텍트 자문: 캡처 결과물/오버레이 위 플라이아웃 잔류 방지).

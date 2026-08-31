@@ -250,6 +250,13 @@ public static class ToolbarStripBuilder
             button.MouseEnter += (_, _) => button.Background = ToolbarTheme.ButtonHoverBrush;
             button.MouseLeave += (_, _) => button.Background = Brushes.Transparent;
             button.MouseLeftButtonUp += (_, _) => flyouts.ToggleThicknessFlyout();
+            button.MouseWheel += (_, e) =>
+            {
+                int direction = e.Delta > 0 ? 1 : -1;
+                state.StepThickness(direction);
+                flyouts.HighlightThicknessSelection();
+                e.Handled = true;
+            };
             parts!.PreviewDot = previewDot;
             parts.UpdatePreviewDot(state);
             return button;
@@ -372,6 +379,13 @@ public static class ToolbarStripBuilder
             ToolbarButtonId.Fading, Strings.HotkeyFadingInk, Icons.Timer,
             onToggleFading,
             hasFlyout: true, hotkeyId: "fading");
+        fadingButton.MouseWheel += (_, e) =>
+        {
+            double nextSec = FadingDurations.StepByWheel(actions.FadingSeconds, e.Delta);
+            actions.SetFadingDuration(nextSec);
+            flyouts.HighlightFadingSelection();
+            e.Handled = true;
+        };
         flyouts.FadingFlyout.PlacementTarget = fadingButton;
         flyouts.HoverOpen(fadingButton, flyouts.FadingFlyout);
         menu.Children.Add(fadingButton);

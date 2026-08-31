@@ -203,15 +203,26 @@ public sealed class ToolbarFlyouts
         panel.Children.Add(ThicknessItem(14, ThicknessStep.Medium));
         panel.Children.Add(ThicknessItem(18, ThicknessStep.Large));
         panel.Children.Add(ThicknessItem(22, ThicknessStep.XLarge));
-        ThicknessFlyout.Child = FlyoutBorder(panel);
-        // 열 때마다 활성 그룹의 현재 단계 강조.
-        ThicknessFlyout.Opened += (_, _) =>
+        var border = FlyoutBorder(panel);
+        border.MouseWheel += (_, e) =>
         {
-            foreach (var (dot, step) in _thicknessItems)
-            {
-                dot.Fill = step == _state.Thickness ? ToolbarTheme.AccentBrush : ToolbarTheme.IconBrush;
-            }
+            int direction = e.Delta > 0 ? 1 : -1;
+            _state.StepThickness(direction);
+            HighlightThicknessSelection();
+            e.Handled = true;
         };
+        ThicknessFlyout.Child = border;
+        // 열 때마다 활성 그룹의 현재 단계 강조.
+        ThicknessFlyout.Opened += (_, _) => HighlightThicknessSelection();
+    }
+
+    /// <summary>굵기 플라이아웃의 현재 단계 강조 갱신.</summary>
+    public void HighlightThicknessSelection()
+    {
+        foreach (var (dot, step) in _thicknessItems)
+        {
+            dot.Fill = step == _state.Thickness ? ToolbarTheme.AccentBrush : ToolbarTheme.IconBrush;
+        }
     }
 
     private Border ThicknessItem(double diameter, ThicknessStep step)
@@ -248,7 +259,15 @@ public sealed class ToolbarFlyouts
         {
             panel.Children.Add(FadingItem(seconds));
         }
-        FadingFlyout.Child = FlyoutBorder(panel);
+        var border = FlyoutBorder(panel);
+        border.MouseWheel += (_, e) =>
+        {
+            double nextSec = FadingDurations.StepByWheel(_actions.FadingSeconds, e.Delta);
+            _actions.SetFadingDuration(nextSec);
+            HighlightFadingSelection();
+            e.Handled = true;
+        };
+        FadingFlyout.Child = border;
         // 열 때마다 현재 지속 시간 강조 (로테이션 시에도 재사용).
         FadingFlyout.Opened += (_, _) => HighlightFadingSelection();
     }

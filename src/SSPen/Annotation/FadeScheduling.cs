@@ -88,6 +88,19 @@ public static class FadingDurations
     public static double Next(double current) =>
         Steps[(NearestIndex(current) + 1) % Steps.Length];
 
+    /// <summary>휠 스크롤에 따른 지속 시간 사다리 이동 (delta > 0 길게/위쪽, delta < 0 짧게/아래쪽).</summary>
+    public static double StepByWheel(double current, int delta)
+    {
+        if (delta == 0)
+        {
+            return current;
+        }
+        int idx = NearestIndex(current);
+        int step = delta > 0 ? 1 : -1;
+        int next = Math.Clamp(idx + step, 0, Steps.Length - 1);
+        return Steps[next];
+    }
+
     /// <summary>두 지속 시간이 같은 칸인가 (부동소수점 오차 허용).</summary>
     public static bool Same(double a, double b) => Math.Abs(a - b) < 0.001;
 }

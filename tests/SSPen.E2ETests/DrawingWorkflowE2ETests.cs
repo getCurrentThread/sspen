@@ -99,4 +99,25 @@ public class DrawingWorkflowE2ETests
         actor.Pump();
         Assert.Equal(ToolKind.Highlighter, actor.State.ActiveTool);
     });
+
+    [Fact]
+    public void Toolbar_ScrollWheel_AdjustsThicknessAndFadingIndependently() => E2EAppFixture.Run(actor =>
+    {
+        actor.SelectTool(ToolKind.Pen);
+        actor.State.Thickness = ThicknessStep.Medium;
+        Assert.Equal(ThicknessStep.Medium, actor.State.Thickness);
+
+        // 1. 굵기 휠 조작 (위로 = 굵게, 아래로 = 얇게)
+        actor.State.StepThickness(1);
+        Assert.Equal(ThicknessStep.Large, actor.State.Thickness);
+        actor.State.StepThickness(-1);
+        Assert.Equal(ThicknessStep.Medium, actor.State.Thickness);
+
+        // 2. 페이딩 잉크 지속 시간 휠 조작 (독립적)
+        double currentFading = actor.App.FadingSeconds;
+        double nextFading = FadingDurations.StepByWheel(currentFading, 120);
+        actor.App.SetFadingDuration(nextFading);
+        Assert.True(nextFading > currentFading);
+        Assert.Equal(nextFading, actor.App.FadingSeconds);
+    });
 }
