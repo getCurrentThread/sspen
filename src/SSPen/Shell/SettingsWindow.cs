@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using SSPen.Annotation;
+using SSPen.Interop;
 using SSPen.Settings;
 
 namespace SSPen.Shell;
@@ -60,6 +61,7 @@ public sealed class SettingsWindow : Window
         Height = 560;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        Topmost = true;
 
         _runAtLogin = new CheckBox { Content = Strings.SettingsRunAtLogin, IsChecked = RunAtLogin.IsEnabled(), Margin = RowMargin };
         _checkUpdate = new CheckBox { Content = Strings.SettingsCheckUpdate, IsChecked = s.CheckUpdateOnStart, Margin = RowMargin };
@@ -159,6 +161,14 @@ public sealed class SettingsWindow : Window
         Content = root;
     }
 
+    public nint Hwnd { get; private set; }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        Hwnd = WindowStyling.GetHwnd(this);
+    }
+
     /// <summary>설정의 바로가기 색상을 읽어 6칸 배열로 만든다 (모자라거나 깨진 칸은 기본색).</summary>
     private static Color[] ReadQuickColors(AppSettings s)
     {
@@ -232,6 +242,7 @@ public sealed class SettingsWindow : Window
         {
             Title = Strings.SettingsQuickColors,
             Owner = this,
+            Topmost = true,
             SizeToContent = SizeToContent.WidthAndHeight,
             ResizeMode = ResizeMode.NoResize,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -291,7 +302,7 @@ public sealed class SettingsWindow : Window
             _host.SuppressHotkeys();
             try
             {
-                var dialog = new HotkeyCaptureDialog(effective) { Owner = this };
+                var dialog = new HotkeyCaptureDialog(effective) { Owner = this, Topmost = true };
                 if (dialog.ShowDialog() == true && dialog.Captured is { } captured)
                 {
                     _host.RemapHotkey(id, captured);

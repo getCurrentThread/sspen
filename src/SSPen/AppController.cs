@@ -417,6 +417,7 @@ public sealed class AppController : IShellActions, ISettingsHost
         if (_settingsWindow is not null)
         {
             _settingsWindow.Activate();
+            ApplyZBand();
             return;
         }
         _settingsWindow = new SettingsWindow(this);
@@ -424,9 +425,11 @@ public sealed class AppController : IShellActions, ISettingsHost
         {
             _settingsWindow = null;
             _selectionKeys?.Refresh();
+            ApplyZBand();
         };
         _settingsWindow.Show();
         _settingsWindow.Activate();
+        ApplyZBand();
         // D7: 설정 창은 자기 ESC 의미론(취소 버튼·폴더 선택 대화상자)을 갖는다 — 훅을 즉시 내린다.
         _selectionKeys?.Refresh();
     }
@@ -442,11 +445,15 @@ public sealed class AppController : IShellActions, ISettingsHost
         ApplyZBand();
     }
 
-    // ---- z-밴드 (ARCH-5/R10): 캡처 오버레이+액션바 > 툴바 > 서피스 > 핀 > 기타 앱 ----
+    // ---- z-밴드 (ARCH-5/R10): 설정창 > 캡처 오버레이+액션바 > 툴바 > 서피스 > 핀 > 기타 앱 ----
 
     private void ApplyZBand()
     {
         var order = new List<nint>();
+        if (_settingsWindow is not null && _settingsWindow.Hwnd != 0)
+        {
+            order.Add(_settingsWindow.Hwnd);
+        }
         if (_capture.OverlayHwnd != 0)
         {
             order.Add(_capture.OverlayHwnd);

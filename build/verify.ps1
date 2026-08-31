@@ -26,6 +26,9 @@ function Write-Warn([string]$msg) {
     Write-Host "[WARNING] $msg" -ForegroundColor Yellow
 }
 
+# 0. Clean running instances
+Get-Process SSPen -ErrorAction SilentlyContinue | Stop-Process -Force
+
 # 1. Solution Build
 Write-Step '1) Solution Build (Release, net10.0-windows)'
 dotnet build $sln -c Release

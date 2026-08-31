@@ -24,6 +24,7 @@ public sealed class HotkeyCaptureDialog : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
         WindowStyle = WindowStyle.ToolWindow;
+        Topmost = true;
 
         _comboText = new TextBlock
         {

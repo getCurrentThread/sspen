@@ -34,6 +34,7 @@ public class SettingsAndPersistenceE2ETests
         actor.OpenSettings();
         Assert.NotNull(actor.App.CurrentSettingsWindow);
         Assert.True(actor.App.CurrentSettingsWindow.IsVisible);
+        Assert.True(actor.App.CurrentSettingsWindow.Topmost);
 
         // 창 닫기
         actor.App.CurrentSettingsWindow.Close();
