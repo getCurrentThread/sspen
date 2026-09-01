@@ -70,6 +70,13 @@ public sealed class AppController : IShellActions, ISettingsHost
                 {
                     surface.SetDecorationsVisible(visible);
                 }
+            },
+            setSurfacesSuspended: suspended =>
+            {
+                foreach (var surface in _surfaces)
+                {
+                    surface.SetSuspended(suspended);
+                }
             });
     }
 
@@ -220,9 +227,9 @@ public sealed class AppController : IShellActions, ISettingsHost
         _toolbar?.Close();
     }
 
-    private void ExitApp()
+    public void ExitApp()
     {
-        Log.Info("종료 요청 (트레이)");
+        Log.Info("종료 요청 (트레이/설정)");
         Application.Current.Shutdown();
     }
 

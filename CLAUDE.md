@@ -44,11 +44,19 @@ powershell -ExecutionPolicy Bypass -File build/verify.ps1
 
 # publish (self-contained win-x64) + verify + Inno Setup installer
 powershell -ExecutionPolicy Bypass -File build/publish.ps1
+
+# publish and silent install on local PC
+powershell -ExecutionPolicy Bypass -File build/publish.ps1
+$installer = Get-ChildItem publish/installer/SSPen-Setup-*.exe | Select-Object -Last 1
+Start-Process -FilePath $installer.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
 ```
 
 CI (`.github/workflows/ci.yml`) runs on `windows-latest` for every push and PR: `dotnet restore` → `dotnet build -c Release` → unit/simulation tests → integration tests → self-contained publish validation → Inno Setup installer packaging. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which publishes the self-contained build, the installer and a portable zip to a GitHub release.
 
 ## Publish & installer gotchas
+
+**규칙**: 배포(혹은 빌드/패키징)를 수행하고 난 뒤에는 항상 현재 컴퓨터에 무음(silent) 모드로 설치를 완료해야 한다.
+`publish/installer/SSPen-Setup-*.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART` 명령을 사용하여 설치를 진행한다.
 
 `build/publish.ps1` is the only supported path: it publishes, then *proves* self-containment twice
 (publish-folder assertions plus a launch with `DOTNET_ROOT` masked to an empty dir), then compiles

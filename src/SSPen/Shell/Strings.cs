@@ -97,7 +97,10 @@ public static class Strings
     public const string SettingsPressKeys = "키 조합을 누르세요";
     public const string SettingsOk = "확인";
     public const string SettingsCancel = "취소";
+    public const string SettingsExitApp = "프로그램 종료";
+    public const string ExitConfirmMessage = "SS Pen을 종료하시겠습니까?";
     public const string SettingsCheckUpdateNow = "지금 확인";
+    public const string SettingsCheckUpdateBtn = "업데이트 확인";
     public const string SettingsCurrentVersion = "현재 버전";
 
     // 업데이트

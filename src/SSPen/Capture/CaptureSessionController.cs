@@ -22,6 +22,7 @@ public sealed class CaptureSessionController
     private readonly Func<string?> _saveFolder;
     private readonly Action _applyZBand;
     private readonly Action<bool> _setDecorationsVisible;
+    private readonly Action<bool> _setSurfacesSuspended;
 
     private CaptureOverlayWindow? _captureOverlay;
     private bool _captureSessionActive;
@@ -35,7 +36,8 @@ public sealed class CaptureSessionController
         Action<string> warn,
         Func<string?> saveFolder,
         Action applyZBand,
-        Action<bool> setDecorationsVisible)
+        Action<bool> setDecorationsVisible,
+        Action<bool> setSurfacesSuspended)
     {
         _dispatcher = dispatcher;
         _toolbarVisible = toolbarVisible;
@@ -45,6 +47,7 @@ public sealed class CaptureSessionController
         _saveFolder = saveFolder;
         _applyZBand = applyZBand;
         _setDecorationsVisible = setDecorationsVisible;
+        _setSurfacesSuspended = setSurfacesSuspended;
     }
 
     /// <summary>캡처 세션 진행 중 여부 (툴바 토글 가드 등에서 참조).</summary>
@@ -77,12 +80,13 @@ public sealed class CaptureSessionController
         }
         _captureSessionActive = true;
         ActiveChanged?.Invoke();
-        Log.Info("캡처 세션 시작: 툴바·장식 숨김 → 렌더 패스 대기 → 합성 플러시 → BitBlt");
+        Log.Info("캡처 세션 시작: 툴바·장식 숨김 → 서피스 입력 중단 → 렌더 패스 대기 → 합성 플러시 → BitBlt");
         _toolbarRestoreAfterCapture = _toolbarVisible();
         _setToolbarVisible(false);
         // SEL-17: 장식은 잉크가 아니라 UI다 — 결과물에 들어가면 안 된다.
         // 서피스 창 자체를 숨기면 잉크까지 사라져 as-seen 인텐트가 깨지므로 장식 레이어만 숨긴다.
         _setDecorationsVisible(false);
+        _setSurfacesSuspended(true);
 
         // 숨김이 다음 합성에 반영된 뒤 BitBlt (ARCH-4: DWM 경합 제거).
         _dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () =>
@@ -195,7 +199,8 @@ public sealed class CaptureSessionController
         // R12: 예외 경로를 포함해 **무조건** 복원한다 — 장식이 안 돌아오면 선택은 살아있는데
         // 핸들이 안 보여 조작할 수 없는 상태가 된다.
         _setDecorationsVisible(true);
-        Log.Info("캡처 세션 정리: 선택 장식 복원");
+        _setSurfacesSuspended(false);
+        Log.Info("캡처 세션 정리: 선택 장식 및 서피스 입력 복원");
         _applyZBand();
         ActiveChanged?.Invoke();
     }

@@ -212,6 +212,31 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         _input.CancelActiveInput();
     }
 
+    private bool _suspended;
+
+    /// <summary>캡처 세션 등에서 서피스 입력을 일시 중단/복원한다.</summary>
+    public void SetSuspended(bool suspended)
+    {
+        if (_closed || Hwnd == 0)
+        {
+            return;
+        }
+        _suspended = suspended;
+        if (suspended)
+        {
+            _input.CancelActiveInput();
+            WindowStyling.SetClickThrough(Hwnd, true);
+            _root.Background = null;
+            _root.IsHitTestVisible = false;
+            Cursor = Cursors.Arrow;
+        }
+        else
+        {
+            _root.IsHitTestVisible = true;
+            ApplyState();
+        }
+    }
+
     /// <summary>상태 변화 재적용: 표시, 클릭 통과, 히트테스트 배경, 보드, 커서.</summary>
     public void ApplyState()
     {
@@ -220,11 +245,22 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             return;
         }
 
+        if (_suspended)
+        {
+            Visibility = _state.SurfacesVisible ? Visibility.Visible : Visibility.Hidden;
+            WindowStyling.SetClickThrough(Hwnd, true);
+            _root.Background = null;
+            _root.IsHitTestVisible = false;
+            Cursor = Cursors.Arrow;
+            return;
+        }
+
         Visibility = _state.SurfacesVisible ? Visibility.Visible : Visibility.Hidden;
 
         bool interactive = _state.IsInteractive;
         WindowStyling.SetClickThrough(Hwnd, !interactive);
         _root.Background = interactive ? HitTestBrush : null;
+        _root.IsHitTestVisible = interactive;
         Cursor = interactive ? CursorFor(_state.ActiveTool) : Cursors.Arrow;
 
         if (!_state.HaloActive)
@@ -529,6 +565,10 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
+        if (_suspended)
+        {
+            return;
+        }
         StylusProbe.Observe("마우스다운(승격)", e.StylusDevice);
         UpdateStylusCursor(e.StylusDevice);
         _input.OnMouseLeftButtonDown(e);
@@ -537,6 +577,10 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+        if (_suspended)
+        {
+            return;
+        }
         StylusProbe.Observe("마우스이동(승격)", e.StylusDevice);
         UpdateStylusCursor(e.StylusDevice);
         _input.OnMouseMove(e);
@@ -547,6 +591,10 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     protected override void OnStylusDown(StylusDownEventArgs e)
     {
         base.OnStylusDown(e);
+        if (_suspended)
+        {
+            return;
+        }
         StylusProbe.Observe("스타일러스다운", e.StylusDevice, e.Inverted);
         UpdateStylusCursor(e.StylusDevice);
     }
@@ -554,6 +602,10 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     protected override void OnStylusInAirMove(StylusEventArgs e)
     {
         base.OnStylusInAirMove(e);
+        if (_suspended)
+        {
+            return;
+        }
         StylusProbe.Observe("스타일러스공중이동", e.StylusDevice);
         UpdateStylusCursor(e.StylusDevice);
     }
@@ -572,7 +624,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
 
     private void UpdateStylusCursor(StylusDevice? device)
     {
-        if (_closed || Hwnd == 0 || !_state.IsInteractive)
+        if (_closed || Hwnd == 0 || !_state.IsInteractive || _suspended)
         {
             return;
         }
@@ -582,7 +634,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
 
     private void ResetCursor()
     {
-        if (_closed || Hwnd == 0)
+        if (_closed || Hwnd == 0 || _suspended)
         {
             return;
         }
@@ -593,18 +645,30 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonUp(e);
+        if (_suspended)
+        {
+            return;
+        }
         _input.OnMouseLeftButtonUp(e);
     }
 
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
         base.OnMouseWheel(e);
+        if (_suspended)
+        {
+            return;
+        }
         _input.OnMouseWheel(e);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (_suspended)
+        {
+            return;
+        }
         _input.OnKeyDown(e);
     }
 

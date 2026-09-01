@@ -26,6 +26,9 @@ public interface ISettingsHost
 
     /// <summary>업데이트 확인 및 안내 대화상자 표시.</summary>
     void CheckForUpdates();
+
+    /// <summary>프로그램 종료.</summary>
+    void ExitApp();
 }
 
 /// <summary>
@@ -162,22 +165,63 @@ public sealed class SettingsWindow : Window
             stack.Children.Add(HotkeyRow(id, name, effective));
         }
 
-        var okButton = new Button { Content = Strings.SettingsOk, Width = 90, Margin = new Thickness(4), IsDefault = true };
+        var exitButton = new Button
+        {
+            Content = Strings.SettingsExitApp,
+            Width = 100,
+            Margin = new Thickness(4),
+        };
+        exitButton.Click += (_, _) =>
+        {
+            var res = MessageBox.Show(
+                this,
+                Strings.ExitConfirmMessage,
+                Strings.AppName,
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (res == MessageBoxResult.Yes)
+            {
+                Close();
+                _host.ExitApp();
+            }
+        };
+
+        var checkUpdateBottomBtn = new Button
+        {
+            Content = Strings.SettingsCheckUpdateBtn,
+            Width = 100,
+            Margin = new Thickness(4),
+        };
+        checkUpdateBottomBtn.Click += (_, _) => _host.CheckForUpdates();
+
+        var okButton = new Button { Content = Strings.SettingsOk, Width = 80, Margin = new Thickness(4), IsDefault = true };
         okButton.Click += (_, _) => { Apply(); Close(); };
-        var cancelButton = new Button { Content = Strings.SettingsCancel, Width = 90, Margin = new Thickness(4), IsCancel = true };
+        var cancelButton = new Button { Content = Strings.SettingsCancel, Width = 80, Margin = new Thickness(4), IsCancel = true };
         cancelButton.Click += (_, _) => Close();
-        var buttons = new StackPanel
+
+        var leftButtons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        leftButtons.Children.Add(exitButton);
+
+        var rightButtons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(10),
         };
-        buttons.Children.Add(okButton);
-        buttons.Children.Add(cancelButton);
+        rightButtons.Children.Add(checkUpdateBottomBtn);
+        rightButtons.Children.Add(okButton);
+        rightButtons.Children.Add(cancelButton);
+
+        var bottomGrid = new Grid { Margin = new Thickness(10) };
+        bottomGrid.Children.Add(leftButtons);
+        bottomGrid.Children.Add(rightButtons);
 
         var root = new DockPanel();
-        DockPanel.SetDock(buttons, Dock.Bottom);
-        root.Children.Add(buttons);
+        DockPanel.SetDock(bottomGrid, Dock.Bottom);
+        root.Children.Add(bottomGrid);
         root.Children.Add(new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
