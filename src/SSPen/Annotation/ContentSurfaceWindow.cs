@@ -180,20 +180,42 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             $"서피스 {_monitor.DeviceName}: 기대 {_monitor.WorkArea} / 실제 ({actual.Left},{actual.Top},{actual.Right - actual.Left},{actual.Bottom - actual.Top})");
     }
 
+    private bool _closed;
+
     protected override void OnClosed(EventArgs e)
     {
+        Detach();
         if (_zHook is not null && Hwnd != 0)
         {
             System.Windows.Interop.HwndSource.FromHwnd(Hwnd)?.RemoveHook(_zHook);
             _zHook = null;
         }
+        Hwnd = 0;
         base.OnClosed(e);
+    }
+
+    /// <summary>
+    /// 창 닫힘/비활성화 시 이벤트 구독 해제 및 활성 입력 정리.
+    /// </summary>
+    public void Detach()
+    {
+        if (_closed)
+        {
+            return;
+        }
+        _closed = true;
+        _state.Changed -= OnStateChanged;
+        _selection.SelectionChanged -= OnSelectionChanged;
+        Document.ElementAdded -= OnElementAdded;
+        Document.ElementRemoved -= OnElementRemoved;
+        Document.ElementTransformChanged -= OnElementTransformChanged;
+        _input.CancelActiveInput();
     }
 
     /// <summary>상태 변화 재적용: 표시, 클릭 통과, 히트테스트 배경, 보드, 커서.</summary>
     public void ApplyState()
     {
-        if (Hwnd == 0)
+        if (_closed || Hwnd == 0)
         {
             return;
         }
@@ -379,6 +401,11 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     /// </summary>
     public void RedrawDecorations()
     {
+        if (_closed || Hwnd == 0)
+        {
+            return;
+        }
+
         _decorationLayer.Children.Clear();
 
         if (_marquee is { } marquee)

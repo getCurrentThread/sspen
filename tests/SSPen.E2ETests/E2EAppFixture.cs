@@ -39,8 +39,10 @@ public static class E2EAppFixture
                     return bmp;
                 });
 
-                // 3. AppController 기동 (실제 컴포지션 루트 실행)
-                var app = new AppController();
+                // 3. AppController 기동 (실제 컴포지션 루트 실행 - 테스트 격리 설정 주입)
+                string tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SSPenE2E_" + Guid.NewGuid().ToString("N"));
+                var settingsService = new Settings.SettingsService(tempDir);
+                var app = new AppController(settingsService);
                 app.Start();
                 PumpMessages();
 
@@ -57,6 +59,18 @@ public static class E2EAppFixture
                 app.Toolbar?.Close();
                 app.CurrentSettingsWindow?.Close();
                 PumpMessages();
+
+                try
+                {
+                    if (System.IO.Directory.Exists(tempDir))
+                    {
+                        System.IO.Directory.Delete(tempDir, recursive: true);
+                    }
+                }
+                catch
+                {
+                    // 임시 디렉터리 정리 실패는 무시
+                }
             }
             catch (Exception ex)
             {

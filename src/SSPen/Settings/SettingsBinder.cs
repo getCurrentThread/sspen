@@ -11,16 +11,17 @@ namespace SSPen.Settings;
 public sealed class SettingsBinder
 {
     private readonly AppState _state;
-    private readonly SettingsService _settingsService = new();
+    private readonly SettingsService _settingsService;
     private readonly FadingInkController _fading;
     private AppSettings _settings = new();
     private DispatcherTimer? _saveDebounce;
     private bool _applyingSettings;
 
-    public SettingsBinder(AppState state, FadingInkController fading)
+    public SettingsBinder(AppState state, FadingInkController fading, SettingsService? settingsService = null)
     {
         _state = state;
         _fading = fading;
+        _settingsService = settingsService ?? new SettingsService();
     }
 
     public AppSettings Settings => _settings;

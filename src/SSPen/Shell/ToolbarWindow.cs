@@ -25,6 +25,8 @@ public sealed class ToolbarWindow : Window
     private readonly ToolbarParts _parts;
     private bool _menuCollapsed;
 
+    private readonly Action _onStateChanged;
+
     // z-방어 훅. 필드로 붙잡지 않으면 GC가 거두어 방어가 조용히 사라진다.
     private System.Windows.Interop.HwndSourceHook? _topmostHook;
 
@@ -68,7 +70,7 @@ public sealed class ToolbarWindow : Window
             e.Handled = true;
         };
 
-        _state.Changed += () => Dispatcher.Invoke(() =>
+        _onStateChanged = () => Dispatcher.Invoke(() =>
         {
             _parts.RefreshActiveStates(_state);
             // 원형 유지: 분할 전 RefreshActiveStates는 보드 플라이아웃 강조도 함께 갱신했다
@@ -76,6 +78,7 @@ public sealed class ToolbarWindow : Window
             _flyouts.HighlightBoardSelection();
             _flyouts.HighlightThicknessSelection();
         });
+        _state.Changed += _onStateChanged;
         // 캡처 세션 등으로 툴바가 숨겨지면 Popup은 자체 HWND라 함께 사라지지 않으므로 직접 닫는다
         // (아키텍트 자문: 캡처 결과물/오버레이 위 플라이아웃 잔류 방지).
         _flyouts.RegisterTooltip(logo.Tooltip);
@@ -102,6 +105,18 @@ public sealed class ToolbarWindow : Window
         // 버튼이 전부 죽는다. 서피스 쪽 AnchorBelow 훅은 이 방향을 잡지 못하므로 툴바도 자기 방어를 갖는다.
         _topmostHook = WindowStyling.KeepTopmost(Hwnd);
         _parts.RefreshActiveStates(_state);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _state.Changed -= _onStateChanged;
+        if (_topmostHook is not null && Hwnd != 0)
+        {
+            System.Windows.Interop.HwndSource.FromHwnd(Hwnd)?.RemoveHook(_topmostHook);
+            _topmostHook = null;
+        }
+        Hwnd = 0;
+        base.OnClosed(e);
     }
 
     /// <summary>눈 버튼: 메뉴 접기/펼치기 토글 (Epic Pen 동작 — 사용자 조타).</summary>

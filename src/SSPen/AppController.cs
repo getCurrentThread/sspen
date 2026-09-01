@@ -41,14 +41,14 @@ public sealed class AppController : IShellActions, ISettingsHost
     private PinManager? _pins;
     private bool _renderTickAttached;
 
-    public AppController()
+    public AppController(SettingsService? settingsService = null)
     {
         // LD-2: 원장은 문서를 잡지 않고 undo 시점에 현재 소유자를 조회한다 — 이관을 몇 번 거치든 안전하다.
         // 비용은 undo 1회마다 전 서피스 O(n) 선형 주사다 (R20, 현 규모에서 수용).
         _ledger = new UndoLedger(OwnerOf, _selection);
         _selection.AttachTo(_state);
         _fading = new FadingInkController(_fadeCore);
-        _settingsBinder = new SettingsBinder(_state, _fading);
+        _settingsBinder = new SettingsBinder(_state, _fading, settingsService);
         _updateService = new UpdateService(_dispatcher, ExitApp);
         _capture = new CaptureSessionController(
             dispatcher: _dispatcher,
@@ -193,11 +193,31 @@ public sealed class AppController : IShellActions, ISettingsHost
             System.Windows.Media.CompositionTarget.Rendering -= OnRenderTick;
             _renderTickAttached = false;
         }
+        _state.Changed -= ApplyZBand;
+        _state.Changed -= _settingsBinder.SyncFromState;
+        _state.Changed -= UpdateRenderTickSubscription;
+        if (_selectionKeys is not null)
+        {
+            _state.Changed -= _selectionKeys.Refresh;
+            _selection.SelectionChanged -= _selectionKeys.Refresh;
+            _capture.ActiveChanged -= _selectionKeys.Refresh;
+            if (_tray is not null)
+            {
+                _tray.MenuOpenChanged -= _selectionKeys.Refresh;
+            }
+        }
         _settingsBinder.SaveNow();
         _tray?.Dispose();
         _pins?.Dispose();
         _hotkeys?.Dispose();
         _selectionKeys?.Dispose();
+        foreach (var surface in _surfaces)
+        {
+            surface.Detach();
+            surface.Close();
+        }
+        _surfaces.Clear();
+        _toolbar?.Close();
     }
 
     private void ExitApp()
@@ -285,6 +305,7 @@ public sealed class AppController : IShellActions, ISettingsHost
             {
                 _selection.DetachFrom(surface.Document);
                 _surfaces.RemoveAt(i);
+                surface.Detach();
                 Shell.WindowLifetime.HideThenClose(surface);
                 Log.Info($"모니터 서피스 비활성화 및 닫기: {surface.Monitor.DeviceName}");
             }

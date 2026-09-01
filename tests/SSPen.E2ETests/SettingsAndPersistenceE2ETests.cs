@@ -60,6 +60,11 @@ public class SettingsAndPersistenceE2ETests
         Assert.Equal(2, actor.App.Surfaces.Count);
         Assert.DoesNotContain(actor.App.Surfaces, s => s.Monitor.DeviceName == @"\\.\DISPLAY2");
 
+        // 닫힌 서피스가 있는 상태에서 도구 변경 및 상태 변경이 예외(InvalidOperationException) 없이 동작하는지 확인
+        actor.SelectTool(SSPen.Annotation.ToolKind.Pen);
+        actor.SelectTool(SSPen.Annotation.ToolKind.Highlighter);
+        actor.Pump();
+
         // 2. 다시 모든 모니터 활성화 설정 적용
         var reenabled = new AppSettings
         {
