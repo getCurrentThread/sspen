@@ -106,6 +106,7 @@ public class SurfaceInputRouterTests
             ToolKind.Arrow => SurfaceGesture.StartArrow,
             ToolKind.Rectangle => SurfaceGesture.StartRectangle,
             ToolKind.Ellipse => SurfaceGesture.StartEllipse,
+            ToolKind.Table => SurfaceGesture.StartTable,
             ToolKind.Text => SurfaceGesture.BeginTextEdit,
             ToolKind.Select => SurfaceGesture.BeginSelect,
             _ => throw new InvalidOperationException($"표에 없는 도구: {tool}"),

@@ -8,8 +8,8 @@ namespace SSPen.Shell;
 /// </summary>
 public static class ToolbarStateMap
 {
-    /// <summary>도형 그룹 재클릭 로테이션 순서 (선→화살표→사각형→타원).</summary>
-    public static readonly ToolKind[] ShapeCycle = [ToolKind.Line, ToolKind.Arrow, ToolKind.Rectangle, ToolKind.Ellipse];
+    /// <summary>도형 그룹 재클릭 로테이션 순서 (선→화살표→사각형→타원→표).</summary>
+    public static readonly ToolKind[] ShapeCycle = [ToolKind.Line, ToolKind.Arrow, ToolKind.Rectangle, ToolKind.Ellipse, ToolKind.Table];
 
     /// <summary>펜 그룹 재클릭 로테이션 순서 (펜→형광펜→텍스트) — Epic Pen 펜+A 대응 (사용자 조타).</summary>
     public static readonly ToolKind[] PenCycle = [ToolKind.Pen, ToolKind.Highlighter, ToolKind.Text];
@@ -25,6 +25,7 @@ public static class ToolbarStateMap
         ToolKind.Arrow,
         ToolKind.Rectangle,
         ToolKind.Ellipse,
+        ToolKind.Table,
         ToolKind.Text,
     ];
 
@@ -95,7 +96,7 @@ public static class ToolbarStateMap
         ToolbarButtonId.Select => state.ActiveTool == ToolKind.Select,
         ToolbarButtonId.Pen => state.ActiveTool is ToolKind.Pen or ToolKind.Highlighter or ToolKind.Text,
         ToolbarButtonId.Eraser => state.ActiveTool == ToolKind.Eraser,
-        ToolbarButtonId.Shapes => state.ActiveTool is ToolKind.Line or ToolKind.Arrow or ToolKind.Rectangle or ToolKind.Ellipse,
+        ToolbarButtonId.Shapes => state.ActiveTool is ToolKind.Line or ToolKind.Arrow or ToolKind.Rectangle or ToolKind.Ellipse or ToolKind.Table,
         ToolbarButtonId.Board => state.Board != BoardMode.None,
         // 페이딩 잉크는 도구가 아니라 토글이다 (사용자 요청 17차): 현재 도구와 무관하게
         // 토글 상태 그대로 보여준다 — 지우개로 잠시 전환해도 켜둔 것은 켜져 있음을 알려야 한다.
@@ -120,6 +121,7 @@ public static class ToolbarStateMap
             ToolKind.Arrow => Icons.ArrowUpRight,
             ToolKind.Rectangle => Icons.Square,
             ToolKind.Ellipse => Icons.Circle,
+            ToolKind.Table => Icons.Table,
             _ => Icons.Shapes,
         },
         _ => fallback,

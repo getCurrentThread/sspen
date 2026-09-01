@@ -145,6 +145,12 @@ public sealed class SurfaceInputController(
     private Shape? _previewShape;
     private ShapeKind _previewKind;
     private ShapeStyle _activeShapeStyle;  // 도형 시작 시점 페이딩 판정 (사용자 요청 17차)
+    private Point _tableStart;
+    private Shape? _previewTable;
+    private TableStyle _activeTableStyle;
+    private int _currentTableRows;
+    private int _currentTableColumns;
+    private Point _lastPointerPos;
     private TextBox? _activeTextBox;
     private Point _textOrigin;
     private TextStyle _activeTextStyle;    // 텍스트 시작 시점 페이딩 판정 (사용자 요청 17차)
@@ -195,6 +201,23 @@ public sealed class SurfaceInputController(
 
     public void OnKeyDown(KeyEventArgs e)
     {
+        if (_previewTable is not null)
+        {
+            if (e.Key is Key.Up or Key.Down or Key.Left or Key.Right)
+            {
+                if (e.Key == Key.Up) _currentTableRows = Math.Clamp(_currentTableRows + 1, 1, 10);
+                else if (e.Key == Key.Down) _currentTableRows = Math.Clamp(_currentTableRows - 1, 1, 10);
+                else if (e.Key == Key.Right) _currentTableColumns = Math.Clamp(_currentTableColumns + 1, 1, 10);
+                else if (e.Key == Key.Left) _currentTableColumns = Math.Clamp(_currentTableColumns - 1, 1, 10);
+
+                state.TableRows = _currentTableRows;
+                state.TableColumns = _currentTableColumns;
+                AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, _lastPointerPos, _currentTableRows, _currentTableColumns);
+                e.Handled = true;
+                return;
+            }
+        }
+
         // 키 판정은 어댑터가 소유한다 — Escape()는 "열린 텍스트 상자를 확정한다"이므로
         // 다른 키에 대해 부르면 편집 중 텍스트가 조용히 커밋된다.
         if (e.Key == Key.Escape && Escape())
@@ -262,6 +285,9 @@ public sealed class SurfaceInputController(
             case SurfaceGesture.StartEllipse:
                 StartShape(ShapeKind.Ellipse, pos, effectiveTool);
                 break;
+            case SurfaceGesture.StartTable:
+                StartTable(pos, effectiveTool);
+                break;
             case SurfaceGesture.BeginTextEdit:
                 BeginTextEdit(pos, effectiveTool);
                 break;
@@ -285,6 +311,7 @@ public sealed class SurfaceInputController(
             return;
         }
 
+        _lastPointerPos = pos;
         if (_stroke is not null && _activeStrokePath is not null)
         {
             if (_stroke.TryAppend(pos, pressure))
@@ -296,6 +323,10 @@ public sealed class SurfaceInputController(
         {
             var end = ShapeGestureRules.ResolveEnd(_previewKind, _shapeStart, pos, shift);
             AnnotationVisualFactory.UpdateShapeVisual(_previewShape, _previewKind, _shapeStart, end);
+        }
+        else if (_previewTable is not null)
+        {
+            AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _currentTableRows, _currentTableColumns);
         }
         else if (_eraserDragging && state.IsInteractive)
         {
@@ -327,6 +358,10 @@ public sealed class SurfaceInputController(
         {
             CommitShape(pos, shift);
         }
+        else if (_previewTable is not null)
+        {
+            CommitTable(pos);
+        }
         else if (_dragKind != SelectionDragKind.None)
         {
             EndSelectGesture(pos, shift);
@@ -339,6 +374,22 @@ public sealed class SurfaceInputController(
     /// 설정이 꺼진 비선택 도구(WI-16)는 오늘 Handled를 세우지 않고 휠을 통과시킨다.</summary>
     public bool Wheel(Point pos, int notches)
     {
+        if (_previewTable is not null)
+        {
+            if (KeyboardState.Shift)
+            {
+                _currentTableColumns = Math.Clamp(_currentTableColumns + notches, 1, 10);
+                state.TableColumns = _currentTableColumns;
+            }
+            else
+            {
+                _currentTableRows = Math.Clamp(_currentTableRows + notches, 1, 10);
+                state.TableRows = _currentTableRows;
+            }
+            AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _currentTableRows, _currentTableColumns);
+            return true;
+        }
+
         // 중재는 순수 표가 소유한다 (R7/SEL-5/WI-16). SEL-LIM-5 게이트만 여기 남는다.
         switch (SurfaceInputRouter.RouteWheel(
             state.ActiveTool,
@@ -750,6 +801,46 @@ public sealed class SurfaceInputController(
         _previewShape = null;
     }
 
+    private void StartTable(Point pos, ToolKind effectiveTool)
+    {
+        _tableStart = pos;
+        _lastPointerPos = pos;
+        _activeTableStyle = GestureStyleSnapshot.ForTable(state, effectiveTool);
+        _currentTableRows = _activeTableStyle.Rows;
+        _currentTableColumns = _activeTableStyle.Columns;
+        _previewTable = AnnotationVisualFactory.CreateTableVisual(_activeTableStyle.Color, _activeTableStyle.Thickness);
+        AnnotationVisualFactory.UpdateTableVisual(_previewTable, pos, pos, _currentTableRows, _currentTableColumns);
+        inkCanvas.Children.Add(_previewTable);
+        host.CaptureMouse();
+    }
+
+    private void CommitTable(Point rawEnd)
+    {
+        if (_previewTable is null)
+        {
+            return;
+        }
+        inkCanvas.Children.Remove(_previewTable);
+        _previewTable = null;
+
+        if ((rawEnd - _tableStart).Length < 3)
+        {
+            return;
+        }
+        var element = new TableElement(_tableStart, rawEnd, _currentTableRows, _currentTableColumns, _activeTableStyle.Color, _activeTableStyle.Thickness);
+        CommitElement(element, fade: _activeTableStyle.IsFading);
+    }
+
+    private void DiscardTable()
+    {
+        if (_previewTable is null)
+        {
+            return;
+        }
+        inkCanvas.Children.Remove(_previewTable);
+        _previewTable = null;
+    }
+
     // ---- 텍스트 도구 (ARCH-2: NOACTIVATE 일시 해제 핸드셰이크로 한국어 IME 지원) ----
 
     private void BeginTextEdit(Point pos, ToolKind effectiveTool)
@@ -893,6 +984,7 @@ public sealed class SurfaceInputController(
         _hadSelectionOnPress = false;
         DiscardStroke();
         DiscardShape();
+        DiscardTable();
         if (_activeTextBox is not null)
         {
             CommitText(); // 텍스트만 폐기가 아니라 커밋이다 (ARCH-2).

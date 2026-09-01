@@ -303,3 +303,66 @@ public sealed class TextElement : AnnotationElement
         return Math.Sqrt(dx * dx + dy * dy);
     }
 }
+
+/// <summary>표(격자): 시작점→끝점 사각형 내 Rows × Columns 균등 격자 분할.</summary>
+public sealed class TableElement : AnnotationElement
+{
+    public TableElement(Point start, Point end, int rows, int columns, Color color, double thickness)
+        : base(color, thickness)
+    {
+        Start = start;
+        End = end;
+        Rows = Math.Max(1, rows);
+        Columns = Math.Max(1, columns);
+    }
+
+    public Point Start { get; }
+
+    public Point End { get; }
+
+    public int Rows { get; }
+
+    public int Columns { get; }
+
+    public Rect Bounds => new(Start, End);
+
+    protected override Rect ModelBounds => Bounds;
+
+    protected override double ModelDistanceTo(Point p)
+    {
+        var b = Bounds;
+        if (b.IsEmpty || b.Width < double.Epsilon || b.Height < double.Epsilon)
+        {
+            return (p - Start).Length;
+        }
+
+        // 4개 외곽선
+        var tl = b.TopLeft;
+        var tr = b.TopRight;
+        var br = b.BottomRight;
+        var bl = b.BottomLeft;
+
+        double min = DistanceToSegment(p, tl, tr);
+        min = Math.Min(min, DistanceToSegment(p, tr, br));
+        min = Math.Min(min, DistanceToSegment(p, br, bl));
+        min = Math.Min(min, DistanceToSegment(p, bl, tl));
+
+        // 가로 분할선 (Rows - 1 개)
+        double rowHeight = b.Height / Rows;
+        for (int r = 1; r < Rows; r++)
+        {
+            double y = b.Top + r * rowHeight;
+            min = Math.Min(min, DistanceToSegment(p, new Point(b.Left, y), new Point(b.Right, y)));
+        }
+
+        // 세로 분할선 (Columns - 1 개)
+        double colWidth = b.Width / Columns;
+        for (int c = 1; c < Columns; c++)
+        {
+            double x = b.Left + c * colWidth;
+            min = Math.Min(min, DistanceToSegment(p, new Point(x, b.Top), new Point(x, b.Bottom)));
+        }
+
+        return min;
+    }
+}

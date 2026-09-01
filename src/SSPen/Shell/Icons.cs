@@ -45,6 +45,7 @@ public static class Icons
     public static readonly (string Regular, string Filled) ArrowUpRight = Pair(0xf1a3, 0xf1a3); // 화살표: arrow-up-right-24
     public static readonly (string Regular, string Filled) Square = Pair(0xeb76, 0xeb7f);       // 사각형: square-24
     public static readonly (string Regular, string Filled) Circle = Pair(0xf2bc, 0xf2bc);       // 타원: circle-24
+    public static readonly (string Regular, string Filled) Table = Pair(0xf7a9, 0xf7b3);        // 표: table-24
 
     private static (string, string) Pair(int regular, int filled) =>
         (char.ConvertFromUtf32(regular), char.ConvertFromUtf32(filled));

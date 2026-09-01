@@ -19,6 +19,7 @@ public static class AnnotationVisualFactory
         {
             StrokeElement stroke => BuildStrokeVisual(stroke),
             ShapeElement shape => BuildShapeVisual(shape),
+            TableElement table => BuildTableVisual(table),
             TextElement text => BuildTextVisual(text),
             _ => throw new InvalidOperationException($"알 수 없는 요소: {element.GetType().Name}"),
         };
@@ -95,6 +96,76 @@ public static class AnnotationVisualFactory
         var visual = CreateShapeVisual(shape.Kind, shape.Color, shape.Thickness);
         UpdateShapeVisual(visual, shape.Kind, shape.Start, shape.End);
         return visual;
+    }
+
+    private static FrameworkElement BuildTableVisual(TableElement table)
+    {
+        var visual = CreateTableVisual(table.Color, table.Thickness);
+        UpdateTableVisual(visual, table.Start, table.End, table.Rows, table.Columns);
+        return visual;
+    }
+
+    public static Shape CreateTableVisual(Color color, double thickness)
+    {
+        return new Path
+        {
+            Stroke = CreateFrozen(color),
+            StrokeThickness = thickness,
+            StrokeLineJoin = PenLineJoin.Miter,
+            StrokeStartLineCap = PenLineCap.Flat,
+            StrokeEndLineCap = PenLineCap.Flat,
+        };
+    }
+
+    public static void UpdateTableVisual(Shape visual, Point start, Point end, int rows, int columns)
+    {
+        if (visual is not Path path)
+        {
+            return;
+        }
+        path.Data = CreateTableGeometry(start, end, rows, columns);
+    }
+
+    public static Geometry CreateTableGeometry(Point start, Point end, int rows, int columns)
+    {
+        var geom = new StreamGeometry();
+        using (var ctx = geom.Open())
+        {
+            double left = Math.Min(start.X, end.X);
+            double top = Math.Min(start.Y, end.Y);
+            double right = Math.Max(start.X, end.X);
+            double bottom = Math.Max(start.Y, end.Y);
+            double width = right - left;
+            double height = bottom - top;
+
+            // 외곽 사각형
+            ctx.BeginFigure(new Point(left, top), isFilled: false, isClosed: true);
+            ctx.LineTo(new Point(right, top), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(new Point(right, bottom), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(new Point(left, bottom), isStroked: true, isSmoothJoin: false);
+
+            // 가로 분할선 (rows - 1 개)
+            int rCount = Math.Max(1, rows);
+            double rowH = height / rCount;
+            for (int r = 1; r < rCount; r++)
+            {
+                double y = top + r * rowH;
+                ctx.BeginFigure(new Point(left, y), isFilled: false, isClosed: false);
+                ctx.LineTo(new Point(right, y), isStroked: true, isSmoothJoin: false);
+            }
+
+            // 세로 분할선 (columns - 1 개)
+            int cCount = Math.Max(1, columns);
+            double colW = width / cCount;
+            for (int c = 1; c < cCount; c++)
+            {
+                double x = left + c * colW;
+                ctx.BeginFigure(new Point(x, top), isFilled: false, isClosed: false);
+                ctx.LineTo(new Point(x, bottom), isStroked: true, isSmoothJoin: false);
+            }
+        }
+        geom.Freeze();
+        return geom;
     }
 
     private static FrameworkElement BuildTextVisual(TextElement text)

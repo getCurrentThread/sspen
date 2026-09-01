@@ -29,7 +29,7 @@ public class ToolbarStateMapTests
     [Fact]
     public void NextInCycle_LastTool_WrapsToFirst()
     {
-        var next = ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, ToolKind.Ellipse);
+        var next = ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, ToolKind.Table);
 
         Assert.Equal(ToolKind.Line, next);
     }
@@ -126,6 +126,17 @@ public class ToolbarStateMapTests
     }
 
     [Fact]
+    public void IconFor_ShapesButton_ReflectsTable()
+    {
+        var state = new AppState { ActiveTool = ToolKind.Table };
+        var fallback = Icons.Shapes;
+
+        var icon = ToolbarStateMap.IconFor(state, ToolbarButtonId.Shapes, menuCollapsed: false, fallback);
+
+        Assert.Equal(Icons.Table, icon);
+    }
+
+    [Fact]
     public void IconFor_VisibilityButton_TogglesEyeGlyph()
     {
         var state = new AppState();
@@ -191,6 +202,9 @@ public class ToolbarStateMapTests
         Assert.Equal(ToolKind.Text, current);
 
         current = ToolbarStateMap.NextToolByWheel(current, 120);
+        Assert.Equal(ToolKind.Table, current);
+
+        current = ToolbarStateMap.NextToolByWheel(current, 120);
         Assert.Equal(ToolKind.Ellipse, current);
     }
 
@@ -205,7 +219,7 @@ public class ToolbarStateMapTests
     public void NextInCycle_WithDelta_CyclesForwardAndBackward()
     {
         Assert.Equal(ToolKind.Arrow, ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, ToolKind.Line, -120));
-        Assert.Equal(ToolKind.Ellipse, ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, ToolKind.Line, 120));
+        Assert.Equal(ToolKind.Table, ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, ToolKind.Line, 120));
         Assert.Equal(ToolKind.Line, ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, ToolKind.Line, 0));
     }
 

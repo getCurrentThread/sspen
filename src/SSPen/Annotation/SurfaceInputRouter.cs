@@ -31,6 +31,7 @@ public enum SurfaceGesture
     StartArrow,
     StartRectangle,
     StartEllipse,
+    StartTable,
     BeginTextEdit,
 
     /// <summary>지우개: 클릭 삭제 + 드래그 래치 + 마우스 캡처.</summary>
@@ -103,6 +104,7 @@ public static class SurfaceInputRouter
             ToolKind.Arrow => SurfaceGesture.StartArrow,
             ToolKind.Rectangle => SurfaceGesture.StartRectangle,
             ToolKind.Ellipse => SurfaceGesture.StartEllipse,
+            ToolKind.Table => SurfaceGesture.StartTable,
             ToolKind.Text => SurfaceGesture.BeginTextEdit,
             ToolKind.Eraser => SurfaceGesture.EraseAndDrag,
             ToolKind.Select => SurfaceGesture.BeginSelect,

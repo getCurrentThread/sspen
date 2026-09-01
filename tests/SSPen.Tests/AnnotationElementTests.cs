@@ -26,6 +26,10 @@ public class AnnotationElementTests
         (typeof(ShapeElement), nameof(ShapeElement.Kind)),
         (typeof(ShapeElement), nameof(ShapeElement.Start)),
         (typeof(ShapeElement), nameof(ShapeElement.End)),
+        (typeof(TableElement), nameof(TableElement.Start)),
+        (typeof(TableElement), nameof(TableElement.End)),
+        (typeof(TableElement), nameof(TableElement.Rows)),
+        (typeof(TableElement), nameof(TableElement.Columns)),
         (typeof(TextElement), nameof(TextElement.Origin)),
         (typeof(TextElement), nameof(TextElement.Text)),
         (typeof(TextElement), nameof(TextElement.FontSize)),
@@ -45,7 +49,7 @@ public class AnnotationElementTests
     [Fact]
     public void ImmutableProperties_HaveNoPublicSetters_ByReflection()
     {
-        Assert.Equal(12, ImmutableProperties.Length);
+        Assert.Equal(16, ImmutableProperties.Length);
 
         foreach (var (type, name) in ImmutableProperties)
         {
@@ -125,5 +129,21 @@ public class AnnotationElementTests
         var rect = new ShapeElement(ShapeKind.Rectangle, new Point(0, 0), new Point(100, 50), Colors.Red, 2);
 
         Assert.Equal(new Rect(0, 0, 100, 50), rect.LocalBounds);
+    }
+
+    [Fact]
+    public void TableElement_BoundsAndHitTest_MatchesGridLines()
+    {
+        var table = new TableElement(new Point(0, 0), new Point(100, 100), 2, 2, Colors.Black, 2);
+
+        Assert.Equal(new Rect(0, 0, 100, 100), table.LocalBounds);
+        // 외곽선 위
+        Assert.True(table.HitTest(new Point(50, 0), tolerance: 2));
+        // 내부 가로 분할선 (y=50)
+        Assert.True(table.HitTest(new Point(30, 50), tolerance: 2));
+        // 내부 세로 분할선 (x=50)
+        Assert.True(table.HitTest(new Point(50, 30), tolerance: 2));
+        // 셀 내부 빈 공간 (x=25, y=25) -> 거리가 약 25라 false
+        Assert.False(table.HitTest(new Point(25, 25), tolerance: 2));
     }
 }

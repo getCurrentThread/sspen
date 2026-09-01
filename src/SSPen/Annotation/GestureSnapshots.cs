@@ -12,6 +12,9 @@ public readonly record struct StrokeStyle(Color Color, double Thickness, bool Is
 /// <summary>도형 시작 시점에 동결하는 스타일 (색·굵기·페이딩). <see cref="StrokeStyle"/>의 도형판.</summary>
 public readonly record struct ShapeStyle(Color Color, double Thickness, bool IsFading);
 
+/// <summary>표 시작 시점에 동결하는 스타일 (색·굵기·행·열·페이딩).</summary>
+public readonly record struct TableStyle(Color Color, double Thickness, int Rows, int Columns, bool IsFading);
+
 /// <summary>
 /// 텍스트 편집 시작 시점에 동결하는 스타일. <see cref="ShapeStyle"/>과 합치지 않는다 —
 /// 텍스트는 <see cref="AppState.TextFontSize"/>(12/16/24/36/48)를, 도형은
@@ -51,6 +54,12 @@ public static class GestureStyleSnapshot
         new(state.CurrentColor, state.ShapeThickness, state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
 
     public static ShapeStyle ForShape(AppState state) => ForShape(state, state.ActiveTool);
+
+    /// <summary>표 스타일 동결 (색·<see cref="AppState.ShapeThickness"/>·행·열·페이딩).</summary>
+    public static TableStyle ForTable(AppState state, ToolKind effectiveTool) =>
+        new(state.CurrentColor, state.ShapeThickness, state.TableRows, state.TableColumns, state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
+
+    public static TableStyle ForTable(AppState state) => ForTable(state, state.ActiveTool);
 
     /// <summary>텍스트 스타일 동결 (색·<see cref="AppState.TextFontSize"/>·페이딩).</summary>
     public static TextStyle ForText(AppState state, ToolKind effectiveTool) =>

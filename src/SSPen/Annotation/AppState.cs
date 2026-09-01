@@ -12,6 +12,7 @@ public enum ToolKind
     Arrow,
     Rectangle,
     Ellipse,
+    Table,
     Text,
     Select,    // 필기내용선택 (SEL-4): 어떤 ToolStyleGroup에도 속하지 않는다 (f12). 열거 말단에 추가.
 }
@@ -82,6 +83,8 @@ public sealed class AppState
     private bool _wheelAdjustsPenSize = true;
     private bool _fadingInk;
     private BoardMode _defaultBoard = BoardMode.White;
+    private int _tableRows = 3;
+    private int _tableColumns = 3;
 
     /// <summary>어떤 하위 상태든 바뀌면 발생. 서피스가 상호작용/시각 상태를 재적용한다.</summary>
     public event Action? Changed;
@@ -157,7 +160,7 @@ public sealed class AppState
     public ToolStyleGroup ActiveStyleGroup => _activeTool switch
     {
         ToolKind.Highlighter => ToolStyleGroup.Highlighter,
-        ToolKind.Line or ToolKind.Arrow or ToolKind.Rectangle or ToolKind.Ellipse or ToolKind.Text => ToolStyleGroup.Shape,
+        ToolKind.Line or ToolKind.Arrow or ToolKind.Rectangle or ToolKind.Ellipse or ToolKind.Table or ToolKind.Text => ToolStyleGroup.Shape,
         _ => ToolStyleGroup.Pen,
     };
 
@@ -336,6 +339,20 @@ public sealed class AppState
         }
     }
 
+    /// <summary>표 기본 행 수 (1..10).</summary>
+    public int TableRows
+    {
+        get => _tableRows;
+        set => Set(ref _tableRows, Math.Clamp(value, 1, 10));
+    }
+
+    /// <summary>표 기본 열 수 (1..10).</summary>
+    public int TableColumns
+    {
+        get => _tableColumns;
+        set => Set(ref _tableColumns, Math.Clamp(value, 1, 10));
+    }
+
     /// <summary>
     /// 지금 그리는 요소가 페이딩 대상인가 = 토글이 켜져 있고 현재 도구가 그리기 도구일 때.
     /// </summary>
@@ -347,7 +364,7 @@ public sealed class AppState
     /// </summary>
     public static bool FadingAppliesTo(ToolKind tool) => tool is
         ToolKind.Pen or ToolKind.Highlighter or ToolKind.Text
-        or ToolKind.Line or ToolKind.Arrow or ToolKind.Rectangle or ToolKind.Ellipse;
+        or ToolKind.Line or ToolKind.Arrow or ToolKind.Rectangle or ToolKind.Ellipse or ToolKind.Table;
 
     /// <summary>서피스가 마우스 입력을 받는가 (ARCH-1 히트테스트 배경 스위치와 연동).</summary>
     public bool IsInteractive => SurfacesVisible && ActiveTool != ToolKind.None && !ClickThrough;

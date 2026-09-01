@@ -31,6 +31,7 @@ public static class Strings
     public const string ShapeArrow = "화살표";
     public const string ShapeRectangle = "사각형";
     public const string ShapeEllipse = "타원";
+    public const string ShapeTable = "표";
     public const string ShapeText = "텍스트";
 
     // 굵기 플라이아웃

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
@@ -168,13 +169,123 @@ public sealed class ToolbarFlyouts
 
     private void BuildShapesFlyout()
     {
-        // 텍스트는 펜 그룹으로 이동 (사용자 조타) — 도형은 선/화살표/사각형/타원 4종.
         var panel = FlyoutPanel();
         panel.Children.Add(FlyoutItem(Strings.ShapeLine, Icons.Line, () => SelectTool(ToolKind.Line), "line"));
         panel.Children.Add(FlyoutItem(Strings.ShapeArrow, Icons.ArrowUpRight, () => SelectTool(ToolKind.Arrow), "arrow"));
         panel.Children.Add(FlyoutItem(Strings.ShapeRectangle, Icons.Square, () => SelectTool(ToolKind.Rectangle), "rectangle"));
         panel.Children.Add(FlyoutItem(Strings.ShapeEllipse, Icons.Circle, () => SelectTool(ToolKind.Ellipse), "ellipse"));
+        panel.Children.Add(FlyoutItem(Strings.ShapeTable, Icons.Table, () => SelectTool(ToolKind.Table), "table"));
+
+        // 세로 구분선
+        panel.Children.Add(new Border
+        {
+            Width = 1,
+            Background = ToolbarTheme.StripBorderBrush,
+            Margin = new Thickness(4, 2, 4, 2),
+        });
+
+        // 5×5 미니 격자 선택기 (오피스 스타일)
+        panel.Children.Add(BuildTablePicker());
+
         ShapesFlyout.Child = FlyoutBorder(panel);
+    }
+
+    private FrameworkElement BuildTablePicker()
+    {
+        const int MaxRows = 5;
+        const int MaxCols = 5;
+
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Margin = new Thickness(6, 2, 6, 2),
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+
+        var label = new TextBlock
+        {
+            Text = $"{_state.TableRows} × {_state.TableColumns} {Strings.ShapeTable}",
+            Foreground = ToolbarTheme.IconBrush,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+
+        var grid = new UniformGrid { Rows = MaxRows, Columns = MaxCols, HorizontalAlignment = HorizontalAlignment.Center };
+        var cells = new Border[MaxRows, MaxCols];
+
+        void UpdateHighlight(int targetR, int targetC)
+        {
+            label.Text = $"{targetR} × {targetC} {Strings.ShapeTable}";
+            for (int r = 0; r < MaxRows; r++)
+            {
+                for (int c = 0; c < MaxCols; c++)
+                {
+                    bool inSelection = (r < targetR && c < targetC);
+                    cells[r, c].Background = inSelection
+                        ? ToolbarTheme.AccentBrush
+                        : ToolbarTheme.Freeze(new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF)));
+                    cells[r, c].BorderBrush = inSelection
+                        ? Brushes.White
+                        : ToolbarTheme.SwatchBorderBrush;
+                }
+            }
+        }
+
+        void ResetToState()
+        {
+            UpdateHighlight(_state.TableRows, _state.TableColumns);
+        }
+
+        for (int r = 0; r < MaxRows; r++)
+        {
+            for (int c = 0; c < MaxCols; c++)
+            {
+                int rowNum = r + 1;
+                int colNum = c + 1;
+                var cell = new Border
+                {
+                    Width = 14,
+                    Height = 14,
+                    Margin = new Thickness(1.5),
+                    CornerRadius = new CornerRadius(2),
+                    Background = ToolbarTheme.Freeze(new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF))),
+                    BorderBrush = ToolbarTheme.SwatchBorderBrush,
+                    BorderThickness = new Thickness(1),
+                    Cursor = Cursors.Hand,
+                };
+
+                cell.MouseEnter += (_, _) => UpdateHighlight(rowNum, colNum);
+                cell.MouseLeftButtonUp += (_, _) =>
+                {
+                    _state.TableRows = rowNum;
+                    _state.TableColumns = colNum;
+                    _state.ActiveTool = ToolKind.Table;
+                    CloseFlyoutsExcept(null);
+                };
+
+                cells[r, c] = cell;
+                grid.Children.Add(cell);
+            }
+        }
+
+        grid.MouseLeave += (_, _) => ResetToState();
+
+        panel.Children.Add(label);
+        panel.Children.Add(grid);
+
+        ShapesFlyout.Opened += (_, _) => ResetToState();
+
+        var container = new Border
+        {
+            Background = Brushes.Transparent,
+            Child = panel,
+            Padding = new Thickness(2),
+        };
+
+        ResetToState();
+        return container;
     }
 
     private void BuildPenFlyout()
