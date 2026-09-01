@@ -263,7 +263,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         WindowStyling.SetClickThrough(Hwnd, !interactive);
         _root.Background = interactive ? HitTestBrush : null;
         _root.IsHitTestVisible = interactive;
-        Cursor = interactive ? CursorFor(_state.ActiveTool) : Cursors.Arrow;
+        Cursor = interactive ? CursorFor(_state.ActiveTool, _state.Thickness) : Cursors.Arrow;
 
         if (!_state.HaloActive)
         {
@@ -382,12 +382,12 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     }
 
     /// <summary>도구별 커서 (사용자 조타: UX 미려화): 펜/형광펜/페이딩=펜, 텍스트=IBeam,
-    /// 지우개=커스텀 지우개 커서, 도형=십자. 도구 없음은 호출되지 않음(비인터랙티브=화살표).</summary>
-    private static Cursor CursorFor(ToolKind tool) => tool switch
+    /// 지우개=크기별 커스텀 연필 지우개 커서, 도형=십자. 도구 없음은 호출되지 않음(비인터랙티브=화살표).</summary>
+    private static Cursor CursorFor(ToolKind tool, ThicknessStep thickness) => tool switch
     {
         ToolKind.Pen or ToolKind.Highlighter => Cursors.Pen,
         ToolKind.Text => Cursors.IBeam,
-        ToolKind.Eraser => CursorFactory.Eraser,
+        ToolKind.Eraser => CursorFactory.EraserFor(thickness),
         ToolKind.Select => Cursors.Arrow,
         _ => Cursors.Cross,
     };
@@ -631,7 +631,9 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             return;
         }
 
-        Cursor = device?.Inverted == true ? CursorFactory.Eraser : CursorFor(_state.ActiveTool);
+        Cursor = device?.Inverted == true
+            ? CursorFactory.EraserFor(_state.Thickness)
+            : CursorFor(_state.ActiveTool, _state.Thickness);
     }
 
     private void ResetCursor()
@@ -641,7 +643,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             return;
         }
 
-        Cursor = _state.IsInteractive ? CursorFor(_state.ActiveTool) : Cursors.Arrow;
+        Cursor = _state.IsInteractive ? CursorFor(_state.ActiveTool, _state.Thickness) : Cursors.Arrow;
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
