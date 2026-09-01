@@ -100,13 +100,13 @@ public class SurfaceEntryPointTests
             var h = new Harness();
             h.State.ActiveTool = ToolKind.Pen;
             h.Controller.PointerDown(new Point(10, 10), shift: false);
-            var polyline = Assert.IsType<System.Windows.Shapes.Polyline>(h.Canvas.Children[0]);
+            Assert.IsAssignableFrom<System.Windows.Shapes.Shape>(h.Canvas.Children[0]);
 
             h.Controller.PointerMove(new Point(60, 60), shift: false, leftPressed: false);
-            Assert.Single(polyline.Points);
+            Assert.Single(h.Controller.ActiveStrokePoints!);
 
             h.Controller.PointerMove(new Point(60, 60), shift: false, leftPressed: true);
-            Assert.Equal(2, polyline.Points.Count);
+            Assert.Equal(2, h.Controller.ActiveStrokePoints!.Count);
         });
     }
 

@@ -136,7 +136,10 @@ public sealed class SurfaceInputController(
 
     // 진행 중 획/도형/텍스트 상태
     private StrokeAccumulator? _stroke;
-    private Polyline? _activePolyline;
+    private Path? _activeStrokePath;
+
+    /// <summary>진행 중인 획의 점 목록 (테스트/진단용).</summary>
+    public IReadOnlyList<Point>? ActiveStrokePoints => _stroke?.Points;
     private bool _eraserDragging;          // 지우개 드래그 삭제 중 (사용자 조타 12차)
     private Point _shapeStart;
     private Shape? _previewShape;
@@ -159,16 +162,16 @@ public sealed class SurfaceInputController(
     // Handled는 **반환값이 참일 때만** 세운다. `e.Handled = 반환값`으로 대입하면 상위에서
     // 이미 세워 둔 Handled를 false로 되돌려, 오늘 서피스가 통과시키는 입력의 소비 여부가 바뀐다.
 
-    public void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+    public void OnMouseLeftButtonDown(MouseButtonEventArgs e, float pressure = 0.5f)
     {
         bool inverted = e.StylusDevice?.Inverted == true;
-        if (PointerDown(e.GetPosition(inkCanvas), KeyboardState.Shift, IsOverActiveTextBox(), inverted))
+        if (PointerDown(e.GetPosition(inkCanvas), KeyboardState.Shift, IsOverActiveTextBox(), inverted, pressure))
         {
             e.Handled = true;
         }
     }
 
-    public void OnMouseMove(MouseEventArgs e)
+    public void OnMouseMove(MouseEventArgs e, float pressure = 0.5f)
     {
         // 눌리지 않은 이동을 여기서 끊는다 — 호버 이동마다 GetPosition/GetAsyncKeyState를
         // 부르지 않기 위해서다. 판정의 주인은 아래 PointerMove의 leftPressed 가드다.
@@ -176,7 +179,7 @@ public sealed class SurfaceInputController(
         {
             return;
         }
-        PointerMove(e.GetPosition(inkCanvas), KeyboardState.Shift, leftPressed: true);
+        PointerMove(e.GetPosition(inkCanvas), KeyboardState.Shift, leftPressed: true, pressure);
     }
 
     public void OnMouseLeftButtonUp(MouseButtonEventArgs e) =>
@@ -207,8 +210,8 @@ public sealed class SurfaceInputController(
     /// 텍스트 바깥 클릭은 Handled를 <b>세우지 않는다</b>(그 클릭은 소비되지 않는다).
     /// void로 두고 어댑터가 무조건 대입하면 서피스가 오늘 통과시키는 클릭을 삼킨다.
     /// </summary>
-    public bool PointerDown(Point pos, bool shift, bool inverted = false) =>
-        PointerDown(pos, shift, IsOverActiveTextBox(), inverted);
+    public bool PointerDown(Point pos, bool shift, bool inverted = false, float pressure = 0.5f) =>
+        PointerDown(pos, shift, IsOverActiveTextBox(), inverted, pressure);
 
     /// <summary>
     /// <paramref name="overActiveEditor"/>는 <c>Point</c>에서 유도할 수 없는 WPF 히트테스트 입력이다 (ARCH-2).
@@ -218,7 +221,7 @@ public sealed class SurfaceInputController(
     /// 프로덕션 동작을 바꾸는 것이므로 금지한다.
     /// <paramref name="inverted"/>는 스타일러스(와콤 펜 등)의 뒤집힘(지우개 꼭지) 여부다 (R8).
     /// </summary>
-    public bool PointerDown(Point pos, bool shift, bool overActiveEditor, bool inverted = false)
+    public bool PointerDown(Point pos, bool shift, bool overActiveEditor, bool inverted = false, float pressure = 0.5f)
     {
         // R8: 펜 뒤집기(지우개) 시 시작 시점의 유효 도구를 Eraser로 래치한다.
         // AppState.ActiveTool에 뒤집기를 흘리는 것은 금지다 — 선택집합 해제의 유일한 트리거를 발화시킨다 (SEL-B-4).
@@ -245,7 +248,7 @@ public sealed class SurfaceInputController(
         switch (gesture)
         {
             case SurfaceGesture.StartStroke:
-                StartStroke(pos, effectiveTool);
+                StartStroke(pos, effectiveTool, pressure);
                 break;
             case SurfaceGesture.StartLine:
                 StartShape(ShapeKind.Line, pos, effectiveTool);
@@ -275,18 +278,18 @@ public sealed class SurfaceInputController(
         return SurfaceInputRouter.MarksHandled(gesture);
     }
 
-    public void PointerMove(Point pos, bool shift, bool leftPressed)
+    public void PointerMove(Point pos, bool shift, bool leftPressed, float pressure = 0.5f)
     {
         if (!leftPressed)
         {
             return;
         }
 
-        if (_stroke is not null && _activePolyline is not null)
+        if (_stroke is not null && _activeStrokePath is not null)
         {
-            if (_stroke.TryAppend(pos))
+            if (_stroke.TryAppend(pos, pressure))
             {
-                _activePolyline.Points.Add(pos);
+                UpdateActiveStrokeVisual();
             }
         }
         else if (_previewShape is not null)
@@ -652,36 +655,42 @@ public sealed class SurfaceInputController(
         setGestureGroupFrame(null);
     }
 
-    private void StartStroke(Point pos, ToolKind effectiveTool)
+    private void StartStroke(Point pos, ToolKind effectiveTool, float pressure = 0.5f)
     {
         // 시작 시점 판정 캡처 (아키텍트 자문): 드래그 중 핫키로 도구가 바뀌거나 퀵컬러/휠로
         // 색·굵기가 바뀌어도, 이 획의 스타일(색·굵기·형광펜·페이딩 여부)은 시작 당시 스냅샷을 따른다.
         var style = GestureStyleSnapshot.ForStroke(state, effectiveTool);
-        _stroke = new StrokeAccumulator(pos, style);
-        _activePolyline = new Polyline
+        _stroke = new StrokeAccumulator(pos, style, pressure);
+        _activeStrokePath = new Path
         {
-            Stroke = AnnotationVisualFactory.StrokeBrush(style.Color, style.IsHighlighter),
-            StrokeThickness = style.Thickness,
-            StrokeLineJoin = PenLineJoin.Round,
-            StrokeStartLineCap = PenLineCap.Round,
-            StrokeEndLineCap = PenLineCap.Round,
+            Fill = AnnotationVisualFactory.StrokeBrush(style.Color, style.IsHighlighter),
         };
-        _activePolyline.Points.Add(pos);
-        inkCanvas.Children.Add(_activePolyline);
+        UpdateActiveStrokeVisual();
+        inkCanvas.Children.Add(_activeStrokePath);
         host.CaptureMouse();
+    }
+
+    private void UpdateActiveStrokeVisual()
+    {
+        if (_stroke is null || _activeStrokePath is null)
+        {
+            return;
+        }
+        _activeStrokePath.Data = AnnotationVisualFactory.CreateStrokeGeometry(
+            _stroke.Points, _stroke.Pressures, _stroke.Style.Thickness, _stroke.Style.IsHighlighter);
     }
 
     private void CommitStroke()
     {
-        if (_stroke is null || _activePolyline is null)
+        if (_stroke is null || _activeStrokePath is null)
         {
             return;
         }
         var style = _stroke.Style;
-        var element = new StrokeElement(_stroke.Points, style.Color, style.Thickness, style.IsHighlighter);
-        inkCanvas.Children.Remove(_activePolyline);
+        var element = new StrokeElement(_stroke.Points, style.Color, style.Thickness, style.IsHighlighter, _stroke.Pressures);
+        inkCanvas.Children.Remove(_activeStrokePath);
         _stroke = null;
-        _activePolyline = null;
+        _activeStrokePath = null;
         CommitElement(element, fade: style.IsFading);
     }
 
@@ -691,13 +700,13 @@ public sealed class SurfaceInputController(
     /// </summary>
     private void DiscardStroke()
     {
-        if (_activePolyline is null)
+        if (_activeStrokePath is null)
         {
             return;
         }
-        inkCanvas.Children.Remove(_activePolyline);
+        inkCanvas.Children.Remove(_activeStrokePath);
         _stroke = null;
-        _activePolyline = null;
+        _activeStrokePath = null;
     }
 
     private void StartShape(ShapeKind kind, Point pos, ToolKind effectiveTool)

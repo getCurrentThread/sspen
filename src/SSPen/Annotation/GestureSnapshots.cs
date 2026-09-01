@@ -60,38 +60,48 @@ public static class GestureStyleSnapshot
 }
 
 /// <summary>
-/// 진행 중인 획의 점 목록 + 시작 시점에 동결된 스타일. 시작점을 생성자로 받으므로
+/// 진행 중인 획의 점 목록 + 필압 목록 + 시작 시점에 동결된 스타일. 시작점을 생성자로 받으므로
 /// <b>비어 있는 상태가 표현 불가능</b>하다 (<see cref="StrokeElement"/>는 0점을 거부한다).
 /// </summary>
-public sealed class StrokeAccumulator(Point start, StrokeStyle style)
+public sealed class StrokeAccumulator
 {
     /// <summary>
     /// 새 점을 채택하는 최소 이동 거리 (논리 px). 마우스 이동 이벤트를 그대로 쌓으면
     /// 한 획이 수천 점이 되어 렌더·히트테스트·직렬화가 모두 비싸진다.
-    /// 이름 붙이기는 <b>값 보존</b>이지 값의 승인이 아니다 — 기존 <c>OnMouseMove</c>의 무명 리터럴 1.5를
-    /// 그대로 옮겼을 뿐이고, 오늘 이 숫자를 소유한 스펙 ID는 없다.
     /// </summary>
     public const double MinPointDistance = 1.5;
 
-    private readonly List<Point> _points = [start];
+    private readonly List<Point> _points = [];
+    private readonly List<float> _pressures = [];
+
+    public StrokeAccumulator(Point start, StrokeStyle style, float startPressure = 0.5f)
+    {
+        Style = style;
+        _points.Add(start);
+        _pressures.Add(Math.Clamp(startPressure, 0.05f, 1.0f));
+    }
 
     /// <summary>시작 시점에 동결된 스타일 (이후 <see cref="AppState"/> 변경에 영향받지 않는다).</summary>
-    public StrokeStyle Style { get; } = style;
+    public StrokeStyle Style { get; }
 
     /// <summary>지금까지 채택된 점들 (항상 1개 이상).</summary>
     public IReadOnlyList<Point> Points => _points;
+
+    /// <summary>각 점의 필압 (0.05 ~ 1.0).</summary>
+    public IReadOnlyList<float> Pressures => _pressures;
 
     /// <summary>
     /// 점을 채택했으면 <c>true</c>. 거리는 <b>마지막으로 채택된 점</b>에서 잰다 —
     /// 거절된 점에서 재면 표본 간격이 달라져 획 모양이 바뀐다.
     /// </summary>
-    public bool TryAppend(Point p)
+    public bool TryAppend(Point p, float pressure = 0.5f)
     {
         if ((p - _points[^1]).Length < MinPointDistance)
         {
             return false;
         }
         _points.Add(p);
+        _pressures.Add(Math.Clamp(pressure, 0.05f, 1.0f));
         return true;
     }
 }

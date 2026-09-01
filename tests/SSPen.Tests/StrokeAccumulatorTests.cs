@@ -99,4 +99,30 @@ public class StrokeAccumulatorTests
         Assert.NotEqual(state.PenThickness, acc.Style.Thickness);
         Assert.True(acc.Style.IsFading);
     }
+
+    [Fact]
+    public void Pressure_IsTrackedPerPoint()
+    {
+        var acc = new StrokeAccumulator(new Point(0, 0), Pen, startPressure: 0.3f);
+        Assert.Equal([0.3f], acc.Pressures);
+
+        Assert.True(acc.TryAppend(new Point(10, 0), 0.8f));
+        Assert.Equal([0.3f, 0.8f], acc.Pressures);
+
+        // 거절된 점의 필압은 추가되지 않는다
+        Assert.False(acc.TryAppend(new Point(10.5, 0), 0.9f));
+        Assert.Equal([0.3f, 0.8f], acc.Pressures);
+    }
+
+    [Fact]
+    public void StrokeElement_StoresAndExposesPressures()
+    {
+        Point[] points = [new(0, 0), new(10, 10)];
+        float[] pressures = [0.2f, 0.9f];
+
+        var stroke = new StrokeElement(points, Colors.Black, 4, isHighlighter: false, pressures);
+
+        Assert.Equal(points, stroke.Points);
+        Assert.Equal(pressures, stroke.Pressures);
+    }
 }

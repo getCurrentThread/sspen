@@ -69,13 +69,13 @@ public class SurfaceCancelOrderTests
             h.State.ActiveTool = ToolKind.Pen;
             h.Controller.PointerDown(new Point(100, 100), shift: false);
             h.Controller.PointerMove(new Point(180, 160), shift: false, leftPressed: true);
-            Assert.Single(h.Canvas.Children.OfType<Polyline>());
+            Assert.Single(h.Canvas.Children.OfType<Shape>());
 
             h.Controller.CancelActiveInput();
 
             Assert.Empty(h.Document.Elements);
             Assert.Equal(0, h.Ledger.Count);
-            Assert.Empty(h.Canvas.Children.OfType<Polyline>());
+            Assert.Empty(h.Canvas.Children.OfType<Shape>());
         });
     }
 

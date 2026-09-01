@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Ink;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 
@@ -51,21 +53,41 @@ public static class AnnotationVisualFactory
     public static void ApplyRenderTransform(FrameworkElement visual, AnnotationElement element) =>
         visual.RenderTransform = new MatrixTransform(RenderMatrixFor(element));
 
-    private static FrameworkElement BuildStrokeVisual(StrokeElement stroke)
+    public static FrameworkElement BuildStrokeVisual(StrokeElement stroke)
     {
-        var polyline = new Polyline
+        var path = new Path
         {
-            Stroke = StrokeBrush(stroke.Color, stroke.IsHighlighter),
-            StrokeThickness = stroke.Thickness,
-            StrokeLineJoin = PenLineJoin.Round,
-            StrokeStartLineCap = PenLineCap.Round,
-            StrokeEndLineCap = PenLineCap.Round,
+            Data = CreateStrokeGeometry(stroke.Points, stroke.Pressures, stroke.Thickness, stroke.IsHighlighter),
+            Fill = StrokeBrush(stroke.Color, stroke.IsHighlighter),
         };
-        foreach (var p in stroke.Points)
+        return path;
+    }
+
+    /// <summary>
+    /// 점들과 필압 정보로부터 WPF Ink 엔진 기반의 매끄러운 가변 두께 아웃라인 지오메트리를 생성한다.
+    /// </summary>
+    public static Geometry CreateStrokeGeometry(IReadOnlyList<Point> points, IReadOnlyList<float>? pressures, double thickness, bool isHighlighter)
+    {
+        var spc = new StylusPointCollection();
+        for (int i = 0; i < points.Count; i++)
         {
-            polyline.Points.Add(p);
+            float p = (pressures != null && i < pressures.Count) ? pressures[i] : 0.5f;
+            spc.Add(new StylusPoint(points[i].X, points[i].Y, Math.Clamp(p, 0.05f, 1.0f)));
         }
-        return polyline;
+
+        var da = new DrawingAttributes
+        {
+            Color = Colors.Black, // Fill 브러시로 채우므로 da의 색상은 기본값 사용
+            Width = thickness,
+            Height = thickness,
+            IsHighlighter = isHighlighter,
+            FitToCurve = true,
+            StylusTip = StylusTip.Ellipse,
+            IgnorePressure = false,
+        };
+
+        var wpfStroke = new System.Windows.Ink.Stroke(spc, da);
+        return wpfStroke.GetGeometry(da);
     }
 
     private static FrameworkElement BuildShapeVisual(ShapeElement shape)

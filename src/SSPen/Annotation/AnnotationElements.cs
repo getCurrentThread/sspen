@@ -117,12 +117,13 @@ public abstract class AnnotationElement
     }
 }
 
-/// <summary>자유 획 (펜 / 형광펜).</summary>
+/// <summary>자유 획 (펜 / 형광펜, 필압 지원).</summary>
 public sealed class StrokeElement : AnnotationElement
 {
     private readonly List<Point> _points;
+    private readonly List<float> _pressures;
 
-    public StrokeElement(IEnumerable<Point> points, Color color, double thickness, bool isHighlighter)
+    public StrokeElement(IEnumerable<Point> points, Color color, double thickness, bool isHighlighter, IEnumerable<float>? pressures = null)
         : base(color, thickness)
     {
         _points = [.. points];
@@ -130,10 +131,20 @@ public sealed class StrokeElement : AnnotationElement
         {
             throw new ArgumentException("획에는 최소 1개의 점이 필요합니다.", nameof(points));
         }
+        if (pressures != null)
+        {
+            _pressures = [.. pressures];
+        }
+        else
+        {
+            _pressures = [.. Enumerable.Repeat(0.5f, _points.Count)];
+        }
         IsHighlighter = isHighlighter;
     }
 
     public IReadOnlyList<Point> Points => _points;
+
+    public IReadOnlyList<float> Pressures => _pressures;
 
     public bool IsHighlighter { get; }
 

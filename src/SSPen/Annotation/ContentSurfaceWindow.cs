@@ -573,7 +573,17 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         }
         StylusProbe.Observe("마우스다운(승격)", e.StylusDevice);
         UpdateStylusCursor(e.StylusDevice);
-        _input.OnMouseLeftButtonDown(e);
+
+        float pressure = 0.5f;
+        if (e.StylusDevice != null)
+        {
+            var points = e.StylusDevice.GetStylusPoints(_inkCanvas);
+            if (points.Count > 0)
+            {
+                pressure = points[^1].PressureFactor;
+            }
+        }
+        _input.OnMouseLeftButtonDown(e, pressure);
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -585,6 +595,22 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         }
         StylusProbe.Observe("마우스이동(승격)", e.StylusDevice);
         UpdateStylusCursor(e.StylusDevice);
+
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        if (e.StylusDevice != null)
+        {
+            var points = e.StylusDevice.GetStylusPoints(_inkCanvas);
+            foreach (var sp in points)
+            {
+                _input.PointerMove(new Point(sp.X, sp.Y), KeyboardState.Shift, leftPressed: true, sp.PressureFactor);
+            }
+            return;
+        }
+
         _input.OnMouseMove(e);
     }
 
@@ -599,6 +625,23 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         }
         StylusProbe.Observe("스타일러스다운", e.StylusDevice, e.Inverted);
         UpdateStylusCursor(e.StylusDevice);
+    }
+
+    protected override void OnStylusMove(StylusEventArgs e)
+    {
+        base.OnStylusMove(e);
+        if (_suspended)
+        {
+            return;
+        }
+        if (!e.InAir)
+        {
+            var points = e.GetStylusPoints(_inkCanvas);
+            foreach (var sp in points)
+            {
+                _input.PointerMove(new Point(sp.X, sp.Y), KeyboardState.Shift, leftPressed: true, sp.PressureFactor);
+            }
+        }
     }
 
     protected override void OnStylusInAirMove(StylusEventArgs e)
