@@ -47,16 +47,19 @@ powershell -ExecutionPolicy Bypass -File build/publish.ps1
 
 # publish and silent install on local PC
 powershell -ExecutionPolicy Bypass -File build/publish.ps1
+Stop-Process -Name SSPen -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
 $installer = Get-ChildItem publish/installer/SSPen-Setup-*.exe | Select-Object -Last 1
 Start-Process -FilePath $installer.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+Start-Process -FilePath "$env:LOCALAPPDATA\Programs\SS Pen\SSPen.exe"
 ```
 
 CI (`.github/workflows/ci.yml`) runs on `windows-latest` for every push and PR: `dotnet restore` → `dotnet build -c Release` → unit/simulation tests → integration tests → self-contained publish validation → Inno Setup installer packaging. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which publishes the self-contained build, the installer and a portable zip to a GitHub release.
 
 ## Publish & installer gotchas
 
-**규칙**: 배포(혹은 빌드/패키징)를 수행하고 난 뒤에는 항상 현재 컴퓨터에 무음(silent) 모드로 설치를 완료해야 한다.
-`publish/installer/SSPen-Setup-*.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART` 명령을 사용하여 설치를 진행한다.
+**규칙**: 배포(혹은 빌드/패키징)를 수행하고 난 뒤에는 항상 현재 컴퓨터에 무음(silent) 모드로 설치를 완료하고 앱을 다시 실행해야 한다.
+반드시 `Stop-Process -Name SSPen -Force`로 기존 인스턴스를 종료하고, `Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait`로 설치 완료를 대기한 후, `$env:LOCALAPPDATA\Programs\SS Pen\SSPen.exe`를 실행하여 새 버전을 즉시 띄운다.
 
 `build/publish.ps1` is the only supported path: it publishes, then *proves* self-containment twice
 (publish-folder assertions plus a launch with `DOTNET_ROOT` masked to an empty dir), then compiles
