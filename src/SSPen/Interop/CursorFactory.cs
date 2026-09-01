@@ -3,51 +3,48 @@ using System.Runtime.InteropServices;
 using System.Windows.Input;
 using System.Windows.Interop;
 using Microsoft.Win32.SafeHandles;
-using SSPen.Annotation;
 
 namespace SSPen.Interop;
 
 /// <summary>
 /// 커스텀 커서 팩토리 (사용자 조타: 도구별 커서 UX).
 /// 지우개 커서: 연필 뒤 달린 지우개(Pencil-top eraser) 형태의 45도 대각선 커서.
-/// 현재 두께 단계(ThicknessStep)에 맞춰 지우개 팁과 연필 크기가 비례하여 조절된다.
-/// 핫스팟은 좌상단(2, 2) 지우개 팁 꼭짓점으로 정확하고 뾰족한 삭제 지점을 가리킨다.
+/// Windows 시스템 커서 크기(SM_CXCURSOR/SM_CYCURSOR)에 맞춰 다른 도구(펜 등)와 1:1로 동일한 크기로 동기화된다.
+/// 핫스팟은 좌상단 지우개 팁 꼭짓점(2*scale, 2*scale)으로 정확하고 뾰족한 삭제 지점을 가리킨다.
 /// 핑크 지우개 팁 + 은색 금속 페룰 + 노란 연필 바디 + 흰색/진회색 이중 외곽선으로 모든 배경에서 가시성 확보.
-/// CreateIconIndirect(fIcon=false, 핫스팟=(2, 2))로 HCURSOR를 만든다.
+/// CreateIconIndirect(fIcon=false, 핫스팟=(2*scale, 2*scale))로 HCURSOR를 만든다.
 /// </summary>
 internal static class CursorFactory
 {
-    private static readonly Cursor?[] _erasers = new Cursor?[5];
+    private static Cursor? _eraser;
 
-    /// <summary>지우개 기본 커서 (Medium 단계). 실패 시 십자 커서 폴백.</summary>
-    public static Cursor Eraser => EraserFor(ThicknessStep.Medium);
+    /// <summary>지우개 커서 (지연 생성, 프로세스 수명 공유). 시스템 커서 크기(SM_CXCURSOR)와 동기화된다.</summary>
+    public static Cursor Eraser => _eraser ??= CreateEraserCursor() ?? Cursors.Cross;
 
-    /// <summary>굵기 단계별 지우개 커서 (지연 생성, 프로세스 수명 공유).</summary>
-    public static Cursor EraserFor(ThicknessStep step) =>
-        _erasers[(int)step] ??= CreateEraserCursor(step) ?? Cursors.Cross;
-
-    private static Cursor? CreateEraserCursor(ThicknessStep step)
+    private static Cursor? CreateEraserCursor()
     {
         try
         {
-            using var bmp = new System.Drawing.Bitmap(32, 32, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            int cx = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXCURSOR);
+            int cy = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYCURSOR);
+            if (cx <= 0) cx = 32;
+            if (cy <= 0) cy = 32;
+
+            float scale = cx / 32.0f;
+
+            using var bmp = new System.Drawing.Bitmap(cx, cy, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
             using (var g = System.Drawing.Graphics.FromImage(bmp))
             {
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
 
                 var state = g.Save();
+                // 32x32 기준 좌표를 Windows 시스템 커서 크기로 확장
+                g.ScaleTransform(scale, scale);
                 g.TranslateTransform(2f, 2f);
                 g.RotateTransform(-45f);
 
-                float r = step switch
-                {
-                    ThicknessStep.XSmall => 2.2f,
-                    ThicknessStep.Small => 2.8f,
-                    ThicknessStep.Medium => 3.5f,
-                    ThicknessStep.Large => 4.4f,
-                    _ => 5.4f,
-                };
+                float r = 3.5f;
 
                 float eraserH = r * 2.0f;
                 float ferruleH = r * 1.4f;
@@ -62,8 +59,8 @@ internal static class CursorFactory
                 float left = -r;
                 float right = r;
 
-                float haloWidth = Math.Clamp(r * 0.9f, 2.8f, 4.2f);
-                float darkWidth = Math.Clamp(r * 0.35f, 1.2f, 1.8f);
+                float haloWidth = 3.5f;
+                float darkWidth = 1.4f;
 
                 // 1. 전체 외곽선 및 바디 경로
                 using (var haloPen = new System.Drawing.Pen(System.Drawing.Color.White, haloWidth) { LineJoin = System.Drawing.Drawing2D.LineJoin.Round })
@@ -145,8 +142,8 @@ internal static class CursorFactory
                     return null;
                 }
                 info.fIcon = 0; // BOOL: 0 = cursor
-                info.xHotspot = 2; // 지우개 팁 꼭짓점 = 정확한 삭제 지점
-                info.yHotspot = 2;
+                info.xHotspot = (uint)MathF.Round(2f * scale);
+                info.yHotspot = (uint)MathF.Round(2f * scale);
                 nint hCursor = NativeMethods.CreateIconIndirect(ref info);
                 // CreateIconIndirect가 비트맵을 복사하므로 원본은 해제.
                 NativeMethods.DeleteObject(info.hbmColor);

@@ -117,7 +117,10 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool UnregisterHotKey(nint hWnd, int id);
 
-    // ---- 커서 (강조 커서 후광 추적: 클릭 통과 중에도 동작) ----
+    // ---- 커서 (크기 메트릭 및 후광 추적) ----
+    internal const int SM_CXCURSOR = 13;
+    internal const int SM_CYCURSOR = 14;
+
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetCursorPos(out POINT lpPoint);
