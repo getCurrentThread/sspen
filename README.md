@@ -30,7 +30,7 @@
 | --- | --- | --- | --- | --- |
 | `Alt+Shift+1` | 표시 토글 | | `Alt+Shift+L` | 선 |
 | `Alt+Shift+2` | 클릭 통과 | | `Alt+Shift+A` | 화살표 |
-| `Alt+Shift+3` | 펜 | | `Alt+Shift+R` | 사각형 |
+| `Alt+Shift+3` | 펜 | | `Alt+Shift+U` | 사각형 |
 | `Alt+Shift+4` | 형광펜 | | `Alt+Shift+E` | 타원 |
 | `Alt+Shift+5` | 지우개 | | `Alt+Shift+T` | 텍스트 |
 | `Alt+Shift+6` | 실행 취소 | | `Alt+Shift+W` | 화이트보드 |

@@ -62,7 +62,7 @@ public sealed class ShellHotkeys
         new("thinner", Strings.HotkeyThinner, AltShift, VirtualKeys.OemOpenBracket, () => _state.StepThickness(-1)),
         new("line", Strings.ShapeLine, AltShift, VirtualKeys.L, () => ToggleTool(ToolKind.Line)),
         new("ellipse", Strings.ShapeEllipse, AltShift, VirtualKeys.E, () => ToggleTool(ToolKind.Ellipse)),
-        new("rectangle", Strings.ShapeRectangle, AltShift, VirtualKeys.R, () => ToggleTool(ToolKind.Rectangle)),
+        new("rectangle", Strings.ShapeRectangle, AltShift, VirtualKeys.U, () => ToggleTool(ToolKind.Rectangle)),
         new("arrow", Strings.ShapeArrow, AltShift, VirtualKeys.A, () => ToggleTool(ToolKind.Arrow)),
         new("text", Strings.ShapeText, AltShift, VirtualKeys.T, () => ToggleTool(ToolKind.Text)),
         new("whiteboard", Strings.Whiteboard, AltShift, VirtualKeys.W, () => _state.ToggleBoard(BoardMode.White)),

@@ -159,6 +159,7 @@ public static class VirtualKeys
     public const uint R = 0x52;
     public const uint S = 0x53;
     public const uint T = 0x54;
+    public const uint U = 0x55;
     public const uint V = 0x56;
     public const uint W = 0x57;
     public const uint OemOpenBracket = 0xDB;  // [
