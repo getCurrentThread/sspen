@@ -530,6 +530,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     {
         base.OnMouseLeftButtonDown(e);
         StylusProbe.Observe("마우스다운(승격)", e.StylusDevice);
+        UpdateStylusCursor(e.StylusDevice);
         _input.OnMouseLeftButtonDown(e);
     }
 
@@ -537,22 +538,56 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     {
         base.OnMouseMove(e);
         StylusProbe.Observe("마우스이동(승격)", e.StylusDevice);
+        UpdateStylusCursor(e.StylusDevice);
         _input.OnMouseMove(e);
     }
 
-    // ---- R8 1단계: 펜 입력이 실제로 어느 채널로 도달하는지 측정한다 (StylusProbe 참고). ----
-    // 아직 동작을 바꾸지 않는다 — 로그만 남기고 입력은 기존 승격 마우스 경로가 그대로 처리한다.
+    // ---- R8: 스타일러스(와콤 펜 등) 입력 처리 및 커서 연동 ----
 
     protected override void OnStylusDown(StylusDownEventArgs e)
     {
         base.OnStylusDown(e);
         StylusProbe.Observe("스타일러스다운", e.StylusDevice, e.Inverted);
+        UpdateStylusCursor(e.StylusDevice);
     }
 
     protected override void OnStylusInAirMove(StylusEventArgs e)
     {
         base.OnStylusInAirMove(e);
         StylusProbe.Observe("스타일러스공중이동", e.StylusDevice);
+        UpdateStylusCursor(e.StylusDevice);
+    }
+
+    protected override void OnStylusOutOfRange(StylusEventArgs e)
+    {
+        base.OnStylusOutOfRange(e);
+        ResetCursor();
+    }
+
+    protected override void OnStylusLeave(StylusEventArgs e)
+    {
+        base.OnStylusLeave(e);
+        ResetCursor();
+    }
+
+    private void UpdateStylusCursor(StylusDevice? device)
+    {
+        if (_closed || Hwnd == 0 || !_state.IsInteractive)
+        {
+            return;
+        }
+
+        Cursor = device?.Inverted == true ? CursorFactory.Eraser : CursorFor(_state.ActiveTool);
+    }
+
+    private void ResetCursor()
+    {
+        if (_closed || Hwnd == 0)
+        {
+            return;
+        }
+
+        Cursor = _state.IsInteractive ? CursorFor(_state.ActiveTool) : Cursors.Arrow;
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)

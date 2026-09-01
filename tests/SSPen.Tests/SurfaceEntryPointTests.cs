@@ -243,6 +243,55 @@ public class SurfaceEntryPointTests
         });
     }
 
+    /// <summary>
+    /// R8: 스타일러스 뒤집기(지우개 꼭지)는 활성 도구가 펜이더라도 즉시 지우개로 동작한다.
+    /// AppState.ActiveTool은 변하지 않아야 한다 (SEL-B-4).
+    /// </summary>
+    [Fact]
+    public void PointerDown_PenTool_Inverted_ActsAsEraserWithoutChangingActiveTool()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            var stroke = MakeStroke(new Point(10, 10), new Point(30, 30));
+            h.Document.Add(stroke);
+            h.State.ActiveTool = ToolKind.Pen;
+
+            bool handled = h.Controller.PointerDown(new Point(20, 20), shift: false, overActiveEditor: false, inverted: true);
+
+            Assert.True(handled);
+            Assert.Empty(h.Document.Elements); // 획이 지워짐
+            Assert.Empty(h.Canvas.Children); // 펜 획 미리보기가 시작되지 않음
+            Assert.Equal(ToolKind.Pen, h.State.ActiveTool); // ActiveTool 유지
+        });
+    }
+
+    /// <summary>
+    /// R8: 스타일러스 뒤집기 상태로 드래그하면 지나간 획들을 연속 삭제한다.
+    /// </summary>
+    [Fact]
+    public void PointerMove_InvertedDrag_ErasesMultipleElements()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            var stroke1 = MakeStroke(new Point(10, 10), new Point(30, 30));
+            var stroke2 = MakeStroke(new Point(60, 60), new Point(80, 80));
+            h.Document.Add(stroke1);
+            h.Document.Add(stroke2);
+            h.State.ActiveTool = ToolKind.Pen;
+
+            h.Controller.PointerDown(new Point(20, 20), shift: false, overActiveEditor: false, inverted: true);
+            Assert.Single(h.Document.Elements); // 첫 번째 획 지워짐
+
+            h.Controller.PointerMove(new Point(70, 70), shift: false, leftPressed: true);
+            Assert.Empty(h.Document.Elements); // 두 번째 획도 지워짐
+
+            h.Controller.PointerUp(new Point(70, 70), shift: false);
+            Assert.Equal(ToolKind.Pen, h.State.ActiveTool);
+        });
+    }
+
     private static TextBox OpenTextBox(Harness h) => Assert.Single(h.Canvas.Children.OfType<TextBox>());
 
     private static StrokeElement MakeStroke(Point a, Point b) =>

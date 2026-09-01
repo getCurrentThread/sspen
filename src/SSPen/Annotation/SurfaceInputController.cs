@@ -161,7 +161,8 @@ public sealed class SurfaceInputController(
 
     public void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
-        if (PointerDown(e.GetPosition(inkCanvas), KeyboardState.Shift))
+        bool inverted = e.StylusDevice?.Inverted == true;
+        if (PointerDown(e.GetPosition(inkCanvas), KeyboardState.Shift, IsOverActiveTextBox(), inverted))
         {
             e.Handled = true;
         }
@@ -206,7 +207,8 @@ public sealed class SurfaceInputController(
     /// 텍스트 바깥 클릭은 Handled를 <b>세우지 않는다</b>(그 클릭은 소비되지 않는다).
     /// void로 두고 어댑터가 무조건 대입하면 서피스가 오늘 통과시키는 클릭을 삼킨다.
     /// </summary>
-    public bool PointerDown(Point pos, bool shift) => PointerDown(pos, shift, IsOverActiveTextBox());
+    public bool PointerDown(Point pos, bool shift, bool inverted = false) =>
+        PointerDown(pos, shift, IsOverActiveTextBox(), inverted);
 
     /// <summary>
     /// <paramref name="overActiveEditor"/>는 <c>Point</c>에서 유도할 수 없는 WPF 히트테스트 입력이다 (ARCH-2).
@@ -214,12 +216,17 @@ public sealed class SurfaceInputController(
     /// 그 상자는 BorderThickness(1)·MinWidth=24라 measure/arrange가 돌지 않는 헤드리스에서는
     /// ActualWidth가 0이다 — Canvas.GetLeft/GetTop 기하로 대체하는 것은 헤드리스 편의를 위해
     /// 프로덕션 동작을 바꾸는 것이므로 금지한다.
+    /// <paramref name="inverted"/>는 스타일러스(와콤 펜 등)의 뒤집힘(지우개 꼭지) 여부다 (R8).
     /// </summary>
-    public bool PointerDown(Point pos, bool shift, bool overActiveEditor)
+    public bool PointerDown(Point pos, bool shift, bool overActiveEditor, bool inverted = false)
     {
+        // R8: 펜 뒤집기(지우개) 시 시작 시점의 유효 도구를 Eraser로 래치한다.
+        // AppState.ActiveTool에 뒤집기를 흘리는 것은 금지다 — 선택집합 해제의 유일한 트리거를 발화시킨다 (SEL-B-4).
+        var effectiveTool = inverted ? ToolKind.Eraser : state.ActiveTool;
+
         // 판정은 순수 표가 소유한다 (D4/ARCH-2). 여기 남는 것은 적용부와 Handled 배선뿐이다.
         var gesture = SurfaceInputRouter.RouteDown(
-            state.ActiveTool,
+            effectiveTool,
             state.IsInteractive,
             textEditing: _activeTextBox is not null,
             overActiveEditor: overActiveEditor);
@@ -238,22 +245,22 @@ public sealed class SurfaceInputController(
         switch (gesture)
         {
             case SurfaceGesture.StartStroke:
-                StartStroke(pos);
+                StartStroke(pos, effectiveTool);
                 break;
             case SurfaceGesture.StartLine:
-                StartShape(ShapeKind.Line, pos);
+                StartShape(ShapeKind.Line, pos, effectiveTool);
                 break;
             case SurfaceGesture.StartArrow:
-                StartShape(ShapeKind.Arrow, pos);
+                StartShape(ShapeKind.Arrow, pos, effectiveTool);
                 break;
             case SurfaceGesture.StartRectangle:
-                StartShape(ShapeKind.Rectangle, pos);
+                StartShape(ShapeKind.Rectangle, pos, effectiveTool);
                 break;
             case SurfaceGesture.StartEllipse:
-                StartShape(ShapeKind.Ellipse, pos);
+                StartShape(ShapeKind.Ellipse, pos, effectiveTool);
                 break;
             case SurfaceGesture.BeginTextEdit:
-                BeginTextEdit(pos);
+                BeginTextEdit(pos, effectiveTool);
                 break;
             case SurfaceGesture.EraseAndDrag:
                 // 사용자 조타: 클릭 + 드래그 삭제. 캡처로 창 밖까지 추적.
@@ -287,9 +294,10 @@ public sealed class SurfaceInputController(
             var end = ShapeGestureRules.ResolveEnd(_previewKind, _shapeStart, pos, shift);
             AnnotationVisualFactory.UpdateShapeVisual(_previewShape, _previewKind, _shapeStart, end);
         }
-        else if (_eraserDragging && state.ActiveTool == ToolKind.Eraser && state.IsInteractive)
+        else if (_eraserDragging && state.IsInteractive)
         {
             // 사용자 조타 12차: 드래그 지우기 (기존 Non-Goal 4 펜스를 명시 조타로 해제).
+            // R8: 펜 뒤집기 지우개도 _eraserDragging 중에는 지우기를 수행한다.
             EraseAt(pos);
         }
         else if (_dragKind != SelectionDragKind.None && state.IsInteractive)
@@ -644,11 +652,11 @@ public sealed class SurfaceInputController(
         setGestureGroupFrame(null);
     }
 
-    private void StartStroke(Point pos)
+    private void StartStroke(Point pos, ToolKind effectiveTool)
     {
         // 시작 시점 판정 캡처 (아키텍트 자문): 드래그 중 핫키로 도구가 바뀌거나 퀵컬러/휠로
         // 색·굵기가 바뀌어도, 이 획의 스타일(색·굵기·형광펜·페이딩 여부)은 시작 당시 스냅샷을 따른다.
-        var style = GestureStyleSnapshot.ForStroke(state);
+        var style = GestureStyleSnapshot.ForStroke(state, effectiveTool);
         _stroke = new StrokeAccumulator(pos, style);
         _activePolyline = new Polyline
         {
@@ -692,12 +700,12 @@ public sealed class SurfaceInputController(
         _activePolyline = null;
     }
 
-    private void StartShape(ShapeKind kind, Point pos)
+    private void StartShape(ShapeKind kind, Point pos, ToolKind effectiveTool)
     {
         _shapeStart = pos;
         _previewKind = kind;
         // 시작 시점 스냅샷: 드래그 중 색/굵기/페이딩 토글 변경이 미리보기·커밋 스타일을 어긋내지 않도록 고정.
-        _activeShapeStyle = GestureStyleSnapshot.ForShape(state);
+        _activeShapeStyle = GestureStyleSnapshot.ForShape(state, effectiveTool);
         _previewShape = AnnotationVisualFactory.CreateShapeVisual(kind, _activeShapeStyle.Color, _activeShapeStyle.Thickness);
         AnnotationVisualFactory.UpdateShapeVisual(_previewShape, kind, pos, pos);
         inkCanvas.Children.Add(_previewShape);
@@ -735,7 +743,7 @@ public sealed class SurfaceInputController(
 
     // ---- 텍스트 도구 (ARCH-2: NOACTIVATE 일시 해제 핸드셰이크로 한국어 IME 지원) ----
 
-    private void BeginTextEdit(Point pos)
+    private void BeginTextEdit(Point pos, ToolKind effectiveTool)
     {
         if (_activeTextBox is not null)
         {
@@ -743,7 +751,7 @@ public sealed class SurfaceInputController(
         }
         _textOrigin = pos;
         // 시작 시점 스냅샷: 편집 중 색/폰트 크기/페이딩 토글 변경이 결과 텍스트 스타일을 어긋내지 않도록 고정.
-        _activeTextStyle = GestureStyleSnapshot.ForText(state);
+        _activeTextStyle = GestureStyleSnapshot.ForText(state, effectiveTool);
         _activeTextBox = new TextBox
         {
             FontFamily = new FontFamily(TextCommitRules.FontFamilyName),

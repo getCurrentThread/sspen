@@ -128,4 +128,17 @@ public class GestureStyleSnapshotTests
         Assert.Equal(Red, style.Color);
         Assert.NotEqual(state.CurrentColor, style.Color);
     }
+
+    [Fact]
+    public void ForStroke_WithEffectiveTool_OverridesActiveTool()
+    {
+        var state = new AppState { ActiveTool = ToolKind.Pen };
+        state.SetThickness(ToolStyleGroup.Pen, ThicknessStep.XSmall);
+        state.SetThickness(ToolStyleGroup.Highlighter, ThicknessStep.XLarge);
+
+        var style = GestureStyleSnapshot.ForStroke(state, ToolKind.Highlighter);
+
+        Assert.True(style.IsHighlighter);
+        Assert.Equal(state.HighlighterThickness, style.Thickness);
+    }
 }

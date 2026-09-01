@@ -28,32 +28,35 @@ public readonly record struct TextStyle(Color Color, double FontSize, bool IsFad
 public static class GestureStyleSnapshot
 {
     /// <summary>
-    /// 획 스타일 동결. 형광펜 판정은 <b>시작 시점의 활성 도구</b>에서 나온다.
+    /// 획 스타일 동결. 형광펜 및 페이딩 판정은 <b>시작 시점의 유효 도구</b>에서 나온다.
     ///
-    /// 주의 (R8): <see cref="AppState.FadingApplies"/>는 내부적으로 live
-    /// <see cref="AppState.ActiveTool"/>에서 재유도된다. 지금은 이 호출 시점에 둘이 같으므로 무해하지만,
-    /// 펜 뒤집기(R8)로 <c>effectiveTool</c>을 시작 시점에 래치하게 되면 이 함수는 인자를 하나 더 받아
-    /// <c>state.FadingInk &amp;&amp; AppState.FadingAppliesTo(effectiveTool)</c> 형태여야 한다.
+    /// R8: 펜 뒤집기(지우개) 등으로 래치된 <paramref name="effectiveTool"/>을 기준으로 판정한다.
     /// <see cref="AppState.ActiveTool"/>에 뒤집기를 흘리는 것은 금지다 — 선택집합 해제의 유일한
     /// 트리거를 발화시킨다 (SEL-B-4).
     /// </summary>
-    public static StrokeStyle ForStroke(AppState state)
+    public static StrokeStyle ForStroke(AppState state, ToolKind effectiveTool)
     {
-        bool highlighter = state.ActiveTool == ToolKind.Highlighter;
+        bool highlighter = effectiveTool == ToolKind.Highlighter;
         return new StrokeStyle(
             state.CurrentColor,
             highlighter ? state.HighlighterThickness : state.PenThickness,
             highlighter,
-            state.FadingApplies);
+            state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
     }
 
+    public static StrokeStyle ForStroke(AppState state) => ForStroke(state, state.ActiveTool);
+
     /// <summary>도형 스타일 동결 (색·<see cref="AppState.ShapeThickness"/>·페이딩).</summary>
-    public static ShapeStyle ForShape(AppState state) =>
-        new(state.CurrentColor, state.ShapeThickness, state.FadingApplies);
+    public static ShapeStyle ForShape(AppState state, ToolKind effectiveTool) =>
+        new(state.CurrentColor, state.ShapeThickness, state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
+
+    public static ShapeStyle ForShape(AppState state) => ForShape(state, state.ActiveTool);
 
     /// <summary>텍스트 스타일 동결 (색·<see cref="AppState.TextFontSize"/>·페이딩).</summary>
-    public static TextStyle ForText(AppState state) =>
-        new(state.CurrentColor, state.TextFontSize, state.FadingApplies);
+    public static TextStyle ForText(AppState state, ToolKind effectiveTool) =>
+        new(state.CurrentColor, state.TextFontSize, state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
+
+    public static TextStyle ForText(AppState state) => ForText(state, state.ActiveTool);
 }
 
 /// <summary>
