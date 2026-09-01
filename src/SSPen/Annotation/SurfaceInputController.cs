@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using SSPen.Interop;
+using SSPen.Shell;
 
 namespace SSPen.Annotation;
 
@@ -151,6 +152,8 @@ public sealed class SurfaceInputController(
     private int _currentTableRows;
     private int _currentTableColumns;
     private Point _lastPointerPos;
+    private Border? _tableBadge;
+    private TextBlock? _tableBadgeText;
     private TextBox? _activeTextBox;
     private Point _textOrigin;
     private TextStyle _activeTextStyle;    // 텍스트 시작 시점 페이딩 판정 (사용자 요청 17차)
@@ -213,6 +216,7 @@ public sealed class SurfaceInputController(
                 state.TableRows = _currentTableRows;
                 state.TableColumns = _currentTableColumns;
                 AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, _lastPointerPos, _currentTableRows, _currentTableColumns);
+                UpdateTableBadge(_lastPointerPos);
                 e.Handled = true;
                 return;
             }
@@ -327,6 +331,7 @@ public sealed class SurfaceInputController(
         else if (_previewTable is not null)
         {
             AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _currentTableRows, _currentTableColumns);
+            UpdateTableBadgePosition(pos);
         }
         else if (_eraserDragging && state.IsInteractive)
         {
@@ -387,6 +392,7 @@ public sealed class SurfaceInputController(
                 state.TableRows = _currentTableRows;
             }
             AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _currentTableRows, _currentTableColumns);
+            UpdateTableBadge(pos);
             return true;
         }
 
@@ -811,7 +817,50 @@ public sealed class SurfaceInputController(
         _previewTable = AnnotationVisualFactory.CreateTableVisual(_activeTableStyle.Color, _activeTableStyle.Thickness);
         AnnotationVisualFactory.UpdateTableVisual(_previewTable, pos, pos, _currentTableRows, _currentTableColumns);
         inkCanvas.Children.Add(_previewTable);
+
+        // 드래그 중 실시간 행/열 크기 HUD 배지 생성 (방안 2)
+        _tableBadgeText = new TextBlock
+        {
+            Text = $"{_currentTableRows} × {_currentTableColumns} {Strings.ShapeTable}",
+            Foreground = Brushes.White,
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _tableBadge = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0xDD, 0x1E, 0x1E, 0x1E)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(7, 3, 7, 3),
+            Child = _tableBadgeText,
+            IsHitTestVisible = false,
+        };
+        UpdateTableBadgePosition(pos);
+        inkCanvas.Children.Add(_tableBadge);
+
         host.CaptureMouse();
+    }
+
+    private void UpdateTableBadge(Point pos)
+    {
+        if (_tableBadgeText is not null)
+        {
+            _tableBadgeText.Text = $"{_currentTableRows} × {_currentTableColumns} {Strings.ShapeTable}";
+        }
+        UpdateTableBadgePosition(pos);
+    }
+
+    private void UpdateTableBadgePosition(Point pos)
+    {
+        if (_tableBadge is null)
+        {
+            return;
+        }
+        Canvas.SetLeft(_tableBadge, pos.X + 16);
+        Canvas.SetTop(_tableBadge, pos.Y + 16);
     }
 
     private void CommitTable(Point rawEnd)
@@ -822,6 +871,12 @@ public sealed class SurfaceInputController(
         }
         inkCanvas.Children.Remove(_previewTable);
         _previewTable = null;
+        if (_tableBadge is not null)
+        {
+            inkCanvas.Children.Remove(_tableBadge);
+            _tableBadge = null;
+            _tableBadgeText = null;
+        }
 
         if ((rawEnd - _tableStart).Length < 3)
         {
@@ -833,12 +888,17 @@ public sealed class SurfaceInputController(
 
     private void DiscardTable()
     {
-        if (_previewTable is null)
+        if (_previewTable is not null)
         {
-            return;
+            inkCanvas.Children.Remove(_previewTable);
+            _previewTable = null;
         }
-        inkCanvas.Children.Remove(_previewTable);
-        _previewTable = null;
+        if (_tableBadge is not null)
+        {
+            inkCanvas.Children.Remove(_tableBadge);
+            _tableBadge = null;
+            _tableBadgeText = null;
+        }
     }
 
     // ---- 텍스트 도구 (ARCH-2: NOACTIVATE 일시 해제 핸드셰이크로 한국어 IME 지원) ----
