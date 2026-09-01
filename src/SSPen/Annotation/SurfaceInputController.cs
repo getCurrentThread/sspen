@@ -752,7 +752,7 @@ public sealed class SurfaceInputController(
         _textOrigin = pos;
         // 시작 시점 스냅샷: 편집 중 색/폰트 크기/페이딩 토글 변경이 결과 텍스트 스타일을 어긋내지 않도록 고정.
         _activeTextStyle = GestureStyleSnapshot.ForText(state, effectiveTool);
-        _activeTextBox = new TextBox
+        _activeTextBox = new AnnotationTextBox
         {
             FontFamily = new FontFamily(TextCommitRules.FontFamilyName),
             FontSize = _activeTextStyle.FontSize,
@@ -762,6 +762,7 @@ public sealed class SurfaceInputController(
             BorderThickness = new Thickness(1),
             MinWidth = 24,
             AcceptsReturn = true,
+            SpellCheck = { IsEnabled = false },
         };
         Canvas.SetLeft(_activeTextBox, pos.X);
         Canvas.SetTop(_activeTextBox, pos.Y);

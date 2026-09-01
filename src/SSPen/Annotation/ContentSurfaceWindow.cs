@@ -118,6 +118,8 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         // 원형 리플 피드백이 화면에 그려진다. 플릭도 빠른 획을 제스처로 가로챈다.
         Stylus.SetIsPressAndHoldEnabled(this, false);
         Stylus.SetIsFlicksEnabled(this, false);
+        Stylus.SetIsTapFeedbackEnabled(this, false);
+        Stylus.SetIsTouchFeedbackEnabled(this, false);
 
         _root = new Grid();
         _root.Children.Add(boardClip);
