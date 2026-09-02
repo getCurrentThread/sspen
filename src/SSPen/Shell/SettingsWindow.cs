@@ -81,7 +81,7 @@ public sealed class SettingsWindow : Window
         _boardBlack = new RadioButton { Content = Strings.Blackboard, IsChecked = s.DefaultBoardIsBlack, Margin = RowMargin, GroupName = "boardDefault" };
         _halo = new CheckBox { Content = Strings.SettingsHighlightCursor, IsChecked = s.HighlightCursor, Margin = RowMargin };
 
-        _quickColors = ReadQuickColors(s);
+        _quickColors = ColorPalette.RestoreQuickColors(s.QuickColors); // 드래프트 — 규칙은 ColorPalette 한 곳 (39단계)
 
         _saveFolder = new TextBox
         {
@@ -236,20 +236,6 @@ public sealed class SettingsWindow : Window
     {
         base.OnSourceInitialized(e);
         Hwnd = WindowStyling.GetHwnd(this);
-    }
-
-    /// <summary>설정의 바로가기 색상을 읽어 6칸 배열로 만든다 (모자라거나 깨진 칸은 기본색).</summary>
-    private static Color[] ReadQuickColors(AppSettings s)
-    {
-        var colors = new Color[AppState.QuickColorCount];
-        for (int i = 0; i < colors.Length; i++)
-        {
-            var fallback = ColorPalette.DefaultQuickColors[i];
-            colors[i] = s.QuickColors is { } saved && i < saved.Length
-                ? ColorPalette.Parse(saved[i], fallback)
-                : fallback;
-        }
-        return colors;
     }
 
     /// <summary>바로가기 색상 6칸 + 기본값 복원 버튼 (사용자 요청 17차).</summary>

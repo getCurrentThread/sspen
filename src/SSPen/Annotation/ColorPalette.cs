@@ -35,6 +35,25 @@ public static class ColorPalette
     /// <summary>기본 바로가기 색 문자열 사본 (설정 POCO 기본값용 — 배열 공유 방지).</summary>
     public static string[] DefaultQuickColorHex() => [.. DefaultQuickColors.Select(ToHex)];
 
+    /// <summary>
+    /// 저장된 바로가기 색상 복원 (사용자 요청 17차) — 규칙의 <b>단일 소유 지점</b> (39단계): 칸 수가 모자라면 나머지를
+    /// 기본색으로 채우고, 깨진 항목은 그 칸만 기본색으로 되돌린다 (한 칸이 상해도 나머지 설정은 살린다). 여분 칸은 무시.
+    /// 항상 <b>새 배열</b>을 돌려준다 — 공유 배열을 돌려주면 설정 창의 드래프트가 전역 기본값을 덮어쓴다 (배열 팩토리 규칙).
+    /// 이전에는 SettingsBinder.ApplyQuickColors와 SettingsWindow.ReadQuickColors가 같은 규칙을 두 벌로 갖고 있었다.
+    /// </summary>
+    public static Color[] RestoreQuickColors(string[]? saved)
+    {
+        var colors = new Color[DefaultQuickColors.Length];
+        for (int i = 0; i < colors.Length; i++)
+        {
+            var fallback = DefaultQuickColors[i];
+            colors[i] = saved is not null && i < saved.Length
+                ? Parse(saved[i], fallback)
+                : fallback;
+        }
+        return colors;
+    }
+
     /// <summary>색 → 설정 파일 표기 (#AARRGGBB).</summary>
     public static string ToHex(Color color) => color.ToString();
 

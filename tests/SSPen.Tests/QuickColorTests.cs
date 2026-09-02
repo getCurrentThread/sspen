@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows.Media;
 using SSPen.Annotation;
 using SSPen.Settings;
@@ -99,5 +100,76 @@ public sealed class QuickColorTests
         a.QuickColors[0] = "#FFFFFFFF";
 
         Assert.NotEqual(a.QuickColors[0], b.QuickColors[0]);
+    }
+
+    // ---- 39단계: 복원 규칙의 단일 소유 지점 ColorPalette.RestoreQuickColors ----
+
+    [Fact]
+    public void RestoreQuickColors_Null_ReturnsDefaults_AsFreshArray()
+    {
+        var restored = ColorPalette.RestoreQuickColors(null);
+
+        Assert.Equal(ColorPalette.DefaultQuickColors, restored);
+        Assert.NotSame(ColorPalette.DefaultQuickColors, restored); // 공유 배열을 돌려주면 드래프트가 전역 기본값을 덮어쓴다
+    }
+
+    [Fact]
+    public void RestoreQuickColors_ShortArray_FillsRemainderWithDefaults()
+    {
+        var restored = ColorPalette.RestoreQuickColors(["#7F00FF", "#123456"]);
+
+        Assert.Equal(Purple, restored[0]);
+        Assert.Equal((Color)ColorConverter.ConvertFromString("#123456"), restored[1]);
+        Assert.Equal(ColorPalette.DefaultQuickColors.Skip(2), restored.Skip(2));
+    }
+
+    [Fact]
+    public void RestoreQuickColors_CorruptSlot_OnlyThatSlotFallsBack()
+    {
+        var restored = ColorPalette.RestoreQuickColors(["#7F00FF", "not-a-color", "", "#7F00FF", "#7F00FF", "#7F00FF"]);
+
+        Assert.Equal(Purple, restored[0]);
+        Assert.Equal(ColorPalette.DefaultQuickColors[1], restored[1]);
+        Assert.Equal(ColorPalette.DefaultQuickColors[2], restored[2]);
+        Assert.Equal(Purple, restored[3]);
+    }
+
+    [Fact]
+    public void RestoreQuickColors_ExtraSlots_AreIgnored()
+    {
+        var restored = ColorPalette.RestoreQuickColors(Enumerable.Repeat("#7F00FF", 9).ToArray());
+
+        Assert.Equal(AppState.QuickColorCount, restored.Length);
+        Assert.All(restored, c => Assert.Equal(Purple, c));
+    }
+
+    [Fact]
+    public void DefaultQuickColors_Count_MatchesAppStateQuickColorCount() =>
+        Assert.Equal(AppState.QuickColorCount, ColorPalette.DefaultQuickColors.Length);
+
+    /// <summary>바인더 경로 특성화: 설정 파일의 깨진 칸만 기본색으로 돌아온다 (SettingsBinder는 ColorPalette 규칙에 위임).</summary>
+    [Fact]
+    public void SettingsBinder_ApplyToState_RestoresQuickColorsThroughColorPalette()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "SSPenTests_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var service = new SettingsService(dir);
+            service.Save(new AppSettings { QuickColors = ["#7F00FF", "broken"] });
+            var state = new AppState();
+            var binder = new SettingsBinder(state, new FadingInkController(new FadeSchedulerCore()), service);
+
+            binder.Load();
+            binder.ApplyToState();
+
+            Assert.Equal(Purple, state.QuickColors[0]);
+            Assert.Equal(ColorPalette.DefaultQuickColors[1], state.QuickColors[1]);
+            Assert.Equal(ColorPalette.DefaultQuickColors[5], state.QuickColors[5]);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 }

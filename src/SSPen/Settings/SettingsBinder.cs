@@ -64,20 +64,13 @@ public sealed class SettingsBinder
         SyncFromState();
     }
 
-    /// <summary>
-    /// 바로가기 색상 복원 (사용자 요청 17차). 칸 수가 모자라도 나머지를 기본색으로 채우고,
-    /// 깨진 항목은 그 칸만 기본색으로 되돌린다 — 한 칸이 상해도 나머지 설정은 살린다.
-    /// </summary>
+    /// <summary>바로가기 색상 복원 — 규칙(모자란 칸·깨진 칸 → 기본색)은 <see cref="ColorPalette.RestoreQuickColors"/>가 소유한다 (39단계).</summary>
     private void ApplyQuickColors()
     {
-        var saved = _settings.QuickColors;
-        for (int i = 0; i < AppState.QuickColorCount; i++)
+        var colors = ColorPalette.RestoreQuickColors(_settings.QuickColors);
+        for (int i = 0; i < colors.Length; i++)
         {
-            var fallback = ColorPalette.DefaultQuickColors[i];
-            var color = saved is not null && i < saved.Length
-                ? ColorPalette.Parse(saved[i], fallback)
-                : fallback;
-            _state.SetQuickColor(i, color);
+            _state.SetQuickColor(i, colors[i]);
         }
     }
 
