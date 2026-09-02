@@ -86,7 +86,7 @@ public class StrokeAccumulatorTests
     {
         // 누적기는 AppState를 참조하지 않는다 — 스타일은 값으로만 들어온다 (동결 규약).
         var state = new AppState { ActiveTool = ToolKind.Pen, FadingInk = true };
-        var acc = new StrokeAccumulator(new Point(0, 0), GestureStyleSnapshot.ForStroke(state));
+        var acc = new StrokeAccumulator(new Point(0, 0), GestureStyleSnapshot.ForStroke(state, state.ActiveTool));
         var frozen = acc.Style;
 
         state.CurrentColor = Color.FromRgb(0x34, 0x98, 0xDB);

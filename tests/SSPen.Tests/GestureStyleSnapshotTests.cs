@@ -28,7 +28,7 @@ public class GestureStyleSnapshotTests
         state.SetThickness(ToolStyleGroup.Highlighter, ThicknessStep.XLarge);
         state.ActiveTool = ToolKind.Highlighter;
 
-        var style = GestureStyleSnapshot.ForStroke(state);
+        var style = GestureStyleSnapshot.ForStroke(state, state.ActiveTool);
 
         Assert.True(style.IsHighlighter);
         Assert.Equal(state.HighlighterThickness, style.Thickness);
@@ -42,7 +42,7 @@ public class GestureStyleSnapshotTests
         state.SetThickness(ToolStyleGroup.Pen, ThicknessStep.XSmall);
         state.SetThickness(ToolStyleGroup.Highlighter, ThicknessStep.XLarge);
 
-        var style = GestureStyleSnapshot.ForStroke(state);
+        var style = GestureStyleSnapshot.ForStroke(state, state.ActiveTool);
 
         Assert.False(style.IsHighlighter);
         Assert.Equal(state.PenThickness, style.Thickness);
@@ -53,11 +53,11 @@ public class GestureStyleSnapshotTests
     public void ForStroke_CapturesFadingApplies()
     {
         var state = new AppState { ActiveTool = ToolKind.Pen, FadingInk = true };
-        Assert.True(GestureStyleSnapshot.ForStroke(state).IsFading);
+        Assert.True(GestureStyleSnapshot.ForStroke(state, state.ActiveTool).IsFading);
 
         // 지우개는 새 요소를 만들지 않으므로 페이딩 개념이 성립하지 않는다 (FadingAppliesTo).
         state.ActiveTool = ToolKind.Eraser;
-        Assert.False(GestureStyleSnapshot.ForStroke(state).IsFading);
+        Assert.False(GestureStyleSnapshot.ForStroke(state, state.ActiveTool).IsFading);
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class GestureStyleSnapshotTests
         // (readonly record struct라 지연 평가가 타입으로 불가능하다).
         var state = new AppState { ActiveTool = ToolKind.Pen };
         state.CurrentColor = Red;
-        var style = GestureStyleSnapshot.ForStroke(state);
+        var style = GestureStyleSnapshot.ForStroke(state, state.ActiveTool);
 
         state.CurrentColor = Blue;
         state.SetThickness(ToolStyleGroup.Pen, ThicknessStep.XLarge);
@@ -85,7 +85,7 @@ public class GestureStyleSnapshotTests
         state.ActiveTool = ToolKind.Rectangle;
         state.SetThickness(ToolStyleGroup.Shape, ThicknessStep.XLarge);
 
-        var style = GestureStyleSnapshot.ForShape(state);
+        var style = GestureStyleSnapshot.ForShape(state, state.ActiveTool);
 
         Assert.Equal(state.ShapeThickness, style.Thickness);
         Assert.NotEqual(state.PenThickness, style.Thickness);
@@ -95,7 +95,7 @@ public class GestureStyleSnapshotTests
     public void ForShape_FadingToggledAfterSnapshot_IsUnaffected()
     {
         var state = new AppState { ActiveTool = ToolKind.Rectangle, FadingInk = true };
-        var style = GestureStyleSnapshot.ForShape(state);
+        var style = GestureStyleSnapshot.ForShape(state, state.ActiveTool);
 
         state.FadingInk = false;
 
@@ -110,7 +110,7 @@ public class GestureStyleSnapshotTests
         var state = new AppState { ActiveTool = ToolKind.Text };
         state.SetThickness(ToolStyleGroup.Shape, ThicknessStep.XLarge);
 
-        var style = GestureStyleSnapshot.ForText(state);
+        var style = GestureStyleSnapshot.ForText(state, state.ActiveTool);
 
         Assert.Equal(state.TextFontSize, style.FontSize);
         Assert.NotEqual(state.ShapeThickness, style.FontSize);
@@ -121,7 +121,7 @@ public class GestureStyleSnapshotTests
     {
         var state = new AppState { ActiveTool = ToolKind.Text };
         state.CurrentColor = Red;
-        var style = GestureStyleSnapshot.ForText(state);
+        var style = GestureStyleSnapshot.ForText(state, state.ActiveTool);
 
         state.CurrentColor = Blue;
 
@@ -140,5 +140,20 @@ public class GestureStyleSnapshotTests
 
         Assert.True(style.IsHighlighter);
         Assert.Equal(state.HighlighterThickness, style.Thickness);
+    }
+
+    // ---- 27단계: 진입점 이중화 제거 — effectiveTool 없는 1인자 오버로드는 없다 (R8 경로 하나) ----
+
+    [Theory]
+    [InlineData("ForStroke")]
+    [InlineData("ForShape")]
+    [InlineData("ForTable")]
+    [InlineData("ForText")]
+    public void SingleArgOverloads_AreGone_ByReflection(string name)
+    {
+        var overloads = typeof(GestureStyleSnapshot).GetMethods().Where(m => m.Name == name).ToArray();
+
+        var only = Assert.Single(overloads);
+        Assert.Equal([typeof(AppState), typeof(ToolKind)], only.GetParameters().Select(p => p.ParameterType).ToArray());
     }
 }

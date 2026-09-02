@@ -36,6 +36,8 @@ public static class GestureStyleSnapshot
     /// R8: 펜 뒤집기(지우개) 등으로 래치된 <paramref name="effectiveTool"/>을 기준으로 판정한다.
     /// <see cref="AppState.ActiveTool"/>에 뒤집기를 흘리는 것은 금지다 — 선택집합 해제의 유일한
     /// 트리거를 발화시킨다 (SEL-B-4).
+    /// <c>effectiveTool</c> 없는 1인자 오버로드는 두지 않는다 (27단계): 557dbf5 뒤로 진입점이 둘이었고 프로덕션은
+    /// 항상 래치된 도구를 넘긴다 — 호출부가 <c>state.ActiveTool</c>을 명시적으로 넘기게 해 R8 경로를 하나로 둔다.
     /// </summary>
     public static StrokeStyle ForStroke(AppState state, ToolKind effectiveTool)
     {
@@ -47,25 +49,17 @@ public static class GestureStyleSnapshot
             state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
     }
 
-    public static StrokeStyle ForStroke(AppState state) => ForStroke(state, state.ActiveTool);
-
     /// <summary>도형 스타일 동결 (색·<see cref="AppState.ShapeThickness"/>·페이딩).</summary>
     public static ShapeStyle ForShape(AppState state, ToolKind effectiveTool) =>
         new(state.CurrentColor, state.ShapeThickness, state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
-
-    public static ShapeStyle ForShape(AppState state) => ForShape(state, state.ActiveTool);
 
     /// <summary>표 스타일 동결 (색·<see cref="AppState.ShapeThickness"/>·행·열·페이딩).</summary>
     public static TableStyle ForTable(AppState state, ToolKind effectiveTool) =>
         new(state.CurrentColor, state.ShapeThickness, state.TableRows, state.TableColumns, state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
 
-    public static TableStyle ForTable(AppState state) => ForTable(state, state.ActiveTool);
-
     /// <summary>텍스트 스타일 동결 (색·<see cref="AppState.TextFontSize"/>·페이딩).</summary>
     public static TextStyle ForText(AppState state, ToolKind effectiveTool) =>
         new(state.CurrentColor, state.TextFontSize, state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
-
-    public static TextStyle ForText(AppState state) => ForText(state, state.ActiveTool);
 }
 
 /// <summary>
