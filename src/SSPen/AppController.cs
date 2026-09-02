@@ -112,18 +112,11 @@ public sealed class AppController : IShellActions, ISettingsHost
         // 툴바: 저장된 위치 복원 (AC-21), 없으면 주 모니터 우측 기본값.
         _toolbar = new ToolbarWindow(_state, this);
         var primary = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
-        if (_settingsBinder.Settings.ToolbarLeft is { } savedLeft && _settingsBinder.Settings.ToolbarTop is { } savedTop)
-        {
-            _toolbar.Left = savedLeft;
-            _toolbar.Top = savedTop;
-        }
-        else
-        {
-            _toolbar.Left = primary.Bounds.X + primary.Bounds.Width - 34 - 12;
-            // CRIT-17: 실제 스트립 높이 = 로고(34+2) + 테두리(4) + 버튼 14개·구분선 4개·팀컴러 블록.
-            // 선택 버튼 추가로 494 → 524. 이 값이 틀어지면 툴바가 모니터 중앙에서 밀려난다.
-            _toolbar.Top = primary.Bounds.Y + (primary.Bounds.Height - 524) / 2.0;
-        }
+        // 배치 산술(CRIT-17 스트립 높이 포함)은 ToolbarPlacement가 소유한다 (34단계).
+        var (left, top) = ToolbarPlacement.Initial(
+            _settingsBinder.Settings.ToolbarLeft, _settingsBinder.Settings.ToolbarTop, primary.Bounds);
+        _toolbar.Left = left;
+        _toolbar.Top = top;
         _toolbar.Show();
         _toolbar.LocationChanged += (_, _) =>
         {
