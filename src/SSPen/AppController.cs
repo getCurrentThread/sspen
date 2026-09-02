@@ -531,28 +531,14 @@ public sealed class AppController : IShellActions, ISettingsHost
 
     // ---- z-밴드 (ARCH-5/R10): 설정창 > 캡처 오버레이+액션바 > 툴바 > 서피스 > 핀 > 기타 앱 ----
 
-    private void ApplyZBand()
-    {
-        var order = new List<nint>();
-        if (_settingsWindow is not null && _settingsWindow.Hwnd != 0)
-        {
-            order.Add(_settingsWindow.Hwnd);
-        }
-        if (_capture.OverlayHwnd != 0)
-        {
-            order.Add(_capture.OverlayHwnd);
-        }
-        if (_toolbar is not null && _toolbar.Hwnd != 0)
-        {
-            order.Add(_toolbar.Hwnd);
-        }
-        order.AddRange(_surfaces.Where(s => s.Hwnd != 0).Select(s => s.Hwnd));
-        if (_pins is not null)
-        {
-            order.AddRange(_pins.Pins.Where(p => p.Hwnd != 0).Select(p => p.Hwnd));
-        }
-        WindowStyling.ApplyZBand(order);
-    }
+    /// <summary>순서 정책은 <see cref="ZBandOrder"/>가, 적용 시점은 이 클래스의 호출 지점들이 소유한다 (33단계).</summary>
+    private void ApplyZBand() =>
+        WindowStyling.ApplyZBand(ZBandOrder.Build(
+            _settingsWindow?.Hwnd ?? 0,
+            _capture.OverlayHwnd,
+            _toolbar?.Hwnd ?? 0,
+            _surfaces.Select(s => s.Hwnd),
+            _pins?.Pins.Select(p => p.Hwnd) ?? []));
 
     // ---- 공유 렌더 틱: 후광 추적(ARCH-3) + 페이드 마감 처리(프리모템 1) ----
     // 상시 구독 금지 (아키텍트 어드바이저리): 후광/페이딩이 필요할 때만 붙이고, 틱에서 스스로 뗀다.
