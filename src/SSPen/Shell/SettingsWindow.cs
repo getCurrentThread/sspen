@@ -7,30 +7,6 @@ using SSPen.Settings;
 
 namespace SSPen.Shell;
 
-/// <summary>설정 창이 셸에 위임하는 계약 (AppController가 구현).</summary>
-public interface ISettingsHost
-{
-    AppSettings Settings { get; }
-
-    IReadOnlyList<(string Id, string Name, HotkeyDef Effective)> RemappableHotkeys { get; }
-
-    /// <summary>모달 확인 즉시 재등록 (AC-23).</summary>
-    void RemapHotkey(string id, HotkeyDef def);
-
-    void SuppressHotkeys();
-
-    void RestoreHotkeys();
-
-    /// <summary>일반 설정 적용 + 저장 (확인 버튼).</summary>
-    void ApplyGeneralSettings(AppSettings updated);
-
-    /// <summary>업데이트 확인 및 안내 대화상자 표시.</summary>
-    void CheckForUpdates();
-
-    /// <summary>프로그램 종료.</summary>
-    void ExitApp();
-}
-
 /// <summary>
 /// 설정 창 (WI-16, F13 실측: 510x444 세로 스크롤). 한국어 라벨은 잠근 문자열 확정본만 사용.
 /// UI 배율 항목은 명시적 제외 (CRIT-7 / 이연 5번: Round 14 잠금 문자열·AC에 없음).
@@ -353,21 +329,16 @@ public sealed class SettingsWindow : Window
         };
         comboButton.Click += (_, _) =>
         {
-            // ARCH-8: 모달 동안 라이브 맵 억제 → 종료 시 복원(확인이면 새 맵으로 재등록).
-            _host.SuppressHotkeys();
-            try
+            // ARCH-8 순서(억제 → 모달 → 재등록 → 반드시 복원)는 HotkeyRemapFlow가 소유한다 (40단계). 창은 대화상자와 라벨만.
+            var captured = HotkeyRemapFlow.Run(_host, id, () =>
             {
                 var dialog = new HotkeyCaptureDialog(effective) { Owner = this, Topmost = true };
-                if (dialog.ShowDialog() == true && dialog.Captured is { } captured)
-                {
-                    _host.RemapHotkey(id, captured);
-                    comboButton.Content = HotkeyFormatting.Format(captured);
-                    effective = captured;
-                }
-            }
-            finally
+                return dialog.ShowDialog() == true ? dialog.Captured : null;
+            });
+            if (captured is { } def)
             {
-                _host.RestoreHotkeys();
+                comboButton.Content = HotkeyFormatting.Format(def);
+                effective = def;
             }
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 2, 4, 2) };
