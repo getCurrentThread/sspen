@@ -101,22 +101,12 @@ public sealed class AppController : IShellActions, ISettingsHost
         // undo로 제거된 요소의 보류 페이드 취소 (CRIT-1 상호작용 계약).
         _ledger.ElementRemovedByUndo += _fading.OnElementRemoved;
 
-        foreach (var monitor in monitors)
+        // 시동은 '열린 서피스 없음'에서 출발하는 로스터 diff다 — 닫을 것 없이 활성 모니터 전부를 만든다.
+        var roster = SurfaceRosterPlan.Build(
+            [], monitors, new HashSet<string>(_settingsBinder.Settings.DisabledMonitors));
+        foreach (var monitor in roster.ToCreate)
         {
-            if (_settingsBinder.Settings.DisabledMonitors.Contains(monitor.DeviceName))
-            {
-                continue;
-            }
-            var document = new AnnotationDocument(monitor.DeviceName);
-            // R17: 문서에서 사라진 요소를 선택집합에서 떨어뜨려 댕글링 참조를 막는다.
-            _selection.AttachTo(document);
-            // 서피스 z-앵커: 항상 툴바 바로 아래 (사용자 조타 — 도구 선택 후에도 툴바 상호작용 보장).
-            var surface = new ContentSurfaceWindow(
-                monitor, _state, document, _ledger, _fading,
-                _selection, OwnerOf, DpiOf, OnCommitTransform, EngageClickThrough,
-                () => _toolbar?.Hwnd ?? 0);
-            _surfaces.Add(surface);
-            surface.Show();
+            CreateSurface(monitor);
         }
 
         // 툴바: 저장된 위치 복원 (AC-21), 없으면 주 모니터 우측 기본값.
@@ -299,16 +289,23 @@ public sealed class AppController : IShellActions, ISettingsHost
         Log.Info("일반 설정 적용");
     }
 
+    /// <summary>
+    /// 설정의 비활성 모니터 목록을 서피스 로스터에 반영한다. 판정(<see cref="SurfaceRosterPlan.Build"/>)은 순수 코어가,
+    /// 닫기·생성의 <b>순서</b>는 여기가 소유한다. 토폴로지에서 사라진 모니터의 서피스는 닫지 않는다
+    /// (보존이지 승인이 아니다 — SurfaceRosterPlan 문서 참조).
+    /// </summary>
     private void SyncSurfacesWithSettings()
     {
         var monitors = Interop.MonitorTopology.Enumerate();
         var disabled = new HashSet<string>(_settingsBinder.Settings.DisabledMonitors);
+        var roster = SurfaceRosterPlan.Build(
+            [.. _surfaces.Select(s => s.Monitor.DeviceName)], monitors, disabled);
 
-        // 1. 비활성화된 모니터의 서피스 정리 및 닫기
+        // 1. 비활성화된 모니터의 서피스 정리 및 닫기 — 순서가 계약이다 (b0c237a): DetachFrom → RemoveAt → Detach → HideThenClose.
         for (int i = _surfaces.Count - 1; i >= 0; i--)
         {
             var surface = _surfaces[i];
-            if (disabled.Contains(surface.Monitor.DeviceName))
+            if (roster.ToClose.Contains(surface.Monitor.DeviceName))
             {
                 _selection.DetachFrom(surface.Document);
                 _surfaces.RemoveAt(i);
@@ -319,25 +316,31 @@ public sealed class AppController : IShellActions, ISettingsHost
         }
 
         // 2. 새로 활성화된 모니터의 서피스 생성 및 표시
-        foreach (var monitor in monitors)
+        foreach (var monitor in roster.ToCreate)
         {
-            if (disabled.Contains(monitor.DeviceName))
-            {
-                continue;
-            }
-            if (!_surfaces.Any(s => s.Monitor.DeviceName == monitor.DeviceName))
-            {
-                var document = new AnnotationDocument(monitor.DeviceName);
-                _selection.AttachTo(document);
-                var surface = new ContentSurfaceWindow(
-                    monitor, _state, document, _ledger, _fading,
-                    _selection, OwnerOf, DpiOf, OnCommitTransform, EngageClickThrough,
-                    () => _toolbar?.Hwnd ?? 0);
-                _surfaces.Add(surface);
-                surface.Show();
-                Log.Info($"모니터 서피스 새로 생성 및 표시: {monitor.DeviceName}");
-            }
+            CreateSurface(monitor);
+            Log.Info($"모니터 서피스 새로 생성 및 표시: {monitor.DeviceName}");
         }
+    }
+
+    /// <summary>
+    /// 모니터 하나의 서피스를 만든다 — 시동과 설정 동기화가 <b>같은 배선</b>을 쓴다 (LD-2/R5 델리게이트 6종의 단일 소유).
+    /// 순서가 계약이다: R17 <c>AttachTo(document)</c>가 창 생성보다 앞, <c>Show</c>가 목록 등록 뒤.
+    /// </summary>
+    private ContentSurfaceWindow CreateSurface(MonitorSurfaceInfo monitor)
+    {
+        var document = new AnnotationDocument(monitor.DeviceName);
+        // R17: 문서에서 사라진 요소를 선택집합에서 떨어뜨려 댕글링 참조를 막는다.
+        _selection.AttachTo(document);
+        // 서피스 z-앵커: 항상 툴바 바로 아래 (사용자 조타 — 도구 선택 후에도 툴바 상호작용 보장).
+        // 툴바는 서피스 뒤에 만들어지므로 지연 참조여야 한다.
+        var surface = new ContentSurfaceWindow(
+            monitor, _state, document, _ledger, _fading,
+            _selection, OwnerOf, DpiOf, OnCommitTransform, EngageClickThrough,
+            () => _toolbar?.Hwnd ?? 0);
+        _surfaces.Add(surface);
+        surface.Show();
+        return surface;
     }
 
     // ---- IShellActions ----
