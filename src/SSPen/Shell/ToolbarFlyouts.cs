@@ -133,7 +133,10 @@ public sealed class ToolbarFlyouts
         _flyoutWatch.Start();
     }
 
-    /// <summary>포인터가 툴바도 열린 플라이아웃도 아닌 상태가 2틱(≈300ms) 지속되면 모두 닫는다.</summary>
+    /// <summary>
+    /// 포인터가 툴바도 열린 플라이아웃도 아닌 상태가 <see cref="FlyoutWatchRules.AwayTicksToClose"/>틱(≈300ms) 지속되면 모두 닫는다.
+    /// 판정은 <see cref="FlyoutWatchRules.Tick"/> (38단계); 여기는 입력 수집(IsOpen/IsMouseOver)과 실행(닫기·정지)만.
+    /// </summary>
     public void FlyoutWatchTick()
     {
         bool anyOpen = false;
@@ -149,19 +152,16 @@ public sealed class ToolbarFlyouts
                 }
             }
         }
-        if (!anyOpen)
+        var step = FlyoutWatchRules.Tick(anyOpen, over, _flyoutAwayTicks);
+        _flyoutAwayTicks = step.AwayTicks;
+        if (step.CloseAll)
+        {
+            // keep=null이 타이머도 멈춘다 — StopWatch를 따로 실행하지 않는다 (원형과 같이 Stop 한 번).
+            CloseFlyoutsExcept(null);
+        }
+        else if (step.StopWatch)
         {
             _flyoutWatch.Stop();
-            return;
-        }
-        if (over)
-        {
-            _flyoutAwayTicks = 0;
-            return;
-        }
-        if (++_flyoutAwayTicks >= 2)
-        {
-            CloseFlyoutsExcept(null);
         }
     }
 
