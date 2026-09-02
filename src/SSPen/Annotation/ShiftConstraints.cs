@@ -3,8 +3,12 @@ using System.Windows;
 namespace SSPen.Annotation;
 
 /// <summary>
-/// Shift 제약 (Round 13): 선·화살표 = 15도 단위 스냅, 사각형 = 정사각형, 타원 = 정원.
-/// 음수 방향 드래그를 포함한 임의 드래그에서 동작해야 한다.
+/// Shift 제약 (Round 13): 각도 스냅과 정사각형/정원 정규화. 음수 방향 드래그를 포함한 임의 드래그에서 동작해야 한다.
+///
+/// 어느 도형이 어느 제약을 받는지(선·화살표 = 15도 스냅, 사각형 = 정사각형, 타원 = 정원)는
+/// <see cref="ShapeGestureRules.ResolveEnd"/> 한 곳이 결정한다 — 이 파일은 도형 어휘(<c>ShapeKind</c>)를 모른다.
+/// 그래야 회전 변형(<c>TransformMath.Rotate</c>)이 <see cref="SnapDegrees"/>를 쓸 때 수학이 도형 모델을
+/// 물지 않는다 (22단계에서 끊은 사이클).
 /// </summary>
 public static class ShiftConstraints
 {
@@ -52,12 +56,4 @@ public static class ShiftConstraints
         double signY = dy < 0 ? -1 : 1;
         return new Point(start.X + signX * side, start.Y + signY * side);
     }
-
-    /// <summary>도구 종류에 맞는 제약 적용.</summary>
-    public static Point Apply(ShapeKind kind, Point start, Point end) => kind switch
-    {
-        ShapeKind.Line or ShapeKind.Arrow => SnapAngle(start, end),
-        ShapeKind.Rectangle or ShapeKind.Ellipse => NormalizeSquare(start, end),
-        _ => end,
-    };
 }

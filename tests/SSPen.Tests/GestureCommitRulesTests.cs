@@ -9,9 +9,9 @@ namespace SSPen.Tests;
 ///
 /// <b>정직한 표기</b>: <c>ResolveEnd_PreviewAndCommit_AgreeForEveryShapeKind</c>는
 /// '미리보기 == 커밋'을 직접 관측하지 못한다 — 두 호출부는 <c>MouseEventArgs</c>와 private 메서드 뒤에 있다.
-/// 이 Theory가 잠그는 것은 <c>ResolveEnd</c>의 계약(4 Kind × shift 2 = 8칸이 <c>ShiftConstraints.Apply</c>와 일치)이고,
-/// '판정이 하나뿐'이라는 사실은 <c>ShiftConstraints.Apply</c>가 <c>GestureCommitRules.cs</c> 한 곳에서만
-/// 호출된다는 리뷰 게이트가 지킨다.
+/// 이 Theory가 잠그는 것은 <c>ResolveEnd</c>의 계약(4 Kind × shift 2 = 8칸이 <c>SnapAngle</c>/<c>NormalizeSquare</c>
+/// 직접 호출과 일치)이고, '판정이 하나뿐'이라는 사실은 22단계 이후 <c>ShapeKind</c> 분기가
+/// <c>ShapeGestureRules.ResolveEnd</c> 한 곳에만 있다는 리뷰 게이트(grep <c>ShapeKind.Line or ShapeKind.Arrow</c>)가 지킨다.
 /// </summary>
 public class GestureCommitRulesTests
 {
@@ -37,9 +37,46 @@ public class GestureCommitRulesTests
         var start = new Point(40, 25);
         var raw = new Point(163, 71);
 
-        var expected = shift ? ShiftConstraints.Apply(kind, start, raw) : raw;
+        var expected = !shift ? raw
+            : kind is ShapeKind.Line or ShapeKind.Arrow
+                ? ShiftConstraints.SnapAngle(start, raw)
+                : ShiftConstraints.NormalizeSquare(start, raw);
 
         AssertPoint(expected, ShapeGestureRules.ResolveEnd(kind, start, raw, shift));
+    }
+
+    /// <summary>
+    /// 22단계: 도형별 분기가 <c>ResolveEnd</c>로 올라왔다 — 열거형 전수. <c>ShapeKind</c>에 멤버가 늘면 이 Theory에
+    /// 행이 자동으로 따라오고, 새 멤버가 <c>_ =&gt; raw</c> 폴백으로 떨어지면 여기서 빨갛다 (분기를 결정하라는 신호).
+    /// 옛 <c>ShiftConstraintTests.Apply_RoutesByShapeKind</c>의 단언(선==화살표, 사각형==타원, 100/30→100/100)도 포함한다.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AllShapeKinds))]
+    public void ResolveEnd_EveryShapeKind_WithShift_MatchesSnapOrSquare(ShapeKind kind)
+    {
+        var start = new Point(0, 0);
+        var end = new Point(100, 30);
+
+        var resolved = ShapeGestureRules.ResolveEnd(kind, start, end, shift: true);
+
+        var expected = kind is ShapeKind.Line or ShapeKind.Arrow
+            ? ShiftConstraints.SnapAngle(start, end)
+            : ShiftConstraints.NormalizeSquare(start, end);
+        AssertPoint(expected, resolved);
+        if (kind is ShapeKind.Rectangle or ShapeKind.Ellipse)
+        {
+            AssertPoint(new Point(100, 100), resolved);
+        }
+    }
+
+    public static TheoryData<ShapeKind> AllShapeKinds()
+    {
+        var data = new TheoryData<ShapeKind>();
+        foreach (var kind in Enum.GetValues<ShapeKind>())
+        {
+            data.Add(kind);
+        }
+        return data;
     }
 
     [Fact]

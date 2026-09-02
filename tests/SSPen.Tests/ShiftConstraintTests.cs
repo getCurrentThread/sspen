@@ -72,22 +72,17 @@ public class ShiftConstraintTests
         Assert.Equal(expectedDy, normalized.Y - start.Y, Tolerance);
     }
 
+    /// <summary>
+    /// 22단계: 도형별 분기(<c>Apply(ShapeKind, …)</c>)는 <c>ShapeGestureRules.ResolveEnd</c>로 올라갔다.
+    /// 이 파일의 대상은 도형 어휘를 모르는 수학이어야 한다 — <c>ShapeKind</c>를 받는 멤버가 다시 생기면 사이클이 돌아온다.
+    /// </summary>
     [Fact]
-    public void Apply_RoutesByShapeKind()
+    public void Apply_IsGone_AndNoMemberTakesShapeKind_ByReflection()
     {
-        var start = new Point(0, 0);
-        var end = new Point(100, 30);
-
-        var line = ShiftConstraints.Apply(ShapeKind.Line, start, end);
-        var arrow = ShiftConstraints.Apply(ShapeKind.Arrow, start, end);
-        Assert.Equal(line, arrow);
-
-        var square = ShiftConstraints.Apply(ShapeKind.Rectangle, start, end);
-        Assert.Equal(100, square.X, Tolerance);
-        Assert.Equal(100, square.Y, Tolerance);
-
-        var circle = ShiftConstraints.Apply(ShapeKind.Ellipse, start, end);
-        Assert.Equal(square, circle);
+        Assert.Null(typeof(ShiftConstraints).GetMethod("Apply"));
+        Assert.DoesNotContain(
+            typeof(ShiftConstraints).GetMethods(),
+            m => m.GetParameters().Any(p => p.ParameterType == typeof(ShapeKind)));
     }
 
     // ---- SnapDegrees (X1): 회전 변형이 필요로 하는 각도 함수. SnapAngle도 이것을 경유한다. ----

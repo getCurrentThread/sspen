@@ -13,9 +13,18 @@ public static class ShapeGestureRules
     /// <summary>
     /// 드래그 종점에 Shift 제약을 적용한 <b>실효 종점</b>. 미리보기와 커밋이 반드시 이 함수 하나를 경유한다 (D3).
     /// <paramref name="shift"/>는 호출부가 <c>KeyboardState.Shift</c>로 읽어 넘긴다 — 이 파일은 수식키를 직접 읽지 않는다.
+    ///
+    /// 도형별 분기(선·화살표 = 15도 스냅, 사각형·타원 = 정사각형/정원)는 <b>여기 한 곳</b>이다 —
+    /// <see cref="ShiftConstraints"/>는 각도·정규화 수학만 갖고 도형 어휘를 모른다 (22단계). 4단계(834abba)의
+    /// 리뷰 게이트 "판정이 하나뿐"은 이제 "호출자 한 곳"이 아니라 "함수 한 곳"이다.
     /// </summary>
     public static Point ResolveEnd(ShapeKind kind, Point start, Point raw, bool shift) =>
-        shift ? ShiftConstraints.Apply(kind, start, raw) : raw;
+        !shift ? raw : kind switch
+        {
+            ShapeKind.Line or ShapeKind.Arrow => ShiftConstraints.SnapAngle(start, raw),
+            ShapeKind.Rectangle or ShapeKind.Ellipse => ShiftConstraints.NormalizeSquare(start, raw),
+            _ => raw,
+        };
 
     /// <summary>
     /// 이 드래그가 도형을 만들 만큼 움직였는가. <b>클릭만으로는 도형을 만들지 않는다.</b>
