@@ -157,7 +157,7 @@ public sealed class CaptureSessionController
     /// 이것이 없으면 장식이 남은 프레임이 BitBlt되는 race가 생긴다.
     ///
     /// async 금지 규약에 맞춰 일회성 <c>CompositionTarget.Rendering</c> 후크로 동기 대기한다
-    /// (<c>AppController.OnRenderTick</c>가 같은 패턴의 선례).
+    /// (<c>AppController.CompositionTargetFrameSource</c>가 같은 패턴의 선례 — 45단계 이전에는 <c>OnRenderTick</c>).
     /// </summary>
     private void WaitForRenderPass()
     {

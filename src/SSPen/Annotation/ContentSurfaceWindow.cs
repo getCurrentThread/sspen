@@ -20,7 +20,7 @@ namespace SSPen.Annotation;
 /// 창이 그리는 힌트 채널은 셋이다 — 마퀴(<c>SetMarquee</c>), 제스처 프레임(<c>SetGestureGroupFrame</c>),
 /// 표 배지(<c>SetTableBadge</c>) — 각자 수명과 레이어가 달라 하나로 묶지 않는다.
 /// </summary>
-public sealed class ContentSurfaceWindow : Window, ISurfaceHost
+public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
 {
     private static readonly SolidColorBrush HitTestBrush = AnnotationVisualFactory.CreateFrozen(Color.FromArgb(0x01, 0, 0, 0));
 
@@ -709,7 +709,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         RedrawDecorations();
     }
 
-    /// <summary>페이드 마감: 요소 시각물을 서서히 소멸시키고 완료 시 문서에서 제거.</summary>
+    /// <summary>페이드 마감 (<see cref="IFadeSurface"/>): 요소 시각물을 서서히 소멸시키고 완료 시 콜백 — Remove→Purge 순서는 RenderTickController가 소유.</summary>
     public void AnimateFadeOut(AnnotationElement element, TimeSpan fadeLength, Action onCompleted)
     {
         if (!_visuals.TryGetValue(element.Id, out var visual))

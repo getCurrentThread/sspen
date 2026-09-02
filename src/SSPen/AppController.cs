@@ -39,7 +39,7 @@ public sealed class AppController : IShellActions, ISettingsHost
     private SelectionKeyMonitor? _selectionKeys;
     private bool _toolbarVisible = true;
     private PinManager? _pins;
-    private bool _renderTickAttached;
+    private readonly RenderTickController _renderTick;
 
     public AppController(SettingsService? settingsService = null)
     {
@@ -48,6 +48,20 @@ public sealed class AppController : IShellActions, ISettingsHost
         _ledger = new UndoLedger(OwnerOf, _selection);
         _selection.AttachTo(_state);
         _fading = new FadingInkController(_fadeCore);
+        // 공유 렌더 틱 정책은 RenderTickController가 소유한다 (45단계). 서피스 조회·후광 팬아웃·커서 폴링은 루트의 델리게이트다.
+        _renderTick = new RenderTickController(
+            _state, _fadeCore, _ledger, new CompositionTargetFrameSource(),
+            now: () => DateTime.UtcNow,
+            cursor: () => NativeMethods.GetCursorPos(out var c) ? (c.X, c.Y) : null,
+            updateHalos: (x, y) =>
+            {
+                foreach (var surface in _surfaces)
+                {
+                    surface.UpdateHalo(x, y);
+                }
+            },
+            // OwnerOf와 같은 술어(참조 포함)지만 문서가 아니라 서피스를 돌려준다 — 페이드 애니메이션은 창이 건다.
+            ownerOf: element => _surfaces.FirstOrDefault(s => s.Document.Elements.Contains(element)));
         _settingsBinder = new SettingsBinder(_state, _fading, settingsService);
         _updateService = new UpdateService(_dispatcher, ExitApp);
         _capture = new CaptureSessionController(
@@ -158,8 +172,8 @@ public sealed class AppController : IShellActions, ISettingsHost
 
         _state.Changed += ApplyZBand;
         _state.Changed += _settingsBinder.SyncFromState;
-        _state.Changed += UpdateRenderTickSubscription;
-        UpdateRenderTickSubscription();
+        _state.Changed += _renderTick.Refresh;
+        _renderTick.Refresh();
         ApplyZBand();
 
         if (_settingsBinder.Settings.CheckUpdateOnStart)
@@ -178,14 +192,10 @@ public sealed class AppController : IShellActions, ISettingsHost
 
     public void Shutdown()
     {
-        if (_renderTickAttached)
-        {
-            System.Windows.Media.CompositionTarget.Rendering -= OnRenderTick;
-            _renderTickAttached = false;
-        }
+        _renderTick.Stop(); // 틱 해제가 첫 줄 — 아래 구독 해제·창 닫기보다 먼저 (프레임이 닫힌 서피스를 만지지 않게).
         _state.Changed -= ApplyZBand;
         _state.Changed -= _settingsBinder.SyncFromState;
-        _state.Changed -= UpdateRenderTickSubscription;
+        _state.Changed -= _renderTick.Refresh;
         if (_selectionKeys is not null)
         {
             _state.Changed -= _selectionKeys.Refresh;
@@ -536,52 +546,21 @@ public sealed class AppController : IShellActions, ISettingsHost
             _surfaces.Select(s => s.Hwnd),
             _pins?.Pins.Select(p => p.Hwnd) ?? []));
 
-    // ---- 공유 렌더 틱: 후광 추적(ARCH-3) + 페이드 마감 처리(프리모템 1) ----
-    // 상시 구독 금지 (아키텍트 어드바이저리): 후광/페이딩이 필요할 때만 붙이고, 틱에서 스스로 뗀다.
+    // ---- 공유 렌더 틱 (ARCH-3/프리모템 1): 정책은 RenderTickController(45단계), 여기는 WPF 프레임 이벤트 어댑터뿐 ----
 
-    private void UpdateRenderTickSubscription()
+    /// <summary>
+    /// <see cref="IFrameSource"/>의 WPF 어댑터 — <c>CompositionTarget.Rendering</c>을 아는 곳은 여기 하나뿐이다
+    /// (ContentSurfaceWindow.DispatcherIdleScheduler 선례). 정적 이벤트라 Application이 필요 없고, 호출 스레드 Dispatcher에 묶인다.
+    /// </summary>
+    private sealed class CompositionTargetFrameSource : IFrameSource
     {
-        bool needed = _state.HaloActive || _state.FadingInk || _fadeCore.PendingCount > 0;
-        if (needed && !_renderTickAttached)
-        {
-            System.Windows.Media.CompositionTarget.Rendering += OnRenderTick;
-            _renderTickAttached = true;
-        }
-    }
+        public event Action? Frame;
 
-    private void OnRenderTick(object? sender, EventArgs e)
-    {
-        if (!_state.HaloActive && !_state.FadingInk && _fadeCore.PendingCount == 0)
-        {
-            System.Windows.Media.CompositionTarget.Rendering -= OnRenderTick;
-            _renderTickAttached = false;
-            return;
-        }
+        public void Start() => System.Windows.Media.CompositionTarget.Rendering += OnRendering;
 
-        if (_state.HaloActive && NativeMethods.GetCursorPos(out var cursor))
-        {
-            foreach (var surface in _surfaces)
-            {
-                surface.UpdateHalo(cursor.X, cursor.Y);
-            }
-        }
+        public void Stop() => System.Windows.Media.CompositionTarget.Rendering -= OnRendering;
 
-        if (_fadeCore.PendingCount > 0)
-        {
-            foreach (var element in _fadeCore.Due(DateTime.UtcNow))
-            {
-                var owner = _surfaces.FirstOrDefault(s => s.Document.Elements.Contains(element));
-                if (owner is null)
-                {
-                    continue;
-                }
-                owner.AnimateFadeOut(element, TimeSpan.FromMilliseconds(700), () =>
-                {
-                    owner.Document.Remove(element);
-                    _ledger.PurgeElement(element);
-                });
-            }
-        }
+        private void OnRendering(object? sender, EventArgs e) => Frame?.Invoke();
     }
 
     // ---- E2E 및 테스트 전용 접근자 ----
