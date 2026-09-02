@@ -316,41 +316,22 @@ public sealed class AppState
     /// <summary>서피스가 마우스 입력을 받는가 (ARCH-1 히트테스트 배경 스위치와 연동).</summary>
     public bool IsInteractive => SurfacesVisible && ActiveTool != ToolKind.None && !ClickThrough;
 
-    /// <summary>단계 → 펜 굵기 (논리 px), 5단계: 2/4/6/10/16.</summary>
-    public static double PenPixels(ThicknessStep step) => step switch
-    {
-        ThicknessStep.XSmall => 2,
-        ThicknessStep.Small => 4,
-        ThicknessStep.Medium => 6,
-        ThicknessStep.Large => 10,
-        _ => 16,
-    };
+    // 굵기 단계 → 값 환산은 ThicknessScale이 소유한다 (30단계). 여기는 그룹별 단계를 골라 넘길 뿐이다.
 
     /// <summary>펜 획 굵기 (펜 그룹).</summary>
-    public double PenThickness => PenPixels(ThicknessOf(ToolStyleGroup.Pen));
+    public double PenThickness => ThicknessScale.PenPixels(ThicknessOf(ToolStyleGroup.Pen));
 
     /// <summary>형광펜 획 굵기 (형광펜 그룹, 3배 폭).</summary>
-    public double HighlighterThickness => PenPixels(ThicknessOf(ToolStyleGroup.Highlighter)) * 3;
+    public double HighlighterThickness => ThicknessScale.HighlighterPixels(ThicknessOf(ToolStyleGroup.Highlighter));
 
     /// <summary>도형 획 굵기 (도형 그룹).</summary>
-    public double ShapeThickness => PenPixels(ThicknessOf(ToolStyleGroup.Shape));
+    public double ShapeThickness => ThicknessScale.PenPixels(ThicknessOf(ToolStyleGroup.Shape));
 
     /// <summary>텍스트 크기 (도형 그룹 연동, 5단계): 12/16/24/36/48.</summary>
-    public double TextFontSize => ThicknessOf(ToolStyleGroup.Shape) switch
-    {
-        ThicknessStep.XSmall => 12,
-        ThicknessStep.Small => 16,
-        ThicknessStep.Medium => 24,
-        ThicknessStep.Large => 36,
-        _ => 48,
-    };
+    public double TextFontSize => ThicknessScale.FontSize(ThicknessOf(ToolStyleGroup.Shape));
 
-    /// <summary>활성 그룹 굵기 한 단계 증감 (휠/핫키, 0..4 클램프).</summary>
-    public void StepThickness(int direction)
-    {
-        int next = Math.Clamp((int)Thickness + direction, 0, 4);
-        Thickness = (ThicknessStep)next;
-    }
+    /// <summary>활성 그룹 굵기 한 단계 증감 (휠/핫키). 양끝 클램프는 ThicknessScale.Step이 소유한다.</summary>
+    public void StepThickness(int direction) => Thickness = ThicknessScale.Step(Thickness, direction);
 
     /// <summary>화이트보드 활성 중 블랙보드를 누르면 전환 (Round 13).</summary>
     public void ToggleBoard(BoardMode requested)
