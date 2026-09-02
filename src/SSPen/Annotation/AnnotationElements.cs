@@ -137,7 +137,7 @@ public sealed class StrokeElement : AnnotationElement
         }
         else
         {
-            _pressures = [.. Enumerable.Repeat(0.5f, _points.Count)];
+            _pressures = [.. Enumerable.Repeat(StrokeGeometry.DefaultPressure, _points.Count)];
         }
         IsHighlighter = isHighlighter;
     }

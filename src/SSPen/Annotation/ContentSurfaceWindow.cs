@@ -613,7 +613,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         StylusProbe.Observe("마우스다운(승격)", e.StylusDevice);
         UpdateStylusCursor(e.StylusDevice);
 
-        float pressure = 0.5f;
+        float pressure = StrokeGeometry.DefaultPressure;
         if (e.StylusDevice != null)
         {
             var points = e.StylusDevice.GetStylusPoints(_inkCanvas);

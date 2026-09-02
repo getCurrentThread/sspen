@@ -118,7 +118,7 @@ public sealed class SurfaceInputController(
     // Handled는 **반환값이 참일 때만** 세운다. `e.Handled = 반환값`으로 대입하면 상위에서
     // 이미 세워 둔 Handled를 false로 되돌려, 오늘 서피스가 통과시키는 입력의 소비 여부가 바뀐다.
 
-    public void OnMouseLeftButtonDown(MouseButtonEventArgs e, float pressure = 0.5f)
+    public void OnMouseLeftButtonDown(MouseButtonEventArgs e, float pressure = StrokeGeometry.DefaultPressure)
     {
         bool inverted = e.StylusDevice?.Inverted == true;
         if (PointerDown(e.GetPosition(inkCanvas), KeyboardState.Shift, IsOverActiveTextBox(), inverted, pressure))
@@ -127,7 +127,7 @@ public sealed class SurfaceInputController(
         }
     }
 
-    public void OnMouseMove(MouseEventArgs e, float pressure = 0.5f)
+    public void OnMouseMove(MouseEventArgs e, float pressure = StrokeGeometry.DefaultPressure)
     {
         // 눌리지 않은 이동을 여기서 끊는다 — 호버 이동마다 GetPosition/GetAsyncKeyState를
         // 부르지 않기 위해서다. 판정의 주인은 아래 PointerMove의 leftPressed 가드다.
@@ -185,7 +185,7 @@ public sealed class SurfaceInputController(
     /// 텍스트 바깥 클릭은 Handled를 <b>세우지 않는다</b>(그 클릭은 소비되지 않는다).
     /// void로 두고 어댑터가 무조건 대입하면 서피스가 오늘 통과시키는 클릭을 삼킨다.
     /// </summary>
-    public bool PointerDown(Point pos, bool shift, bool inverted = false, float pressure = 0.5f) =>
+    public bool PointerDown(Point pos, bool shift, bool inverted = false, float pressure = StrokeGeometry.DefaultPressure) =>
         PointerDown(pos, shift, IsOverActiveTextBox(), inverted, pressure);
 
     /// <summary>
@@ -196,7 +196,7 @@ public sealed class SurfaceInputController(
     /// 프로덕션 동작을 바꾸는 것이므로 금지한다.
     /// <paramref name="inverted"/>는 스타일러스(와콤 펜 등)의 뒤집힘(지우개 꼭지) 여부다 (R8).
     /// </summary>
-    public bool PointerDown(Point pos, bool shift, bool overActiveEditor, bool inverted = false, float pressure = 0.5f)
+    public bool PointerDown(Point pos, bool shift, bool overActiveEditor, bool inverted = false, float pressure = StrokeGeometry.DefaultPressure)
     {
         // R8: 펜 뒤집기(지우개) 시 시작 시점의 유효 도구를 Eraser로 래치한다.
         // AppState.ActiveTool에 뒤집기를 흘리는 것은 금지다 — 선택집합 해제의 유일한 트리거를 발화시킨다 (SEL-B-4).
@@ -256,7 +256,7 @@ public sealed class SurfaceInputController(
         return SurfaceInputRouter.MarksHandled(gesture);
     }
 
-    public void PointerMove(Point pos, bool shift, bool leftPressed, float pressure = 0.5f)
+    public void PointerMove(Point pos, bool shift, bool leftPressed, float pressure = StrokeGeometry.DefaultPressure)
     {
         if (!leftPressed)
         {
@@ -675,7 +675,7 @@ public sealed class SurfaceInputController(
         setGestureGroupFrame(null);
     }
 
-    private void StartStroke(Point pos, ToolKind effectiveTool, float pressure = 0.5f)
+    private void StartStroke(Point pos, ToolKind effectiveTool, float pressure = StrokeGeometry.DefaultPressure)
     {
         // 시작 시점 판정 캡처 (아키텍트 자문): 드래그 중 핫키로 도구가 바뀌거나 퀵컬러/휠로
         // 색·굵기가 바뀌어도, 이 획의 스타일(색·굵기·형광펜·페이딩 여부)은 시작 당시 스냅샷을 따른다.
@@ -696,7 +696,7 @@ public sealed class SurfaceInputController(
         {
             return;
         }
-        _activeStrokePath.Data = AnnotationVisualFactory.CreateStrokeGeometry(
+        _activeStrokePath.Data = StrokeGeometry.Create(
             _stroke.Points, _stroke.Pressures, _stroke.Style.Thickness, _stroke.Style.IsHighlighter);
     }
 

@@ -77,11 +77,11 @@ public sealed class StrokeAccumulator
     private readonly List<Point> _points = [];
     private readonly List<float> _pressures = [];
 
-    public StrokeAccumulator(Point start, StrokeStyle style, float startPressure = 0.5f)
+    public StrokeAccumulator(Point start, StrokeStyle style, float startPressure = StrokeGeometry.DefaultPressure)
     {
         Style = style;
         _points.Add(start);
-        _pressures.Add(Math.Clamp(startPressure, 0.05f, 1.0f));
+        _pressures.Add(StrokeGeometry.ClampPressure(startPressure));
     }
 
     /// <summary>시작 시점에 동결된 스타일 (이후 <see cref="AppState"/> 변경에 영향받지 않는다).</summary>
@@ -97,14 +97,14 @@ public sealed class StrokeAccumulator
     /// 점을 채택했으면 <c>true</c>. 거리는 <b>마지막으로 채택된 점</b>에서 잰다 —
     /// 거절된 점에서 재면 표본 간격이 달라져 획 모양이 바뀐다.
     /// </summary>
-    public bool TryAppend(Point p, float pressure = 0.5f)
+    public bool TryAppend(Point p, float pressure = StrokeGeometry.DefaultPressure)
     {
         if ((p - _points[^1]).Length < MinPointDistance)
         {
             return false;
         }
         _points.Add(p);
-        _pressures.Add(Math.Clamp(pressure, 0.05f, 1.0f));
+        _pressures.Add(StrokeGeometry.ClampPressure(pressure));
         return true;
     }
 }

@@ -125,4 +125,16 @@ public class StrokeAccumulatorTests
         Assert.Equal(points, stroke.Points);
         Assert.Equal(pressures, stroke.Pressures);
     }
+    /// <summary>31단계: 필압 클램프는 StrokeGeometry.ClampPressure 하나다 — 누적기가 리터럴로 되돌아가면 여기가 빨갛다.</summary>
+    [Fact]
+    public void TryAppend_ClampsPressureViaStrokeGeometry()
+    {
+        var state = new AppState { ActiveTool = ToolKind.Pen };
+        var acc = new StrokeAccumulator(new Point(0, 0), GestureStyleSnapshot.ForStroke(state, state.ActiveTool), startPressure: 9f);
+
+        Assert.True(acc.TryAppend(new Point(50, 0), pressure: -3f));
+
+        Assert.Equal(StrokeGeometry.MaxPressure, acc.Pressures[0]);
+        Assert.Equal(StrokeGeometry.MinPressure, acc.Pressures[^1]);
+    }
 }
