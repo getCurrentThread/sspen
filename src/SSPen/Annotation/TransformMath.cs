@@ -18,20 +18,10 @@ public enum HandleKind
 }
 
 /// <summary>
-/// 변형 1건의 페이로드 (SEL-12): 요소 참조 + 전/후 상태 + 전/후 소유 문서.
-/// <c>long Id</c>를 쓰지 않는 이유: 문서에 id 인덱스가 없고, 소유권 복귀에 필요한 것은
-/// undo 시점의 소유자가 아니라 **기록 시점의 원래 소유자**라 <paramref name="BeforeOwner"/>를 직접 들어야 한다.
-/// </summary>
-public readonly record struct TransformDelta(
-    AnnotationElement Element,
-    ElementTransformState Before,
-    ElementTransformState After,
-    AnnotationDocument BeforeOwner,
-    AnnotationDocument AfterOwner);
-
-/// <summary>
 /// 변형 수학 순수 헬퍼 (SEL-9). UI와 완전히 분리되어 헤드리스 유닛 테스트 대상이다
 /// (<c>FadeSchedulerCore</c>/<c>ShiftConstraints</c>/<c>CoordinateSpace</c> 분리 관례).
+/// 원장 페이로드 <see cref="TransformDelta"/>는 <c>TransformDelta.cs</c>에 있다 — 이 파일은
+/// <see cref="ElementTransformState"/>·<see cref="Rect"/>·<see cref="Point"/>만 알고 요소·문서 타입을 모른다.
 ///
 /// 좌표 프레임 계약 — 세 가지가 서로 다른 용도로 고정되어 있다:
 /// <list type="bullet">
