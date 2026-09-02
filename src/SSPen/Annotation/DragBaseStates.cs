@@ -52,7 +52,7 @@ public static class TransformCommitPlan
 /// <b>id가 아니라 요소 참조를 함께 붙잡는 이유</b>: 롤백·커밋 시점에 선택집합을 다시 조회하면,
 /// 그 사이 선택이 비어 버린 경로에서 요소를 되찾지 못해 <b>화면에는 변형된 채 원장에는 없는</b>
 /// 변형이 남아 실행취소로 지울 수 없게 된다. 실제 경로: 드래그 도중 ESC →
-/// <c>AppController.EngageClickThrough</c>가 선택을 비우고 <c>ClickThrough=true</c>로
+/// <c>LedgerCommands.EngageClickThrough</c>가 선택을 비우고 <c>ClickThrough=true</c>로
 /// <c>IsInteractive</c>를 떨어뜨리면 <c>ContentSurfaceWindow.ApplyState</c>가
 /// <c>CancelActiveInput</c>을 부르는데, 그때 선택집합은 이미 비어 있다 (R5/SEL-B-4).
 /// 이동·그룹 스케일·그룹 회전은 핸들 대상도 없으므로 id로는 아무것도 되찾지 못해
