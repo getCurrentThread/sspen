@@ -65,7 +65,10 @@ public sealed class ToolbarFlyouts
 
     public Popup[] AllFlyouts => [ShapesFlyout, ThicknessFlyout, PaletteFlyout, BoardFlyout, FadingFlyout, PenFlyout];
 
-    /// <summary>생성된 툴팁을 수명 관리 대상으로 등록한다 (<see cref="ToolbarStripBuilder.AttachTooltip"/>가 호출).</summary>
+    /// <summary>
+    /// 생성된 툴팁을 수명 관리 대상으로 등록한다 — <see cref="ToolbarTooltips.Attach"/>의 필수 등록 델리게이트로 넘긴다
+    /// (37단계: 미등록 경로가 시그니처에서 사라졌다). 레지스트리는 여기 그대로 둔다 (AGENTS L81).
+    /// </summary>
     internal void RegisterTooltip(ToolTip tooltip) => _tooltips.Add(tooltip);
 
     /// <summary>열려 있는 툴팁을 전부 닫는다 (툴바 숨김 시).</summary>
@@ -346,7 +349,7 @@ public sealed class ToolbarFlyouts
         stack.Children.Add(swatch);
         stack.Children.Add(text);
         var item = new Border { Background = Brushes.Transparent, Child = stack, Padding = new Thickness(2) };
-        ToolbarStripBuilder.AttachTooltip(_actions, item, label, hotkeyId, this);
+        ToolbarTooltips.Attach(_actions, item, label, hotkeyId, RegisterTooltip);
         _boardItems.Add((item, swatch, text, mode));
         item.MouseEnter += (_, _) => item.Background = ToolbarTheme.ButtonHoverBrush;
         item.MouseLeave += (_, _) => HighlightBoardSelection();
@@ -419,7 +422,7 @@ public sealed class ToolbarFlyouts
             HorizontalAlignment = HorizontalAlignment.Center,
         });
         var item = new Border { Background = Brushes.Transparent, Child = stack, Padding = new Thickness(2) };
-        ToolbarStripBuilder.AttachTooltip(_actions, item, label, hotkeyId, this);
+        ToolbarTooltips.Attach(_actions, item, label, hotkeyId, RegisterTooltip);
         item.MouseEnter += (_, _) => item.Background = ToolbarTheme.ButtonHoverBrush;
         item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
         item.MouseLeftButtonUp += (_, _) =>

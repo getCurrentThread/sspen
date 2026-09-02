@@ -8,7 +8,8 @@ namespace SSPen.Shell;
 
 /// <summary>
 /// 툴바 스트립 조립 (god file 분할, ARCH-11 후속): BuildStrip/MakeButton/BuildPreviewButton/
-/// BuildQuickColors/AttachTooltip/MakeBoardBadge — 시각 트리를 구성하고 산출물을 <see cref="ToolbarParts"/>로 반환한다.
+/// BuildQuickColors/MakeBoardBadge — 시각 트리를 구성하고 산출물을 <see cref="ToolbarParts"/>로 반환한다.
+/// 툴팁은 <see cref="ToolbarTooltips.Attach"/>가 만들고 <see cref="ToolbarFlyouts.RegisterTooltip"/>에 등록한다 (37단계).
 /// </summary>
 public static class ToolbarStripBuilder
 {
@@ -87,7 +88,7 @@ public static class ToolbarStripBuilder
                 Background = Brushes.Transparent,
                 Child = content,
             };
-            ToolbarStripBuilder.AttachTooltip(actions, button, tooltip, hotkeyId, flyouts);
+            ToolbarTooltips.Attach(actions, button, tooltip, hotkeyId, flyouts.RegisterTooltip);
             button.MouseEnter += (_, _) =>
             {
                 if (!hasFlyout)
@@ -123,7 +124,7 @@ public static class ToolbarStripBuilder
                 Background = Brushes.Transparent,
                 Child = host,
             };
-            ToolbarStripBuilder.AttachTooltip(actions, button, Strings.Thickness, "thickness-pair", flyouts);
+            ToolbarTooltips.Attach(actions, button, Strings.Thickness, "thickness-pair", flyouts.RegisterTooltip);
             flyouts.ThicknessFlyout.PlacementTarget = button;
             flyouts.HoverOpen(button, flyouts.ThicknessFlyout);
             host.Children.Add(ToolbarTheme.FlyoutMark());
@@ -158,7 +159,7 @@ public static class ToolbarStripBuilder
                     BorderBrush = Brushes.White,
                     BorderThickness = new Thickness(0), // 선택 시만 흰 링 강조 (플러시 모자이크 유지).
                 };
-                ToolbarStripBuilder.AttachTooltip(actions, swatch, Strings.QuickColors, $"quickcolor:{slot + 1}", flyouts);
+                ToolbarTooltips.Attach(actions, swatch, Strings.QuickColors, $"quickcolor:{slot + 1}", flyouts.RegisterTooltip);
                 // 클릭 시점에 색을 읽는다 — 설정에서 바뀌면 바뀜 색이 추서된다.
                 swatch.MouseLeftButtonUp += (_, _) => state.CurrentColor = state.QuickColors[slot];
                 quickSwatches.Add((swatch, slot));
@@ -320,46 +321,6 @@ public static class ToolbarStripBuilder
         }
 
         return (host, logo, parts);
-    }
-
-    /// <summary>
-    /// 이름 + 유효 단축키 2줄 툴팁 (Epic Pen 대응: "선 도구" / "(ctrl + shift + L)").
-    /// 생성한 툴팁은 <paramref name="flyouts"/>에 등록해 툴바가 숨을 때 함께 닫힐 수 있게 한다.
-    /// </summary>
-    internal static void AttachTooltip(
-        IShellActions actions, Border button, string name, string? hotkeyId, ToolbarFlyouts? flyouts = null)
-    {
-        var title = new TextBlock
-        {
-            Text = name,
-            FontWeight = FontWeights.SemiBold,
-            FontSize = 12,
-            Foreground = ToolbarTheme.IconBrush,
-        };
-        var panel = new StackPanel();
-        panel.Children.Add(title);
-        TextBlock? combo = null;
-        if (hotkeyId is not null)
-        {
-            combo = new TextBlock { FontSize = 11, Foreground = ToolbarTheme.TooltipComboBrush };
-            panel.Children.Add(combo);
-        }
-        var tooltip = new ToolTip { Content = panel };
-        button.ToolTip = tooltip;
-        flyouts?.RegisterTooltip(tooltip);
-        ToolTipService.SetInitialShowDelay(button, 300);
-        // 사용자 조타: 툴팁이 옆 메뉴/플라이아웃을 가리지 않게 버튼 아래에 표시.
-        ToolTipService.SetPlacement(button, PlacementMode.Bottom);
-        if (combo is not null && hotkeyId is not null)
-        {
-            // 열릴 때마다 현재 유효 조합으로 갱신 (재지정 즉시 반영).
-            button.ToolTipOpening += (_, _) =>
-            {
-                string? label = actions.HotkeyLabel(hotkeyId);
-                combo.Text = label is null ? string.Empty : $"({label})";
-                combo.Visibility = label is null ? Visibility.Collapsed : Visibility.Visible;
-            };
-        }
     }
 
     /// <summary>보드 버튼 우상단 활성 보드 스와치 배지 (없음이면 숨김).</summary>
