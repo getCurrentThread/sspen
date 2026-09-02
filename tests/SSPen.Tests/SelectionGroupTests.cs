@@ -1,20 +1,26 @@
 using System.Windows;
-using System.Windows.Media;
 using SSPen.Annotation;
 using Xunit;
+
+using static SSPen.Tests.TestGeometry;
 
 namespace SSPen.Tests;
 
 /// <summary>
-/// R1: 그룹 프레임과 그룹 변형 수학의 증인.
+/// R1: 그룹 프레임·핸들·소유 필터(SEL-LIM-5)·회전한 그룹 프레임(SEL-LIM-6)의 증인 — 대상 타입은
+/// <see cref="SelectionGroup"/> 하나다.
 ///
-/// 핵심 증인은 <see cref="ScaleAbout_RotatedElements_KeepsLocalAxesOrthogonal"/>다 —
-/// "등방 스케일은 각도가 제각각인 그룹에서도 정확하다"가 성립하지 않으면 R1의 설계 전제가 무너진다.
+/// 그룹 변형 수학(ScaleAbout/RotateAbout)과 배율 재단(ClampGroupFactor/ClampMagnitude, D5)은 대상 타입이
+/// <see cref="TransformMath"/>라 리팩터링 19단계에서 <see cref="TransformMathTests"/>로 옮겼다 — R1의 핵심 증인
+/// <see cref="TransformMathTests.ScaleAbout_RotatedElements_KeepsLocalAxesOrthogonal"/>도 거기 있다.
+/// 같은 단계에서 SelectionRedTeamTests G절(회전 프레임의 극단 각도 히트)은 여기로 왔고, 헬퍼
+/// <c>Stroke</c>/<c>AssertPointsEqual</c>은 <see cref="TestGeometry"/>로 승격했다 (<c>RotateAboutPivot</c>은 이 파일만 쓴다).
+///
+/// <see cref="Frame_ReturnType_IsAngleFreeRect_ByReflection"/>은 AGENTS.md가 이 파일명으로 지목하는
+/// 설계 방화벽이므로 자리를 지킨다.
 /// </summary>
 public class SelectionGroupTests
 {
-    private static StrokeElement Stroke(double x, double y, double w, double h) =>
-        new([new Point(x, y), new Point(x + w, y + h)], Colors.Red, 2, isHighlighter: false);
 
     // ---- 프레임 ----
 
@@ -130,140 +136,6 @@ public class SelectionGroupTests
 
         Assert.Equal(onAxis, offAxis, 9);
     }
-
-    // ---- 그룹 변형 수학 (R1의 설계 전제) ----
-
-    /// <summary>
-    /// 그룹 등방 스케일은 회전각이 제각각이어도 로컬 두 축의 직교를 보존한다 —
-    /// 즉 전단이 생기지 않는다. 이것이 "측면 핸들 없이 모서리 4개만"이라는 결정의 근거다.
-    /// </summary>
-    [Theory]
-    [InlineData(0)]
-    [InlineData(30)]
-    [InlineData(47.5)]
-    [InlineData(-120)]
-    public void ScaleAbout_RotatedElements_KeepsLocalAxesOrthogonal(double angle)
-    {
-        var element = Stroke(0, 0, 40, 20);
-        var bounds = element.LocalBounds;
-        var start = new ElementTransformState(1.4, 0.6, angle, new Vector(17, -9));
-
-        var scaled = TransformMath.ScaleAbout(start, bounds, new Point(200, 150), 2.5);
-        var matrix = TransformMath.ToMatrix(scaled, new Point(
-            bounds.X + (bounds.Width / 2), bounds.Y + (bounds.Height / 2)));
-
-        // 행벡터 규약에서 선형부의 두 행이 직교하면 전단이 없다.
-        double dot = (matrix.M11 * matrix.M21) + (matrix.M12 * matrix.M22);
-        Assert.Equal(0, dot, 9);
-    }
-
-    [Fact]
-    public void ScaleAbout_PivotPointIsFixed()
-    {
-        var element = Stroke(0, 0, 40, 20);
-        var bounds = element.LocalBounds;
-        var pivot = new Point(300, 200);
-        var start = new ElementTransformState(1, 1, 25, new Vector(50, 30));
-
-        var scaled = TransformMath.ScaleAbout(start, bounds, pivot, 3);
-
-        // 피벗에 있던 월드 점은 그대로여야 한다. 요소 로컬 점 하나를 골라 월드로 올린 뒤
-        // 그 점이 피벗 기준 정확히 3배 멀어졌는지 본다.
-        var center = new Point(bounds.X + (bounds.Width / 2), bounds.Y + (bounds.Height / 2));
-        var probe = new Point(bounds.Left, bounds.Top);
-        var before = TransformMath.ToMatrix(start, center).Transform(probe);
-        var after = TransformMath.ToMatrix(scaled, center).Transform(probe);
-
-        Assert.Equal(pivot.X + ((before.X - pivot.X) * 3), after.X, 6);
-        Assert.Equal(pivot.Y + ((before.Y - pivot.Y) * 3), after.Y, 6);
-    }
-
-    [Fact]
-    public void RotateAbout_PivotPointIsFixedAndAngleAccumulates()
-    {
-        var element = Stroke(0, 0, 40, 20);
-        var bounds = element.LocalBounds;
-        var pivot = new Point(100, 100);
-        var start = new ElementTransformState(1, 1, 10, new Vector(60, 0));
-
-        var rotated = TransformMath.RotateAbout(start, bounds, pivot, 90);
-
-        Assert.Equal(100, rotated.AngleDegrees, 9);
-
-        var center = new Point(bounds.X + (bounds.Width / 2), bounds.Y + (bounds.Height / 2));
-        var probe = new Point(bounds.Left, bounds.Top);
-        var before = TransformMath.ToMatrix(start, center).Transform(probe);
-        var after = TransformMath.ToMatrix(rotated, center).Transform(probe);
-
-        var expected = TransformMath.RotateVector(before - pivot, 90) + pivot;
-        Assert.Equal(expected.X, after.X, 6);
-        Assert.Equal(expected.Y, after.Y, 6);
-    }
-
-    [Fact]
-    public void RotateAbout_FullTurn_ReturnsToStartPosition()
-    {
-        var element = Stroke(0, 0, 40, 20);
-        var bounds = element.LocalBounds;
-        var pivot = new Point(-40, 220);
-        var start = new ElementTransformState(2, 0.5, 33, new Vector(11, 7));
-
-        var quarter = TransformMath.RotateAbout(start, bounds, pivot, 90);
-        var half = TransformMath.RotateAbout(quarter, bounds, pivot, 90);
-        var threeQuarter = TransformMath.RotateAbout(half, bounds, pivot, 90);
-        var full = TransformMath.RotateAbout(threeQuarter, bounds, pivot, 90);
-
-        Assert.Equal(start.Translation.X, full.Translation.X, 6);
-        Assert.Equal(start.Translation.Y, full.Translation.Y, 6);
-        Assert.Equal(start.AngleDegrees + 360, full.AngleDegrees, 6);
-    }
-
-    // ---- 배율 재단 (D5) ----
-
-    [Fact]
-    public void ClampGroupFactor_WithinLimits_PassesThrough()
-    {
-        var states = new[] { ElementTransformState.Identity, ElementTransformState.Identity with { ScaleX = 2 } };
-
-        Assert.Equal(3, TransformMath.ClampGroupFactor(3, states), 9);
-    }
-
-    [Fact]
-    public void ClampGroupFactor_LimitedByLargestMember_NotByAverage()
-    {
-        // 가장 큰 요소가 상한에 먼저 닿으면 그룹 전체가 거기서 멈춘다 — 그래야 그룹이 찢어지지 않는다.
-        var states = new[]
-        {
-            ElementTransformState.Identity,
-            ElementTransformState.Identity with { ScaleX = TransformMath.MaxScale / 2 },
-        };
-
-        Assert.Equal(2, TransformMath.ClampGroupFactor(1000, states), 9);
-    }
-
-    [Fact]
-    public void ClampGroupFactor_ShrinkIsLimitedBySmallestMember()
-    {
-        var states = new[] { ElementTransformState.Identity with { ScaleX = TransformMath.MinScale * 2, ScaleY = 1 } };
-
-        Assert.Equal(0.5, TransformMath.ClampGroupFactor(0.0001, states), 9);
-    }
-
-    [Fact]
-    public void ClampGroupFactor_NaN_IsNeutral() =>
-        Assert.Equal(1, TransformMath.ClampGroupFactor(double.NaN, [ElementTransformState.Identity]), 9);
-
-    [Fact]
-    public void ClampGroupFactor_NoStates_IsNeutral() =>
-        Assert.Equal(1, TransformMath.ClampGroupFactor(5, []), 9);
-
-    [Fact]
-    public void ClampMagnitude_AboveCeiling_IsCapped() =>
-        Assert.Equal(TransformMath.MaxScale, TransformMath.ClampMagnitude(10_000), 9);
-
-    [Fact]
-    public void ClampMagnitude_NegativeAboveCeiling_KeepsSign() =>
-        Assert.Equal(-TransformMath.MaxScale, TransformMath.ClampMagnitude(-10_000), 9);
 
     // ---- SEL-LIM-5: '그리는 조건'과 '잡히는 조건'은 같은 술어여야 한다 ----
 
@@ -407,82 +279,6 @@ public class SelectionGroupTests
         Assert.Empty(owned);
     }
 
-    // ---- 그룹 배율 클램프: 퇴화 축이 그룹 전체를 봉쇄하면 안 된다 ----
-
-    /// <summary>
-    /// 회귀 증인: 요소 하나의 한 축이 이미 <c>MinScale</c>이면 예전에는 하한이 1로 올라가
-    /// <b>그룹 전체의 축소가 조용히 완전 봉쇄</b>됐다 (측면 핸들로 요소 하나를 납작하게 만든 순간
-    /// 그룹이 영원히 안 줄어드는 증상).
-    /// </summary>
-    [Fact]
-    public void ClampGroupFactor_MemberAxisAtFloor_StillAllowsShrink()
-    {
-        var flat = ElementTransformState.Identity with { ScaleX = TransformMath.MinScale, ScaleY = 1 };
-        var normal = ElementTransformState.Identity;
-
-        Assert.Equal(0.5, TransformMath.ClampGroupFactor(0.5, [flat, normal]), 9);
-    }
-
-    [Fact]
-    public void ClampGroupFactor_MemberAtCeiling_StillAllowsGrowthOfNoneButShrinkOfAll()
-    {
-        var maxed = ElementTransformState.Identity with
-        {
-            ScaleX = TransformMath.MaxScale,
-            ScaleY = TransformMath.MaxScale,
-        };
-
-        Assert.Equal(1, TransformMath.ClampGroupFactor(4, [maxed]), 9);
-        Assert.Equal(0.5, TransformMath.ClampGroupFactor(0.5, [maxed]), 9);
-    }
-
-    /// <summary>
-    /// 회귀 증인: 구성원이 <b>전부</b> 바닥에 닿으면 하한을 올릴 근거가 하나도 없어 lower가 0으로
-    /// 남는데, 그때 커서를 앵커에 얹으면 factor 0이 통과한다. f=0은 비가역이라 선택 요소들의 중심이
-    /// 피벗 한 점으로 합쳐지고 최대 배율로 되키워도 0×f = 0이라 제스처로는 영영 복구되지 않는다.
-    /// </summary>
-    [Fact]
-    public void ClampGroupFactor_AllMembersAtFloor_NeverCollapsesToZero()
-    {
-        var floored = ElementTransformState.Identity with
-        {
-            ScaleX = TransformMath.MinScale,
-            ScaleY = TransformMath.MinScale,
-        };
-        var states = new[] { floored, floored };
-
-        Assert.True(TransformMath.ClampGroupFactor(0, states) > 0);
-        Assert.True(TransformMath.ClampGroupFactor(-5, states) > 0);
-        Assert.True(TransformMath.ClampGroupFactor(0.5, states) > 0);
-    }
-
-    /// <summary>배율 0은 어떤 상태 조합에서도 통과하지 못한다 — 사상이 항상 가역이라는 증인.</summary>
-    [Fact]
-    public void ClampGroupFactor_ZeroOrNegative_IsAlwaysPositive()
-    {
-        var mixed = new[]
-        {
-            ElementTransformState.Identity,
-            ElementTransformState.Identity with { ScaleX = TransformMath.MinScale, ScaleY = 4 },
-        };
-
-        Assert.True(TransformMath.ClampGroupFactor(0, mixed) > 0);
-        Assert.True(TransformMath.ClampGroupFactor(-1, mixed) > 0);
-    }
-
-    /// <summary>혼합 DPI 이관 뒤 흔한 상태(등방 배율 여럿)에서 factor 1은 반드시 1로 통과해야 한다.</summary>
-    [Fact]
-    public void ClampGroupFactor_IdentityFactor_PassesThrough()
-    {
-        var states = new[]
-        {
-            ElementTransformState.Identity with { ScaleX = 0.5, ScaleY = 0.5 },
-            ElementTransformState.Identity with { ScaleX = 3, ScaleY = 3 },
-        };
-
-        Assert.Equal(1, TransformMath.ClampGroupFactor(1, states), 9);
-    }
-
     // ---- 회전한 그룹 프레임 (제스처 한정 렌더/히트 좌표, SEL-LIM-6) ----
     //
     // 증상: 다중 선택을 회전하면 점선 테두리와 5개 핸들이 시작 위치에 못 박혀 있었다.
@@ -490,16 +286,6 @@ public class SelectionGroupTests
     // 아래 증인들은 GroupFrame이 (a) 각도 0에서 예전과 정확히 같고,
     // (b) 각도가 붙으면 잉크와 같은 강체 운동을 겪으며,
     // (c) 그려지는 좌표와 잡히는 좌표가 끝까지 같은 계산에서 나온다는 것을 고정한다.
-
-    /// <summary>NaN은 범위 어서트를 조용히 통과하므로 좌표 비교 전에 반드시 먼저 배제한다 (R16).</summary>
-    private static void AssertPointsEqual(Point expected, Point actual, double tolerance = 1e-7)
-    {
-        Assert.False(double.IsNaN(actual.X), "X가 NaN이면 범위 어서트가 조용히 통과한다 (R16).");
-        Assert.False(double.IsNaN(actual.Y), "Y가 NaN이면 범위 어서트가 조용히 통과한다 (R16).");
-        Assert.True(
-            Math.Abs(expected.X - actual.X) <= tolerance && Math.Abs(expected.Y - actual.Y) <= tolerance,
-            $"기대 {expected} / 실제 {actual} (허용오차 {tolerance})");
-    }
 
     /// <summary>프레임 로컬 점을 피벗 기준으로 회전시킨 월드 위치 (테스트가 독립적으로 계산하는 기준값).</summary>
     private static Point RotateAboutPivot(Point p, Point pivot, double degrees) =>
@@ -772,6 +558,36 @@ public class SelectionGroupTests
             SelectionGroup.RotateHandle(frame), surface, TransformMath.HandleScreenSize / 2);
 
         Assert.Equal(GroupHandleKind.Rotate, SelectionGroup.HitHandle(frame, drawn, surface));
+    }
+
+    // -- 레드팀 G절 (리팩터링 19단계, SelectionRedTeamTests에서 이동): 극단 각도에서 네 모서리가 서로 다른 핸들로 잡히는가 --
+    //
+    // 각도 축의 "보이지만 잡히지 않는 핸들"(SEL-LIM-5 회귀의 결함 클래스) 사냥.
+    // 렌더와 히트가 같은 GroupFrame 계산에서 나오지 않으면 여기서 무너진다.
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(90)]
+    [InlineData(180)]
+    [InlineData(270)]
+    [InlineData(-137.5)]
+    public void HitHandle_PosedFrame_AllFourCorners_AreDistinctAndGrabbable_AtExtremeAngles(double angle)
+    {
+        var frame = new GroupFrame(new Rect(400, 300, 100, 60), angle);
+        var seen = new List<GroupHandleKind>();
+
+        foreach (var handle in SelectionGroup.CornersClockwise)
+        {
+            var drawn = SelectionGroup.CornerCenter(frame, handle);
+            var hit = SelectionGroup.HitHandle(frame, drawn, Rect.Empty);
+
+            Assert.True(
+                hit == handle,
+                $"{handle}@{angle}도: 그려진 위치 {drawn}에서 {hit?.ToString() ?? "없음"}이 잡혔다 — 렌더와 히트가 갈라졌다.");
+            seen.Add(handle);
+        }
+
+        Assert.Equal(SelectionGroup.CornersClockwise.Length, seen.Distinct().Count());
     }
 
     // -- 수학 불변 --

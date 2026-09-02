@@ -2,35 +2,30 @@ using System.Windows;
 using SSPen.Annotation;
 using Xunit;
 
+using static SSPen.Tests.TestGeometry;
+
 namespace SSPen.Tests;
 
 /// <summary>
 /// 변형 수학 순수 검증 (SEL-9, MI-1 로컬축). 핵심은 R21 앵커 불변식이며 증인은 **0도와 30도 양쪽**이
 /// 필요하다 — 0도에서는 R=I라 보정 누락 오류가 상쇄되어 드러나지 않는다.
+///
+/// 그룹 변형 수학(ScaleAbout/RotateAbout, R1)과 배율 재단(ClampGroupFactor/ClampMagnitude, D5)은 대상 타입이
+/// <see cref="TransformMath"/>라 리팩터링 19단계에서 SelectionGroupTests로부터 글자 그대로 옮겨 왔다 —
+/// R1의 핵심 증인은 <see cref="ScaleAbout_RotatedElements_KeepsLocalAxesOrthogonal"/>다:
+/// "등방 스케일은 각도가 제각각인 그룹에서도 정확하다"가 성립하지 않으면 R1의 설계 전제가 무너진다.
+/// 적대적/경계 케이스는 <see cref="TransformMathRedTeamTests"/>에 있고, 헬퍼 <c>AnchorWorld</c>/
+/// <c>AssertPointsEqual</c>은 <see cref="TestGeometry"/>로 승격했다 (<c>GripWorld</c>는 이 파일만 쓴다).
 /// </summary>
 public class TransformMathTests
 {
     private const double Tolerance = 1e-9;
     private static readonly Rect Bounds = new(0, 0, 100, 50);
 
-    private static Point AnchorWorld(ElementTransformState state, Rect bounds, HandleKind handle)
-    {
-        var center = new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
-        return TransformMath.ToMatrix(state, center).Transform(TransformMath.AnchorLocal(bounds, handle));
-    }
-
     private static Point GripWorld(ElementTransformState state, Rect bounds, HandleKind handle)
     {
         var center = new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
         return TransformMath.ToMatrix(state, center).Transform(TransformMath.HandleCenterLocal(bounds, handle));
-    }
-
-    private static void AssertPointsEqual(Point expected, Point actual, double tolerance = 1e-7)
-    {
-        Assert.False(double.IsNaN(actual.X), "X가 NaN이면 범위 어서트가 조용히 통과한다 (R16).");
-        Assert.False(double.IsNaN(actual.Y), "Y가 NaN이면 범위 어서트가 조용히 통과한다 (R16).");
-        Assert.InRange(actual.X, expected.X - tolerance, expected.X + tolerance);
-        Assert.InRange(actual.Y, expected.Y - tolerance, expected.Y + tolerance);
     }
 
     // ---- ToMatrix: 합성 순서 계약 ----
@@ -519,5 +514,215 @@ public class TransformMathTests
 
         Assert.Equal(HandleKind.Rotate, TransformMath.HitHandle(
             ElementTransformState.Identity, Bounds, expected, surface));
+    }
+
+    // ---- ScaleAbout / RotateAbout: 그룹 변형 수학 (R1의 설계 전제) — 리팩터링 19단계에서 SelectionGroupTests로부터 이동 ----
+
+    /// <summary>
+    /// 그룹 등방 스케일은 회전각이 제각각이어도 로컬 두 축의 직교를 보존한다 —
+    /// 즉 전단이 생기지 않는다. 이것이 "측면 핸들 없이 모서리 4개만"이라는 결정의 근거다.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(30)]
+    [InlineData(47.5)]
+    [InlineData(-120)]
+    public void ScaleAbout_RotatedElements_KeepsLocalAxesOrthogonal(double angle)
+    {
+        var element = Stroke(0, 0, 40, 20);
+        var bounds = element.LocalBounds;
+        var start = new ElementTransformState(1.4, 0.6, angle, new Vector(17, -9));
+
+        var scaled = TransformMath.ScaleAbout(start, bounds, new Point(200, 150), 2.5);
+        var matrix = TransformMath.ToMatrix(scaled, new Point(
+            bounds.X + (bounds.Width / 2), bounds.Y + (bounds.Height / 2)));
+
+        // 행벡터 규약에서 선형부의 두 행이 직교하면 전단이 없다.
+        double dot = (matrix.M11 * matrix.M21) + (matrix.M12 * matrix.M22);
+        Assert.Equal(0, dot, 9);
+    }
+
+    [Fact]
+    public void ScaleAbout_PivotPointIsFixed()
+    {
+        var element = Stroke(0, 0, 40, 20);
+        var bounds = element.LocalBounds;
+        var pivot = new Point(300, 200);
+        var start = new ElementTransformState(1, 1, 25, new Vector(50, 30));
+
+        var scaled = TransformMath.ScaleAbout(start, bounds, pivot, 3);
+
+        // 피벗에 있던 월드 점은 그대로여야 한다. 요소 로컬 점 하나를 골라 월드로 올린 뒤
+        // 그 점이 피벗 기준 정확히 3배 멀어졌는지 본다.
+        var center = new Point(bounds.X + (bounds.Width / 2), bounds.Y + (bounds.Height / 2));
+        var probe = new Point(bounds.Left, bounds.Top);
+        var before = TransformMath.ToMatrix(start, center).Transform(probe);
+        var after = TransformMath.ToMatrix(scaled, center).Transform(probe);
+
+        Assert.Equal(pivot.X + ((before.X - pivot.X) * 3), after.X, 6);
+        Assert.Equal(pivot.Y + ((before.Y - pivot.Y) * 3), after.Y, 6);
+    }
+
+    [Fact]
+    public void RotateAbout_PivotPointIsFixedAndAngleAccumulates()
+    {
+        var element = Stroke(0, 0, 40, 20);
+        var bounds = element.LocalBounds;
+        var pivot = new Point(100, 100);
+        var start = new ElementTransformState(1, 1, 10, new Vector(60, 0));
+
+        var rotated = TransformMath.RotateAbout(start, bounds, pivot, 90);
+
+        Assert.Equal(100, rotated.AngleDegrees, 9);
+
+        var center = new Point(bounds.X + (bounds.Width / 2), bounds.Y + (bounds.Height / 2));
+        var probe = new Point(bounds.Left, bounds.Top);
+        var before = TransformMath.ToMatrix(start, center).Transform(probe);
+        var after = TransformMath.ToMatrix(rotated, center).Transform(probe);
+
+        var expected = TransformMath.RotateVector(before - pivot, 90) + pivot;
+        Assert.Equal(expected.X, after.X, 6);
+        Assert.Equal(expected.Y, after.Y, 6);
+    }
+
+    [Fact]
+    public void RotateAbout_FullTurn_ReturnsToStartPosition()
+    {
+        var element = Stroke(0, 0, 40, 20);
+        var bounds = element.LocalBounds;
+        var pivot = new Point(-40, 220);
+        var start = new ElementTransformState(2, 0.5, 33, new Vector(11, 7));
+
+        var quarter = TransformMath.RotateAbout(start, bounds, pivot, 90);
+        var half = TransformMath.RotateAbout(quarter, bounds, pivot, 90);
+        var threeQuarter = TransformMath.RotateAbout(half, bounds, pivot, 90);
+        var full = TransformMath.RotateAbout(threeQuarter, bounds, pivot, 90);
+
+        Assert.Equal(start.Translation.X, full.Translation.X, 6);
+        Assert.Equal(start.Translation.Y, full.Translation.Y, 6);
+        Assert.Equal(start.AngleDegrees + 360, full.AngleDegrees, 6);
+    }
+
+    // ---- ClampGroupFactor / ClampMagnitude: 배율 재단 (D5) — 리팩터링 19단계에서 SelectionGroupTests로부터 이동 ----
+
+    [Fact]
+    public void ClampGroupFactor_WithinLimits_PassesThrough()
+    {
+        var states = new[] { ElementTransformState.Identity, ElementTransformState.Identity with { ScaleX = 2 } };
+
+        Assert.Equal(3, TransformMath.ClampGroupFactor(3, states), 9);
+    }
+
+    [Fact]
+    public void ClampGroupFactor_LimitedByLargestMember_NotByAverage()
+    {
+        // 가장 큰 요소가 상한에 먼저 닿으면 그룹 전체가 거기서 멈춘다 — 그래야 그룹이 찢어지지 않는다.
+        var states = new[]
+        {
+            ElementTransformState.Identity,
+            ElementTransformState.Identity with { ScaleX = TransformMath.MaxScale / 2 },
+        };
+
+        Assert.Equal(2, TransformMath.ClampGroupFactor(1000, states), 9);
+    }
+
+    [Fact]
+    public void ClampGroupFactor_ShrinkIsLimitedBySmallestMember()
+    {
+        var states = new[] { ElementTransformState.Identity with { ScaleX = TransformMath.MinScale * 2, ScaleY = 1 } };
+
+        Assert.Equal(0.5, TransformMath.ClampGroupFactor(0.0001, states), 9);
+    }
+
+    [Fact]
+    public void ClampGroupFactor_NaN_IsNeutral() =>
+        Assert.Equal(1, TransformMath.ClampGroupFactor(double.NaN, [ElementTransformState.Identity]), 9);
+
+    [Fact]
+    public void ClampGroupFactor_NoStates_IsNeutral() =>
+        Assert.Equal(1, TransformMath.ClampGroupFactor(5, []), 9);
+
+    [Fact]
+    public void ClampMagnitude_AboveCeiling_IsCapped() =>
+        Assert.Equal(TransformMath.MaxScale, TransformMath.ClampMagnitude(10_000), 9);
+
+    [Fact]
+    public void ClampMagnitude_NegativeAboveCeiling_KeepsSign() =>
+        Assert.Equal(-TransformMath.MaxScale, TransformMath.ClampMagnitude(-10_000), 9);
+
+    // ---- ClampGroupFactor: 퇴화 축이 그룹 전체를 봉쇄하면 안 된다 — 리팩터링 19단계에서 SelectionGroupTests로부터 이동 ----
+
+    /// <summary>
+    /// 회귀 증인: 요소 하나의 한 축이 이미 <c>MinScale</c>이면 예전에는 하한이 1로 올라가
+    /// <b>그룹 전체의 축소가 조용히 완전 봉쇄</b>됐다 (측면 핸들로 요소 하나를 납작하게 만든 순간
+    /// 그룹이 영원히 안 줄어드는 증상).
+    /// </summary>
+    [Fact]
+    public void ClampGroupFactor_MemberAxisAtFloor_StillAllowsShrink()
+    {
+        var flat = ElementTransformState.Identity with { ScaleX = TransformMath.MinScale, ScaleY = 1 };
+        var normal = ElementTransformState.Identity;
+
+        Assert.Equal(0.5, TransformMath.ClampGroupFactor(0.5, [flat, normal]), 9);
+    }
+
+    [Fact]
+    public void ClampGroupFactor_MemberAtCeiling_StillAllowsGrowthOfNoneButShrinkOfAll()
+    {
+        var maxed = ElementTransformState.Identity with
+        {
+            ScaleX = TransformMath.MaxScale,
+            ScaleY = TransformMath.MaxScale,
+        };
+
+        Assert.Equal(1, TransformMath.ClampGroupFactor(4, [maxed]), 9);
+        Assert.Equal(0.5, TransformMath.ClampGroupFactor(0.5, [maxed]), 9);
+    }
+
+    /// <summary>
+    /// 회귀 증인: 구성원이 <b>전부</b> 바닥에 닿으면 하한을 올릴 근거가 하나도 없어 lower가 0으로
+    /// 남는데, 그때 커서를 앵커에 얹으면 factor 0이 통과한다. f=0은 비가역이라 선택 요소들의 중심이
+    /// 피벗 한 점으로 합쳐지고 최대 배율로 되키워도 0×f = 0이라 제스처로는 영영 복구되지 않는다.
+    /// </summary>
+    [Fact]
+    public void ClampGroupFactor_AllMembersAtFloor_NeverCollapsesToZero()
+    {
+        var floored = ElementTransformState.Identity with
+        {
+            ScaleX = TransformMath.MinScale,
+            ScaleY = TransformMath.MinScale,
+        };
+        var states = new[] { floored, floored };
+
+        Assert.True(TransformMath.ClampGroupFactor(0, states) > 0);
+        Assert.True(TransformMath.ClampGroupFactor(-5, states) > 0);
+        Assert.True(TransformMath.ClampGroupFactor(0.5, states) > 0);
+    }
+
+    /// <summary>배율 0은 어떤 상태 조합에서도 통과하지 못한다 — 사상이 항상 가역이라는 증인.</summary>
+    [Fact]
+    public void ClampGroupFactor_ZeroOrNegative_IsAlwaysPositive()
+    {
+        var mixed = new[]
+        {
+            ElementTransformState.Identity,
+            ElementTransformState.Identity with { ScaleX = TransformMath.MinScale, ScaleY = 4 },
+        };
+
+        Assert.True(TransformMath.ClampGroupFactor(0, mixed) > 0);
+        Assert.True(TransformMath.ClampGroupFactor(-1, mixed) > 0);
+    }
+
+    /// <summary>혼합 DPI 이관 뒤 흔한 상태(등방 배율 여럿)에서 factor 1은 반드시 1로 통과해야 한다.</summary>
+    [Fact]
+    public void ClampGroupFactor_IdentityFactor_PassesThrough()
+    {
+        var states = new[]
+        {
+            ElementTransformState.Identity with { ScaleX = 0.5, ScaleY = 0.5 },
+            ElementTransformState.Identity with { ScaleX = 3, ScaleY = 3 },
+        };
+
+        Assert.Equal(1, TransformMath.ClampGroupFactor(1, states), 9);
     }
 }

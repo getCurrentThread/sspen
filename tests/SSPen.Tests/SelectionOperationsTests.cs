@@ -1,21 +1,22 @@
 using System.Windows;
-using System.Windows.Media;
 using SSPen.Annotation;
 using SSPen.Interop;
 using Xunit;
+
+using static SSPen.Tests.TestGeometry;
 
 namespace SSPen.Tests;
 
 /// <summary>
 /// 선택 조작 순수 계획 함수 검증 (SEL-13/SEL-14, ARCH-15/ARCH-20).
 /// 계획과 실행을 분리했으므로 문서를 실제로 변경하지 않고 순서·인덱스·상태 보정을 검증할 수 있다.
+///
+/// 레드팀 절(PlanDelete C2·C4, RebaseState B)은 리팩터링 19단계에서 SelectionRedTeamTests로부터 글자 그대로
+/// 옮겨 해당 기본 절 바로 옆에 두었다. 헬퍼 <c>NewStroke</c>는 <see cref="TestGeometry"/>로 승격했다.
 /// </summary>
 public class SelectionOperationsTests
 {
     private const double Tolerance = 1e-9;
-
-    private static StrokeElement NewStroke() =>
-        new([new Point(0, 0), new Point(10, 10)], Colors.Black, 3, isHighlighter: false);
 
     private static Func<AnnotationElement, AnnotationDocument?> LookupIn(params AnnotationDocument[] documents) =>
         element => documents.FirstOrDefault(d => d.Elements.Contains(element));
@@ -105,6 +106,131 @@ public class SelectionOperationsTests
 
         Assert.Single(plan);
         Assert.Same(present, plan[0].Element);
+    }
+
+    // ---- 레드팀 C2. 다중 문서 삭제 — 인덱스가 제거 전에 수집됨을 실제로 증명 (리팩터링 19단계, SelectionRedTeamTests에서 이동) ----
+
+    [Fact]
+    public void PlanDelete_InterleavedIndicesAcrossThreeDocuments_EachRestoresExactPosition()
+    {
+        var d1 = new AnnotationDocument("M1");
+        var d2 = new AnnotationDocument("M2");
+        var d3 = new AnnotationDocument("M3");
+
+        var a1 = NewStroke(new Point(0, 0)); var b1 = NewStroke(new Point(1, 1)); var c1 = NewStroke(new Point(2, 2));
+        var a2 = NewStroke(new Point(3, 3)); var b2 = NewStroke(new Point(4, 4));
+        var a3 = NewStroke(new Point(5, 5));
+        foreach (var s in new[] { a1, b1, c1 }) d1.Add(s);
+        foreach (var s in new[] { a2, b2 }) d2.Add(s);
+        d3.Add(a3);
+
+        // 선택: 각 문서에서 흩어진 요소 — b1(1), a2(0), b2(1), a3(0).
+        var selection = new AnnotationElement[] { b1, a2, b2, a3 };
+        Func<AnnotationElement, AnnotationDocument?> lookup = e =>
+            new[] { d1, d2, d3 }.FirstOrDefault(d => d.Elements.Contains(e));
+
+        var plan = SelectionOperations.PlanDelete(selection, lookup);
+
+        // 실행: 원장이 하는 것과 동일하게 전부 제거한 뒤 계획된 인덱스로 복원.
+        foreach (var entry in plan)
+        {
+            entry.Document.Remove(entry.Element);
+        }
+        for (int i = plan.Count - 1; i >= 0; i--)
+        {
+            plan[i].Document.Insert(plan[i].Index, plan[i].Element);
+        }
+
+        Assert.Equal(new AnnotationElement[] { a1, b1, c1 }, d1.Elements);
+        Assert.Equal(new AnnotationElement[] { a2, b2 }, d2.Elements);
+        Assert.Equal(new AnnotationElement[] { a3 }, d3.Elements);
+    }
+
+    [Fact]
+    public void PlanDelete_AdjacentIndicesInSameDocument_AscendingRestore_IsStable()
+    {
+        // 연속 인덱스(0,1,2)를 함께 삭제 — 현 계약(오름차순 삽입, UndoLedger.DeleteSelectionOperation.Undo와 동일)을 따른다.
+        // 역순 삽입이었다면 [a,d,b,c]로 깨졌을 자리 — 이 테스트는 정답(오름차순) 계약을 고정한다.
+        var doc = new AnnotationDocument("M1");
+        var a = NewStroke(new Point(0, 0));
+        var b = NewStroke(new Point(1, 1));
+        var c = NewStroke(new Point(2, 2));
+        var d = NewStroke(new Point(3, 3));
+        foreach (var s in new[] { a, b, c, d }) doc.Add(s);
+
+        var plan = SelectionOperations.PlanDelete([a, b, c], e => doc);
+
+        foreach (var entry in plan) doc.Remove(entry.Element);
+        foreach (var entry in plan) // 오름차순 삽입 — 실제 UndoLedger 계약과 일치.
+        {
+            entry.Document.Insert(entry.Index, entry.Element);
+        }
+
+        Assert.Equal(new AnnotationElement[] { a, b, c, d }, doc.Elements);
+    }
+
+    [Fact]
+    public void PlanDelete_AdjacentIndices_DescendingRestore_CorruptsOrder_RegressionGuard()
+    {
+        // 회귀 감시용: 역순 삽입(과거 오구현 방식)이 여전히 잘못된 결과를 낸다는 것을 명시적으로 고정해,
+        // 향후 누군가 UndoLedger를 역순으로 되돌리는 회귀를 낻으면 이 테스트가 먼저 깨진다.
+        var doc = new AnnotationDocument("M1");
+        var a = NewStroke(new Point(0, 0));
+        var b = NewStroke(new Point(1, 1));
+        var c = NewStroke(new Point(2, 2));
+        var d = NewStroke(new Point(3, 3));
+        foreach (var s in new[] { a, b, c, d }) doc.Add(s);
+
+        var plan = SelectionOperations.PlanDelete([a, b, c], e => doc);
+        foreach (var entry in plan) doc.Remove(entry.Element);
+
+        for (int i = plan.Count - 1; i >= 0; i--) // 역순 삽입 (잘못된 방식).
+        {
+            doc.Insert(plan[i].Index, plan[i].Element);
+        }
+
+        Assert.NotEqual(new AnnotationElement[] { a, b, c, d }, doc.Elements);
+    }
+
+    [Fact]
+    public void PlanDelete_DuplicateElementInSelection_DoesNotDoublePlan()
+    {
+        // 방어적: 같은 요소가 선택 리스트에 두 번 나타나는 병리적 입력 (호출자 버그 시뮬레이션).
+        var doc = new AnnotationDocument("M1");
+        var a = NewStroke(new Point(0, 0));
+        doc.Add(a);
+
+        var plan = SelectionOperations.PlanDelete([a, a], e => doc);
+
+        // 계획 함수는 입력을 그대로 순회하므로 2건이 나올 수 있다 — 이것이 실제 동작이라면
+        // 원장 Undo에서 같은 요소를 두 번 삽입하려다 인덱스가 어긋날 잠재 결함이다.
+        // red-team 목적: 이 동작을 명시적으로 고정해 향후 회귀를 감시한다.
+        if (plan.Count == 2)
+        {
+            // 실행 시뮬레이션: 두 번째 Remove는 already-removed라 false를 반환할 것이다.
+            doc.Remove(a);
+            bool secondRemoveSucceeded = doc.Remove(a);
+            Assert.False(secondRemoveSucceeded,
+                "중복 선택 시 두 번째 Remove가 성공하면 안 된다 — 그렇지 않으면 원장이 실패를 숨긴다.");
+        }
+        else
+        {
+            Assert.Single(plan);
+        }
+    }
+
+    // ---- 레드팀 C4. 선택 전체가 고아인 병리 상태 — 원장을 만들지 않으므로 UndoLedgerRedTeamTests가 아니라 여기 (리팩터링 19단계, SelectionRedTeamTests에서 이동) ----
+
+    [Fact]
+    public void PlanDelete_AllElementsOrphaned_ReturnsEmptyPlan_NoCrash()
+    {
+        // 선택된 모든 요소가 이미 어느 문서에도 없는 병리적 상태 (경쟁 상태 시뮬레이션).
+        var orphan1 = NewStroke(new Point(0, 0));
+        var orphan2 = NewStroke(new Point(1, 1));
+
+        var plan = SelectionOperations.PlanDelete([orphan1, orphan2], e => null);
+
+        Assert.Empty(plan);
     }
 
     // ---- PlanTransferOrder (SEL-AC-18) ----
@@ -294,6 +420,120 @@ public class SelectionOperationsTests
 
         Assert.Equal(sourcePhysicalX, targetPhysicalX, 1e-6);
         Assert.Equal(sourcePhysicalY, targetPhysicalY, 1e-6);
+    }
+
+    // ---- 레드팀 B. DPI Rebase 정확성 — r != 1 하드 공격 (리팩터링 19단계, SelectionRedTeamTests에서 이동) ----
+    //
+    // Center100/NegLeft는 위 Center/Left와 값이 같다 — 본문을 글자 그대로 옮기기 위해 원본 이름을 유지한다.
+
+    private static readonly PhysicalRect Center100 = new(0, 0, 1920, 1080);
+    private static readonly PhysicalRect NegLeft = new(-1920, 0, 1920, 1080);
+
+    [Fact]
+    public void RebaseState_100To125Percent_ScalesExactlyByRatio()
+    {
+        var state = new ElementTransformState(1, 1, 0, default);
+        var bounds = new Rect(0, 0, 100, 100);
+
+        var rebased = SelectionOperations.RebaseState(state, bounds, Center100, 1.0, NegLeft, 1.25);
+
+        Assert.Equal(1.0 / 1.25, rebased.ScaleX, 1e-9);
+        Assert.Equal(1.0 / 1.25, rebased.ScaleY, 1e-9);
+    }
+
+    [Fact]
+    public void RebaseState_150To175Percent_NonUnitBothSides_ScalesByRatio()
+    {
+        // 양쪽 다 100%가 아닌 조합 — 흔한 오구현(한쪽만 나눔/곱함)을 잡는다.
+        var state = new ElementTransformState(2, 3, 0, default);
+        var bounds = new Rect(0, 0, 100, 100);
+
+        var rebased = SelectionOperations.RebaseState(state, bounds, Center100, 1.5, NegLeft, 1.75);
+
+        double expectedRatio = 1.5 / 1.75;
+        Assert.Equal(2 * expectedRatio, rebased.ScaleX, 1e-9);
+        Assert.Equal(3 * expectedRatio, rebased.ScaleY, 1e-9);
+    }
+
+    [Fact]
+    public void RebaseState_AsymmetricNegativeOrigin_PreservesPhysicalPosition_Rotated()
+    {
+        // 회전 + 비등방 스케일 + 음수 원점 모니터 + 비대칭 DPI — 조합 공격.
+        var bounds = new Rect(20, 30, 120, 60);
+        var center = new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+        var state = new ElementTransformState(1.8, 0.6, 55, new Vector(-33, 87));
+        const double srcDpi = 1.0;
+        const double tgtDpi = 1.5;
+
+        var rebased = SelectionOperations.RebaseState(state, bounds, Center100, srcDpi, NegLeft, tgtDpi);
+
+        // 각도는 DPI 불변이어야 한다.
+        Assert.Equal(55, rebased.AngleDegrees, 1e-9);
+
+        // 물리 위치 보존: 원본 중심+변위가 대상에서도 같은 물리 픽셀을 가리켜야 한다.
+        double srcPhysX = Center100.X + (center.X + state.Translation.X) * srcDpi;
+        double srcPhysY = Center100.Y + (center.Y + state.Translation.Y) * srcDpi;
+        double tgtPhysX = NegLeft.X + (center.X + rebased.Translation.X) * tgtDpi;
+        double tgtPhysY = NegLeft.Y + (center.Y + rebased.Translation.Y) * tgtDpi;
+
+        Assert.Equal(srcPhysX, tgtPhysX, 1e-6);
+        Assert.Equal(srcPhysY, tgtPhysY, 1e-6);
+    }
+
+    [Fact]
+    public void RebaseState_TranslationAsDisplacement_DivergesFromNaiveByExactlyCenterTimesRatioMinusOne()
+    {
+        // ARCH-20의 정확한 공식적 예측: (naive - correct) == c*(r-1) (부호 주의: point-mapping 오구현 방향).
+        // 여기서는 편차의 "존재와 방향"뿐 아니라 "크기"까지 정량 검증한다.
+        var bounds = new Rect(0, 0, 200, 100); // center = (100, 50)
+        var center = new Point(100, 50);
+        var translation = new Vector(50, -20);
+        var state = new ElementTransformState(1, 1, 0, translation);
+        const double srcDpi = 1.0;
+        const double tgtDpi = 2.0; // r = 0.5, 극단적 배율차
+
+        var rebased = SelectionOperations.RebaseState(state, bounds, Center100, srcDpi, NegLeft, tgtDpi);
+
+        var naive = CoordinateSpace.Rebase(new Point(translation.X, translation.Y), Center100, srcDpi, NegLeft, tgtDpi);
+
+        // 두 접근의 물리 X상의 차이 = c.X * srcDpi 만큼 (Rebase가 원점을 명시적으로 더하므로).
+        // 정확한 수치 예측보다 "0이 아니고, 극단 r에서 커진다"는 방향성 계약이 red-team 관점에서 더 견고하다.
+        double divergence = Math.Abs(naive.X - rebased.Translation.X);
+        Assert.True(divergence > 10, $"r=0.5처럼 극단적인 DPI차에서 naive/correct 편차가 미미하다({divergence}) — 회귀 의심.");
+    }
+
+    [Fact]
+    public void RebaseState_SameDpiSameMonitor_IsExactIdentityOnScaleAndTranslation()
+    {
+        // r=1이고 원본=대상이면 완전한 항등이어야 한다 (계약 최소선).
+        var state = new ElementTransformState(1.7, 0.4, 82, new Vector(12, -44));
+        var bounds = new Rect(5, 5, 90, 40);
+
+        var rebased = SelectionOperations.RebaseState(state, bounds, Center100, 1.0, Center100, 1.0);
+
+        Assert.Equal(state.ScaleX, rebased.ScaleX, 1e-9);
+        Assert.Equal(state.ScaleY, rebased.ScaleY, 1e-9);
+        Assert.Equal(state.AngleDegrees, rebased.AngleDegrees, 1e-9);
+        Assert.Equal(state.Translation.X, rebased.Translation.X, 1e-6);
+        Assert.Equal(state.Translation.Y, rebased.Translation.Y, 1e-6);
+    }
+
+    [Fact]
+    public void RebaseState_RoundTrip_SourceToTargetAndBack_RecoversOriginalState()
+    {
+        // 왕복 사상: A(1.0dpi) → B(1.5dpi) → A(1.0dpi)가 원래 상태로 돌아와야 한다.
+        // 편도 검증만으로는 놓치는 누적 오차/부호 오류를 잡는 이중 방어선.
+        var bounds = new Rect(10, 10, 80, 40);
+        var state = new ElementTransformState(1.3, 2.1, 64, new Vector(77, -12));
+
+        var toTarget = SelectionOperations.RebaseState(state, bounds, Center100, 1.0, NegLeft, 1.5);
+        var backToSource = SelectionOperations.RebaseState(toTarget, bounds, NegLeft, 1.5, Center100, 1.0);
+
+        Assert.Equal(state.ScaleX, backToSource.ScaleX, 1e-9);
+        Assert.Equal(state.ScaleY, backToSource.ScaleY, 1e-9);
+        Assert.Equal(state.AngleDegrees, backToSource.AngleDegrees, 1e-9);
+        Assert.Equal(state.Translation.X, backToSource.Translation.X, 1e-6);
+        Assert.Equal(state.Translation.Y, backToSource.Translation.Y, 1e-6);
     }
 
     // ---- ScaleDisplacementForDpi (D1, R18) ----
