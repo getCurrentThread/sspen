@@ -488,11 +488,9 @@ public sealed class AppController : IShellActions, ISettingsHost
         Log.Info($"변형 확정: 요소 {committed.Count}개, 놓은 지점 {(dropPhysical is { } p ? $"({p.X},{p.Y})" : "없음(이관 판정 생략)")}");
     }
 
-    /// <summary>현재 서피스를 창 의존성 없는 이관 후보로 투사한다.</summary>
+    /// <summary>현재 서피스를 창 의존성 없는 이관 후보로 투사한다 — 사각형 선택은 <see cref="SurfaceProjection"/>이 소유한다 (32단계).</summary>
     private List<TransferSurface> TransferSurfaces() =>
-        // 서피스가 실제로 덤는 사각형과 반드시 같아야 한다 (작업 영역) — 어긋나면 모니터 간
-        // 선택 이관의 드롭 판정과 좌표 재기준이 틀어진다 (사용자 요청 18차).
-        [.. _surfaces.Select(s => new TransferSurface(s.Document, s.Monitor.WorkArea, s.DpiScale))];
+        [.. _surfaces.Select(s => SurfaceProjection.ToTransferSurface(s.Document, s.Monitor, s.DpiScale))];
 
     /// <summary>Alt+Shift+S 캡처 세션 (WI-11) — CaptureSessionController에 위임.</summary>
     public void StartCapture() => _capture.StartCapture();

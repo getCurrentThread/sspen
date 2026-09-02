@@ -66,10 +66,11 @@ public class MonitorTransferTests
         new([new Point(100, 100), new Point(200, 180)], Colors.Blue, 5, isHighlighter: false);
 
     /// <summary>
-    /// 서피스를 프로덕션과 똑같은 이관 후보 목록으로 투사 (<c>AppController.TransferSurfaces</c> 동일 형태).
+    /// 서피스를 프로덕션과 <b>같은 함수</b>로 이관 후보 목록에 투사한다 (32단계) — 사각형 선택을 여기서 다시 적으면
+    /// 프로덕션과 다른 사각형을 검증하는 드리프트가 돌아온다 (F1이 정정한 결함).
     /// </summary>
     private static List<TransferSurface> Surfaces(Rig rig) =>
-        [.. rig.Surfaces.Select(s => new TransferSurface(s.Document, s.Monitor.WorkArea, s.DpiScale))];
+        [.. rig.Surfaces.Select(s => SurfaceProjection.ToTransferSurface(s.Document, s.Monitor, s.DpiScale))];
 
     /// <summary>
     /// 이관을 **프로덕션 경로로** 수행한다. 절차를 재구현하지 않는 것이 핵심이다 —
