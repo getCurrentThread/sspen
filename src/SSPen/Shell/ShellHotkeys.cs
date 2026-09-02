@@ -52,19 +52,19 @@ public sealed class ShellHotkeys
     [
         new("visibility", Strings.HotkeyVisibility, AltShift, VirtualKeys.D1, () => _state.SurfacesVisible = !_state.SurfacesVisible),
         new("clickthrough", Strings.ClickThrough, AltShift, VirtualKeys.D2, () => _state.ClickThrough = !_state.ClickThrough),
-        new("pen", Strings.Pen, AltShift, VirtualKeys.D3, () => ToggleTool(ToolKind.Pen)),
-        new("highlighter", Strings.Highlighter, AltShift, VirtualKeys.D4, () => ToggleTool(ToolKind.Highlighter)),
-        new("eraser", Strings.Eraser, AltShift, VirtualKeys.D5, () => ToggleTool(ToolKind.Eraser)),
+        new("pen", Strings.Pen, AltShift, VirtualKeys.D3, () => SelectTool(ToolKind.Pen)),
+        new("highlighter", Strings.Highlighter, AltShift, VirtualKeys.D4, () => SelectTool(ToolKind.Highlighter)),
+        new("eraser", Strings.Eraser, AltShift, VirtualKeys.D5, () => SelectTool(ToolKind.Eraser)),
         new("undo", Strings.Undo, AltShift, VirtualKeys.D6, _undo),
         new("clear", Strings.ClearAll, AltShift, VirtualKeys.D7, _clearAll),
         new("toolbar", Strings.HotkeyToolbar, AltShift, VirtualKeys.D0, _toggleToolbar),
         new("thicker", Strings.HotkeyThicker, AltShift, VirtualKeys.OemCloseBracket, () => _state.StepThickness(+1)),
         new("thinner", Strings.HotkeyThinner, AltShift, VirtualKeys.OemOpenBracket, () => _state.StepThickness(-1)),
-        new("line", Strings.ShapeLine, AltShift, VirtualKeys.L, () => ToggleTool(ToolKind.Line)),
-        new("ellipse", Strings.ShapeEllipse, AltShift, VirtualKeys.E, () => ToggleTool(ToolKind.Ellipse)),
-        new("rectangle", Strings.ShapeRectangle, AltShift, VirtualKeys.U, () => ToggleTool(ToolKind.Rectangle)),
-        new("arrow", Strings.ShapeArrow, AltShift, VirtualKeys.A, () => ToggleTool(ToolKind.Arrow)),
-        new("text", Strings.ShapeText, AltShift, VirtualKeys.T, () => ToggleTool(ToolKind.Text)),
+        new("line", Strings.ShapeLine, AltShift, VirtualKeys.L, () => SelectTool(ToolKind.Line)),
+        new("ellipse", Strings.ShapeEllipse, AltShift, VirtualKeys.E, () => SelectTool(ToolKind.Ellipse)),
+        new("rectangle", Strings.ShapeRectangle, AltShift, VirtualKeys.U, () => SelectTool(ToolKind.Rectangle)),
+        new("arrow", Strings.ShapeArrow, AltShift, VirtualKeys.A, () => SelectTool(ToolKind.Arrow)),
+        new("text", Strings.ShapeText, AltShift, VirtualKeys.T, () => SelectTool(ToolKind.Text)),
         new("whiteboard", Strings.Whiteboard, AltShift, VirtualKeys.W, () => _state.ToggleBoard(BoardMode.White)),
         new("blackboard", Strings.Blackboard, AltShift, VirtualKeys.B, () => _state.ToggleBoard(BoardMode.Black)),
         // 페이딩 잉크는 도구 선택이 아니라 토글이다 (사용자 요청 17차): 쓰던 도구를 유지한 채 업힌다.
@@ -72,7 +72,7 @@ public sealed class ShellHotkeys
         new("capture", Strings.Capture, AltShift, VirtualKeys.S, _startCapture),
         // X8: 기존 19개 Alt+Shift 바인딩과 퍼즘가 없는 V/D를 기본 배정한다.
         // id 기반이므로 사용자 재지정(RemappableHotkeys)을 그대로 상속받는다.
-        new("select", Strings.Select, AltShift, VirtualKeys.V, () => ToggleTool(ToolKind.Select)),
+        new("select", Strings.Select, AltShift, VirtualKeys.V, () => SelectTool(ToolKind.Select)),
         new("delete-selection", Strings.HotkeyDeleteSelection, AltShift, VirtualKeys.D, _deleteSelection),
     ];
 
@@ -130,6 +130,11 @@ public sealed class ShellHotkeys
     public IReadOnlyList<(string Id, string Name, HotkeyDef Effective)> RemappableHotkeys =>
         HotkeyTable().Select(entry => (entry.Id, entry.Name, Effective(entry))).ToList();
 
-    private void ToggleTool(ToolKind tool) =>
-        _state.ActiveTool = _state.ActiveTool == tool ? ToolKind.None : tool;
+    /// <summary>
+    /// 도구 핫키 적용부. 같은 도구 재선택 시 해제 판정은 <see cref="ToolbarStateMap.ToggleTool"/> <b>하나</b>다 —
+    /// 스트립 버튼(<c>ToolbarWindow.SelectTool</c>)·플라이아웃 항목(<c>ToolbarFlyouts.SelectTool</c>)·핫키가 같은 함수를
+    /// 부른다 (50단계; 이전에는 여기 같은 삼항식 사본이 있었다). 대입은 <see cref="AppState.ActiveTool"/> 한 경로.
+    /// </summary>
+    private void SelectTool(ToolKind tool) =>
+        _state.ActiveTool = ToolbarStateMap.ToggleTool(_state.ActiveTool, tool);
 }

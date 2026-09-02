@@ -5,7 +5,7 @@ namespace SSPen.Shell;
 
 /// <summary>
 /// 툴바 버튼 ↔ 상태 매핑 순수 함수 (god file 분할, ARCH-11 후속): 활성 판정·아이콘·배지 그룹.
-/// 도형/펜 그룹 재클릭 로테이션 순환 데이터도 함께 소유한다. 36단계부터 어댑터(ToolbarParts/StripBuilder/Flyouts/Window)에
+/// 도형/펜 그룹 재클릭 로테이션 순환 데이터도 함께 소유한다. 36단계부터 어댑터(ToolbarParts/StripBuilder/Flyouts/Window, 50단계부터 ShellHotkeys)에
 /// 인라인이던 값 판정(점 지름 표·보드 배지·퀵스와치 링·현재 칸·같은 도구 재선택 해제)도 여기 둔다 — 입력은 AppState가
 /// 아니라 값(ThicknessStep/BoardMode/Color/ToolKind)이라 헤드리스 표로 잠긴다 (X7/R9).
 /// </summary>
@@ -190,6 +190,6 @@ public static class ToolbarStateMap
         return 0;
     }
 
-    /// <summary>같은 도구 재선택 시 해제 (Epic Pen 동작: 도구 없음 = 포인터 모드) — 스트립 버튼과 플라이아웃 항목이 같은 판정을 쓴다.</summary>
+    /// <summary>같은 도구 재선택 시 해제 (Epic Pen 동작: 도구 없음 = 포인터 모드) — 스트립 버튼·플라이아웃 항목·도구 핫키(<c>ShellHotkeys.SelectTool</c>, 50단계)가 같은 판정을 쓴다.</summary>
     public static ToolKind ToggleTool(ToolKind current, ToolKind requested) => current == requested ? ToolKind.None : requested;
 }

@@ -141,7 +141,7 @@ public sealed class ToolbarWindow : Window
 
     private void SelectTool(ToolKind tool)
     {
-        // 같은 도구 재선택 시 해제 — 판정은 ToolbarStateMap.ToggleTool (플라이아웃 항목 ToolbarFlyouts.SelectTool과 동일).
+        // 같은 도구 재선택 시 해제 — 판정은 ToolbarStateMap.ToggleTool (플라이아웃 항목 ToolbarFlyouts.SelectTool·도구 핫키 ShellHotkeys.SelectTool과 동일).
         _state.ActiveTool = ToolbarStateMap.ToggleTool(_state.ActiveTool, tool);
     }
 
