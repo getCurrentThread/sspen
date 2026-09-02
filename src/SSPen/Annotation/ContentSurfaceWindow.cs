@@ -252,7 +252,11 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         }
     }
 
-    /// <summary>상태 변화 재적용: 표시, 클릭 통과, 히트테스트 배경, 보드, 커서.</summary>
+    /// <summary>
+    /// 상태 변화 재적용: 표시, 클릭 통과, 히트테스트 배경, 보드, 커서. 판정은 <see cref="SurfacePresentationRules"/>(44단계),
+    /// 적용 **순서**와 <c>CancelActiveInput</c> 호출 위치는 이 창이 소유한다. 클릭 통과·배경·IsHitTestVisible은
+    /// <c>Interactive</c> 하나에서 유도한다 (ARCH-1: 어긋난 조합은 표현 불가).
+    /// </summary>
     public void ApplyState()
     {
         if (_closed || Hwnd == 0)
@@ -260,34 +264,29 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             return;
         }
 
-        if (_suspended)
-        {
-            Visibility = _state.SurfacesVisible ? Visibility.Visible : Visibility.Hidden;
-            WindowStyling.SetClickThrough(Hwnd, true);
-            _root.Background = null;
-            _root.IsHitTestVisible = false;
-            Cursor = Cursors.Arrow;
-            return;
-        }
+        var presentation = SurfacePresentationRules.Resolve(_suspended, _state.SurfacesVisible, _state.IsInteractive, _state.HaloActive);
+        bool interactive = presentation.Interactive;
 
-        Visibility = _state.SurfacesVisible ? Visibility.Visible : Visibility.Hidden;
-
-        bool interactive = _state.IsInteractive;
+        Visibility = presentation.Visibility;
         WindowStyling.SetClickThrough(Hwnd, !interactive);
         _root.Background = interactive ? HitTestBrush : null;
         _root.IsHitTestVisible = interactive;
-        Cursor = interactive ? CursorFor(_state.ActiveTool) : Cursors.Arrow;
+        Cursor = interactive ? ToCursor(SurfacePresentationRules.HoverCursor(_state.ActiveTool, stylusInverted: false)) : Cursors.Arrow;
 
-        if (!_state.HaloActive)
+        if (presentation.CollapseHalo)
         {
             _halo.Visibility = Visibility.Collapsed;
         }
 
-        ApplyBoardState();
+        if (presentation.ApplyBoard)
+        {
+            ApplyBoardState();
+        }
 
-        if (!interactive)
+        if (!_suspended && !interactive)
         {
             // gen-7 자문(MED): 비인터랙티브 전환으로 버튼 업이 유실돼도 유령 드래그 삭제가 없도록 리셋.
+            // 중단 중에는 SetSuspended(true)가 이미 취소했으므로 여기서는 부르지 않는다 (오늘의 조기 반환 의미 보존).
             _input.CancelActiveInput();
         }
     }
@@ -391,14 +390,16 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         _halo.Visibility = Visibility.Visible;
     }
 
-    /// <summary>도구별 커서 (사용자 조타: UX 미려화): 펜/형광펜/페이딩=펜, 텍스트=IBeam,
-    /// 지우개=연필 지우개 커서(시스템 커서 크기 동기화), 도형=십자. 도구 없음은 호출되지 않음(비인터랙티브=화살표).</summary>
-    private static Cursor CursorFor(ToolKind tool) => tool switch
+    /// <summary>
+    /// 커서 종류 → WPF 커서 (사용자 조타: UX 미려화). 어느 종류인지는 <see cref="SurfacePresentationRules.HoverCursor"/>가 정하고,
+    /// 여기는 객체 매핑만 한다 — 지우개 커서는 Win32 시스템 커서 크기에 동기화된 <see cref="CursorFactory.Eraser"/>라 순수 코어에 둘 수 없다.
+    /// </summary>
+    private static Cursor ToCursor(SurfaceCursorKind kind) => kind switch
     {
-        ToolKind.Pen or ToolKind.Highlighter => Cursors.Pen,
-        ToolKind.Text => Cursors.IBeam,
-        ToolKind.Eraser => CursorFactory.Eraser,
-        ToolKind.Select => Cursors.Arrow,
+        SurfaceCursorKind.Pen => Cursors.Pen,
+        SurfaceCursorKind.IBeam => Cursors.IBeam,
+        SurfaceCursorKind.Eraser => CursorFactory.Eraser,
+        SurfaceCursorKind.Arrow => Cursors.Arrow,
         _ => Cursors.Cross,
     };
 
@@ -633,7 +634,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             return;
         }
 
-        Cursor = device?.Inverted == true ? CursorFactory.Eraser : CursorFor(_state.ActiveTool);
+        Cursor = ToCursor(SurfacePresentationRules.HoverCursor(_state.ActiveTool, stylusInverted: device?.Inverted == true));
     }
 
     private void ResetCursor()
@@ -643,7 +644,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
             return;
         }
 
-        Cursor = _state.IsInteractive ? CursorFor(_state.ActiveTool) : Cursors.Arrow;
+        Cursor = _state.IsInteractive ? ToCursor(SurfacePresentationRules.HoverCursor(_state.ActiveTool, stylusInverted: false)) : Cursors.Arrow;
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
