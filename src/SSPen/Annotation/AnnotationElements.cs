@@ -347,20 +347,10 @@ public sealed class TableElement : AnnotationElement
         min = Math.Min(min, DistanceToSegment(p, br, bl));
         min = Math.Min(min, DistanceToSegment(p, bl, tl));
 
-        // 가로 분할선 (Rows - 1 개)
-        double rowHeight = b.Height / Rows;
-        for (int r = 1; r < Rows; r++)
+        // 내부 분할선 — 렌더(AnnotationVisualFactory.CreateTableGeometry)와 같은 목록 (29단계, TableGeometry).
+        foreach (var (a, c) in TableGeometry.Dividers(b, Rows, Columns))
         {
-            double y = b.Top + r * rowHeight;
-            min = Math.Min(min, DistanceToSegment(p, new Point(b.Left, y), new Point(b.Right, y)));
-        }
-
-        // 세로 분할선 (Columns - 1 개)
-        double colWidth = b.Width / Columns;
-        for (int c = 1; c < Columns; c++)
-        {
-            double x = b.Left + c * colWidth;
-            min = Math.Min(min, DistanceToSegment(p, new Point(x, b.Top), new Point(x, b.Bottom)));
+            min = Math.Min(min, DistanceToSegment(p, a, c));
         }
 
         return min;

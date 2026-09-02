@@ -126,42 +126,27 @@ public static class AnnotationVisualFactory
         path.Data = CreateTableGeometry(start, end, rows, columns);
     }
 
+    /// <summary>
+    /// 표 격자 지오메트리. 미리보기(<see cref="UpdateTableVisual"/>)와 커밋(<see cref="BuildVisual"/>)이 같은 함수를 쓴다.
+    /// 외곽은 <b>닫힌 figure</b>(Miter 모서리) 하나, 내부 분할선은 <see cref="TableGeometry.Dividers"/> — 히트테스트와 같은 목록 (29단계).
+    /// </summary>
     public static Geometry CreateTableGeometry(Point start, Point end, int rows, int columns)
     {
+        var bounds = TableGeometry.Normalize(start, end);
         var geom = new StreamGeometry();
         using (var ctx = geom.Open())
         {
-            double left = Math.Min(start.X, end.X);
-            double top = Math.Min(start.Y, end.Y);
-            double right = Math.Max(start.X, end.X);
-            double bottom = Math.Max(start.Y, end.Y);
-            double width = right - left;
-            double height = bottom - top;
+            // 외곽 사각형 — 닫힌 figure라 모서리가 Miter로 이어진다 (열린 선분 4개로 바꾸면 Flat 캡 노치가 생긴다).
+            ctx.BeginFigure(bounds.TopLeft, isFilled: false, isClosed: true);
+            ctx.LineTo(bounds.TopRight, isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(bounds.BottomRight, isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(bounds.BottomLeft, isStroked: true, isSmoothJoin: false);
 
-            // 외곽 사각형
-            ctx.BeginFigure(new Point(left, top), isFilled: false, isClosed: true);
-            ctx.LineTo(new Point(right, top), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(new Point(right, bottom), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(new Point(left, bottom), isStroked: true, isSmoothJoin: false);
-
-            // 가로 분할선 (rows - 1 개)
-            int rCount = Math.Max(1, rows);
-            double rowH = height / rCount;
-            for (int r = 1; r < rCount; r++)
+            // 내부 분할선 (가로 rows−1 → 세로 columns−1) — TableElement 히트테스트와 같은 목록.
+            foreach (var (a, b) in TableGeometry.Dividers(bounds, rows, columns))
             {
-                double y = top + r * rowH;
-                ctx.BeginFigure(new Point(left, y), isFilled: false, isClosed: false);
-                ctx.LineTo(new Point(right, y), isStroked: true, isSmoothJoin: false);
-            }
-
-            // 세로 분할선 (columns - 1 개)
-            int cCount = Math.Max(1, columns);
-            double colW = width / cCount;
-            for (int c = 1; c < cCount; c++)
-            {
-                double x = left + c * colW;
-                ctx.BeginFigure(new Point(x, top), isFilled: false, isClosed: false);
-                ctx.LineTo(new Point(x, bottom), isStroked: true, isSmoothJoin: false);
+                ctx.BeginFigure(a, isFilled: false, isClosed: false);
+                ctx.LineTo(b, isStroked: true, isSmoothJoin: false);
             }
         }
         geom.Freeze();
