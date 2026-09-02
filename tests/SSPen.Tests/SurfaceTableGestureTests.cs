@@ -231,7 +231,7 @@ public class SurfaceTableGestureTests
             Assert.Equal(0, h.Ledger.Count);
             Assert.Equal(3, h.State.TableRows);
             Assert.Equal(1, h.ReleaseCaptureCalls);
-            Assert.Null(h.BadgeHints[^1]); // 취소 = 폐기: 배지도 null 힌트 1회로 소멸 (CancelActiveInput의 DiscardTable 슬롯)
+            Assert.Null(h.BadgeHints[^1]); // 취소 = 폐기: 배지도 null 힌트 1회로 소멸 (CancelActiveInput → DrawingGestureController.DiscardAll의 표 슬롯)
             Assert.Equal(1, h.BadgeHints.Count(x => x is null));
         });
     }

@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Shapes;
 using SSPen.Interop;
 
 namespace SSPen.Annotation;
@@ -23,7 +22,9 @@ namespace SSPen.Annotation;
 ///
 /// 획·도형·텍스트 쪽도 마찬가지다: 시작 시점 스타일 동결과 획 누적은
 /// <see cref="GestureStyleSnapshot"/>/<see cref="StrokeAccumulator"/>, 미리보기 끝점과 커밋 판정은
-/// <see cref="ShapeGestureRules"/>/<see cref="TextCommitRules"/>가 가진다.
+/// <see cref="ShapeGestureRules"/>/<see cref="TextCommitRules"/>가 가진다. 획·도형·표의 <b>진행 중 상태와 미리보기
+/// 시각물</b>은 <see cref="DrawingGestureController"/>가 갖는다 (46단계) — 이 클래스는 그 세 진입점의 "소비 여부"
+/// 반환값으로 지우개 → 선택 사다리를 잇고, 마우스 캡처·해제 쌍(ARCH-6)과 커밋 공통부만 쥔다.
 ///
 /// 이 클래스에 남는 것은 진행 중 필드와 창·문서·원장으로 흘려보내는 배선뿐이다 (ARCH-2).
 /// 그 배선 중 <b>순서 자체가 계약</b>인 것은 <see cref="CancelActiveInput"/> 하나이며,
@@ -84,22 +85,18 @@ public sealed class SurfaceInputController(
     private WheelScaleController WheelScale => _wheel ??= new(
         ownerLookup, document, _base.Apply, commitTransform, seams.Now, seams.IdleScheduler);
 
-    // 진행 중 획/도형/텍스트 상태
-    private StrokeAccumulator? _stroke;
-    private Path? _activeStrokePath;
+    private DrawingGestureController? _drawing;
+
+    /// <summary>
+    /// 획·도형·표 제스처의 진행 중 상태 (46단계). <see cref="WheelScale"/>와 같은 이유로 최초 사용 시점에 만든다 —
+    /// 넘겨야 하는 <see cref="CommitElement"/>가 인스턴스 메서드라 필드 이니셜라이저가 참조할 수 없다 (CS0236).
+    /// 커밋 공통부를 저쪽으로 옮기지 않는 이유: 텍스트 도구(<see cref="CommitText"/>)도 같은 경로로 원장·페이딩에 싣는다.
+    /// </summary>
+    private DrawingGestureController Drawing => _drawing ??= new(inkCanvas, state, CommitElement, setTableBadge);
 
     /// <summary>진행 중인 획의 점 목록 (테스트/진단용).</summary>
-    public IReadOnlyList<Point>? ActiveStrokePoints => _stroke?.Points;
+    public IReadOnlyList<Point>? ActiveStrokePoints => Drawing.ActiveStrokePoints;
     private bool _eraserDragging;          // 지우개 드래그 삭제 중 (사용자 조타 12차)
-    private Point _shapeStart;
-    private Shape? _previewShape;
-    private ShapeKind _previewKind;
-    private ShapeStyle _activeShapeStyle;  // 도형 시작 시점 페이딩 판정 (사용자 요청 17차)
-    private Point _tableStart;
-    private Shape? _previewTable;
-    private TableStyle _activeTableStyle;
-    private TableSize _tableSize;          // 진행 중 행·열 — 확정 시점에만 AppState로 (fix 57b043d)
-    private Point _lastPointerPos;
     private TextBox? _activeTextBox;
     private Point _textOrigin;
     private TextStyle _activeTextStyle;    // 텍스트 시작 시점 페이딩 판정 (사용자 요청 17차)
@@ -154,7 +151,7 @@ public sealed class SurfaceInputController(
         // 표 드래그 중 방향키: 상하 = 행, 좌우 = 열. 판정·적용은 Point-free 진입점 AdjustTable이 소유하고
         // 여기는 Key→(축, ±1) 매핑만 한다. 이 어댑터는 서피스가 활성(키보드 포커스)일 때만 도달한다 — 서피스는 영구
         // NOACTIVATE라 텍스트 커밋 직후 포커스가 남은 채 툴바 휠로 표 도구를 고른 좁은 경로뿐이다 (F4 실측 판정).
-        if (_previewTable is not null && e.Key is (Key.Up or Key.Down or Key.Left or Key.Right))
+        if (Drawing.TableActive && e.Key is (Key.Up or Key.Down or Key.Left or Key.Right))
         {
             var (axis, delta) = e.Key switch
             {
@@ -222,23 +219,30 @@ public sealed class SurfaceInputController(
 
         switch (gesture)
         {
+            // 그리기 여섯 갈래: 시작은 DrawingGestureController, 캡처(ARCH-6)는 여기 — 해제(PointerUp/CancelActiveInput)와 같은 클래스에 둔다.
             case SurfaceGesture.StartStroke:
-                StartStroke(pos, effectiveTool, pressure);
+                Drawing.StartStroke(pos, effectiveTool, pressure);
+                host.CaptureMouse();
                 break;
             case SurfaceGesture.StartLine:
-                StartShape(ShapeKind.Line, pos, effectiveTool);
+                Drawing.StartShape(ShapeKind.Line, pos, effectiveTool);
+                host.CaptureMouse();
                 break;
             case SurfaceGesture.StartArrow:
-                StartShape(ShapeKind.Arrow, pos, effectiveTool);
+                Drawing.StartShape(ShapeKind.Arrow, pos, effectiveTool);
+                host.CaptureMouse();
                 break;
             case SurfaceGesture.StartRectangle:
-                StartShape(ShapeKind.Rectangle, pos, effectiveTool);
+                Drawing.StartShape(ShapeKind.Rectangle, pos, effectiveTool);
+                host.CaptureMouse();
                 break;
             case SurfaceGesture.StartEllipse:
-                StartShape(ShapeKind.Ellipse, pos, effectiveTool);
+                Drawing.StartShape(ShapeKind.Ellipse, pos, effectiveTool);
+                host.CaptureMouse();
                 break;
             case SurfaceGesture.StartTable:
-                StartTable(pos, effectiveTool);
+                Drawing.StartTable(pos, effectiveTool);
+                host.CaptureMouse();
                 break;
             case SurfaceGesture.BeginTextEdit:
                 BeginTextEdit(pos, effectiveTool);
@@ -263,25 +267,12 @@ public sealed class SurfaceInputController(
             return;
         }
 
-        _lastPointerPos = pos;
-        if (_stroke is not null && _activeStrokePath is not null)
+        // 획·도형·표가 먼저다 — 소비했으면 지우개 → 선택 사다리로 내려가지 않는다 (옮기기 전 if/else-if 순서 그대로).
+        if (Drawing.Move(pos, shift, pressure))
         {
-            if (_stroke.TryAppend(pos, pressure))
-            {
-                UpdateActiveStrokeVisual();
-            }
+            return;
         }
-        else if (_previewShape is not null)
-        {
-            var end = ShapeGestureRules.ResolveEnd(_previewKind, _shapeStart, pos, shift);
-            AnnotationVisualFactory.UpdateShapeVisual(_previewShape, _previewKind, _shapeStart, end);
-        }
-        else if (_previewTable is not null)
-        {
-            AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _tableSize.Rows, _tableSize.Columns);
-            PushTableBadge(pos);
-        }
-        else if (_eraserDragging && state.IsInteractive)
+        if (_eraserDragging && state.IsInteractive)
         {
             // 사용자 조타 12차: 드래그 지우기 (기존 Non-Goal 4 펜스를 명시 조타로 해제).
             // R8: 펜 뒤집기 지우개도 _eraserDragging 중에는 지우기를 수행한다.
@@ -303,19 +294,8 @@ public sealed class SurfaceInputController(
             return;
         }
 
-        if (_stroke is not null)
-        {
-            CommitStroke();
-        }
-        else if (_previewShape is not null)
-        {
-            CommitShape(pos, shift);
-        }
-        else if (_previewTable is not null)
-        {
-            CommitTable(pos);
-        }
-        else if (_dragKind != SelectionDragKind.None)
+        // 획·도형·표 확정이 먼저다 — 임계 미만 폐기도 "소비"라 선택 제스처 종료로 흐르지 않는다 (옮기기 전 사다리 그대로).
+        if (!Drawing.Up(pos, shift) && _dragKind != SelectionDragKind.None)
         {
             EndSelectGesture(pos, shift);
         }
@@ -334,10 +314,9 @@ public sealed class SurfaceInputController(
         // 표 드래그 중에는 휠이 행·열 조절이다. 이 분기는 라우터의 비인터랙티브 가드보다 **앞**에서 선점하지만
         // "비인터랙티브인데 미리보기가 살아 있는" 상태는 지속되지 않는다 — 창의 ApplyState가 전환 즉시
         // CancelActiveInput을 동기로 불러 DiscardTable이 먼저 돈다 (18단계 증인). 그래서 라우터 표에 행을 더하지 않는다.
-        if (_previewTable is not null)
+        if (Drawing.TableActive)
         {
-            _lastPointerPos = pos;
-            return AdjustTable(TableGestureRules.AxisForWheel(shift), notches);
+            return Drawing.Wheel(pos, notches, shift);
         }
 
         // 중재는 순수 표가 소유한다 (R7/SEL-5/WI-16). SEL-LIM-5 게이트만 여기 남는다.
@@ -388,21 +367,9 @@ public sealed class SurfaceInputController(
     /// <summary>
     /// 표 드래그 중 행·열 조절의 Point-free 진입점 (25단계). 휠 어댑터와 방향키 어댑터가 모두 여기로 온다.
     /// 반환값이 <c>e.Handled</c> 판정이다 — 표 드래그 중이 아니면 false(입력을 소비하지 않는다).
-    /// 드래그 중 행·열은 진행 중 값(<c>_tableSize</c>)이다 — AppState에는 CommitTable이 1회만 쓴다 (fix 57b043d):
-    /// 노치마다 쓰면 AppState.Changed가 z-밴드 재적용·전 서피스 ApplyState·설정 저장 예약을 매번 돌린다.
-    /// 시각물의 기준점은 마지막 포인터 위치다 — 휠은 호출 전에 그 값을 갱신하고, 방향키는 마지막 이동 위치를 쓴다.
+    /// 본문과 기준점 규칙(마지막 포인터 위치, AppState 1회 쓰기)은 <see cref="DrawingGestureController.AdjustTable"/>이 소유한다 (46단계).
     /// </summary>
-    public bool AdjustTable(TableAxis axis, int delta)
-    {
-        if (_previewTable is null)
-        {
-            return false;
-        }
-        _tableSize = TableGestureRules.Adjust(_tableSize, axis, delta);
-        AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, _lastPointerPos, _tableSize.Rows, _tableSize.Columns);
-        PushTableBadge(_lastPointerPos);
-        return true;
-    }
+    public bool AdjustTable(TableAxis axis, int delta) => Drawing.AdjustTable(axis, delta);
 
     // ---- 선택 도구 입력 상태 머신 (SEL-7) ----
 
@@ -675,153 +642,6 @@ public sealed class SurfaceInputController(
         setGestureGroupFrame(null);
     }
 
-    private void StartStroke(Point pos, ToolKind effectiveTool, float pressure = StrokeGeometry.DefaultPressure)
-    {
-        // 시작 시점 판정 캡처 (아키텍트 자문): 드래그 중 핫키로 도구가 바뀌거나 퀵컬러/휠로
-        // 색·굵기가 바뀌어도, 이 획의 스타일(색·굵기·형광펜·페이딩 여부)은 시작 당시 스냅샷을 따른다.
-        var style = GestureStyleSnapshot.ForStroke(state, effectiveTool);
-        _stroke = new StrokeAccumulator(pos, style, pressure);
-        _activeStrokePath = new Path
-        {
-            Fill = AnnotationVisualFactory.StrokeBrush(style.Color, style.IsHighlighter),
-        };
-        UpdateActiveStrokeVisual();
-        inkCanvas.Children.Add(_activeStrokePath);
-        host.CaptureMouse();
-    }
-
-    private void UpdateActiveStrokeVisual()
-    {
-        if (_stroke is null || _activeStrokePath is null)
-        {
-            return;
-        }
-        _activeStrokePath.Data = StrokeGeometry.Create(
-            _stroke.Points, _stroke.Pressures, _stroke.Style.Thickness, _stroke.Style.IsHighlighter);
-    }
-
-    private void CommitStroke()
-    {
-        if (_stroke is null || _activeStrokePath is null)
-        {
-            return;
-        }
-        var style = _stroke.Style;
-        var element = new StrokeElement(_stroke.Points, style.Color, style.Thickness, style.IsHighlighter, _stroke.Pressures);
-        inkCanvas.Children.Remove(_activeStrokePath);
-        _stroke = null;
-        _activeStrokePath = null;
-        CommitElement(element, fade: style.IsFading);
-    }
-
-    /// <summary>
-    /// 진행 중 획 <b>폐기</b> (커밋이 아니다 — 원장 항목이 없으므로 미리보기 시각물만 지운다).
-    /// <c>Children.Remove</c>가 WPF라 헤드리스 코어로 내리지 않고 얇은 UI 어댑터로 남긴다.
-    /// </summary>
-    private void DiscardStroke()
-    {
-        if (_activeStrokePath is null)
-        {
-            return;
-        }
-        inkCanvas.Children.Remove(_activeStrokePath);
-        _stroke = null;
-        _activeStrokePath = null;
-    }
-
-    private void StartShape(ShapeKind kind, Point pos, ToolKind effectiveTool)
-    {
-        _shapeStart = pos;
-        _previewKind = kind;
-        // 시작 시점 스냅샷: 드래그 중 색/굵기/페이딩 토글 변경이 미리보기·커밋 스타일을 어긋내지 않도록 고정.
-        _activeShapeStyle = GestureStyleSnapshot.ForShape(state, effectiveTool);
-        _previewShape = AnnotationVisualFactory.CreateShapeVisual(kind, _activeShapeStyle.Color, _activeShapeStyle.Thickness);
-        AnnotationVisualFactory.UpdateShapeVisual(_previewShape, kind, pos, pos);
-        inkCanvas.Children.Add(_previewShape);
-        host.CaptureMouse();
-    }
-
-    private void CommitShape(Point rawEnd, bool shift)
-    {
-        if (_previewShape is null)
-        {
-            return;
-        }
-        var end = ShapeGestureRules.ResolveEnd(_previewKind, _shapeStart, rawEnd, shift);
-        inkCanvas.Children.Remove(_previewShape);
-        _previewShape = null;
-
-        if (!ShapeGestureRules.ShouldCommit(_shapeStart, end))
-        {
-            return;
-        }
-        var element = new ShapeElement(_previewKind, _shapeStart, end, _activeShapeStyle.Color, _activeShapeStyle.Thickness);
-        CommitElement(element, fade: _activeShapeStyle.IsFading);
-    }
-
-    /// <summary>진행 중 도형 <b>폐기</b> (커밋이 아니다 — <see cref="DiscardStroke"/>와 같은 이유).</summary>
-    private void DiscardShape()
-    {
-        if (_previewShape is null)
-        {
-            return;
-        }
-        inkCanvas.Children.Remove(_previewShape);
-        _previewShape = null;
-    }
-
-    private void StartTable(Point pos, ToolKind effectiveTool)
-    {
-        _tableStart = pos;
-        _lastPointerPos = pos;
-        _activeTableStyle = GestureStyleSnapshot.ForTable(state, effectiveTool);
-        _tableSize = new TableSize(_activeTableStyle.Rows, _activeTableStyle.Columns);
-        _previewTable = AnnotationVisualFactory.CreateTableVisual(_activeTableStyle.Color, _activeTableStyle.Thickness);
-        AnnotationVisualFactory.UpdateTableVisual(_previewTable, pos, pos, _tableSize.Rows, _tableSize.Columns);
-        inkCanvas.Children.Add(_previewTable);
-
-        // 드래그 중 실시간 행/열 HUD 배지 (방안 2) — 그리는 것은 창이다 (setTableBadge 이음매, 26단계).
-        PushTableBadge(pos);
-
-        host.CaptureMouse();
-    }
-
-    /// <summary>배지 힌트를 창에 민다 — 앵커는 포인터 위치, 크기는 진행 중 값. 창은 텍스트·위치만 갱신한다 (재구축 없음).</summary>
-    private void PushTableBadge(Point pos) => setTableBadge(new TableBadgeHint(pos, _tableSize));
-
-    private void CommitTable(Point rawEnd)
-    {
-        if (_previewTable is null)
-        {
-            return;
-        }
-        inkCanvas.Children.Remove(_previewTable);
-        _previewTable = null;
-        setTableBadge(null); // 배지 소멸 — 창이 지운다 (커밋·폐기 모두).
-
-        // 임계는 도형과 같은 단일 상수(R2)를 **읽는다** — 리터럴 3을 다시 적으면 같은 양에 이름이 둘 생긴다 (1단계 교훈).
-        if (!ShapeGestureRules.ShouldCommit(_tableStart, rawEnd))
-        {
-            return;
-        }
-        var element = new TableElement(_tableStart, rawEnd, _tableSize.Rows, _tableSize.Columns, _activeTableStyle.Color, _activeTableStyle.Thickness);
-        CommitElement(element, fade: _activeTableStyle.IsFading);
-        // 확정된 표의 행·열을 다음 표의 기본값으로 기억한다 — 여기 **한 번**만 AppState에 쓴다.
-        // 취소되거나 임계 미달로 폐기된 드래그의 행·열은 기억하지 않는다 (fix: 노치마다 쓰던 것을 확정 시점으로).
-        state.TableRows = _tableSize.Rows;
-        state.TableColumns = _tableSize.Columns;
-    }
-
-    private void DiscardTable()
-    {
-        if (_previewTable is not null)
-        {
-            inkCanvas.Children.Remove(_previewTable);
-            _previewTable = null;
-        }
-        setTableBadge(null); // 배지 소멸 — 창이 지운다 (커밋·폐기 모두).
-    }
-
     // ---- 텍스트 도구 (ARCH-2: NOACTIVATE 일시 해제 핸드셰이크로 한국어 IME 지원) ----
 
     private void BeginTextEdit(Point pos, ToolKind effectiveTool)
@@ -942,7 +762,7 @@ public sealed class SurfaceInputController(
     ///
     /// 취소의 의미가 다섯 가지로 <b>서로 다르다</b> — 균일한 <c>Cancel()</c> 인터페이스로 묶으면 전부 틀어진다.
     /// <list type="bullet">
-    ///   <item>획·도형 = <b>폐기</b>. 미리보기 시각물만 있고 원장 항목이 없으므로 그냥 지운다.</item>
+    ///   <item>획·도형·표 = <b>폐기</b> (<see cref="DrawingGestureController.DiscardAll"/>). 미리보기 시각물만 있고 원장 항목이 없으므로 그냥 지운다.</item>
     ///   <item>텍스트 = <b>커밋</b>. ARCH-2 NOACTIVATE 핸드셰이크로 이미 활성화된 편집이고,
     ///         입력한 글자를 폐기하면 사용자 데이터가 사라진다.</item>
     ///   <item>변형(드래그) = <b>롤백</b> (R15). 원장에 없는 중간 변형이 화면에 남으면 실행취소로 지울 수 없다.</item>
@@ -963,9 +783,7 @@ public sealed class SurfaceInputController(
     {
         _eraserDragging = false;
         _hadSelectionOnPress = false;
-        DiscardStroke();
-        DiscardShape();
-        DiscardTable();
+        Drawing.DiscardAll(); // 획·도형·표 = 폐기. 세 슬롯의 순서(획 → 도형 → 표)는 저쪽이 그대로 잇는다 (46단계).
         if (_activeTextBox is not null)
         {
             CommitText(); // 텍스트만 폐기가 아니라 커밋이다 (ARCH-2).

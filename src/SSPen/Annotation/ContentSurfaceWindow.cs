@@ -419,7 +419,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
     /// <summary>
     /// 표 드래그 HUD 배지 힌트 (26단계). null이면 제거. 첫 힌트에 만들고 이후에는 텍스트·위치만 갱신한다 —
     /// 매 포인터 이동마다 불리므로 재구축하지 않는다. 캡처 때 배지가 사라지는 것은 <see cref="SetDecorationsVisible"/>이
-    /// 아니라 <c>SetSuspended → CancelActiveInput → DiscardTable(null 힌트)</c> 경로다 — 그 순서가 계약이다 (18단계 증인).
+    /// 아니라 <c>SetSuspended → CancelActiveInput → DrawingGestureController.DiscardAll(표 슬롯의 null 힌트)</c> 경로다 — 그 순서가 계약이다 (18단계 증인).
     /// </summary>
     public void SetTableBadge(TableBadgeHint? hint)
     {
