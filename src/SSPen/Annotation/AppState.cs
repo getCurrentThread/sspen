@@ -339,18 +339,18 @@ public sealed class AppState
         }
     }
 
-    /// <summary>표 기본 행 수 (1..10).</summary>
+    /// <summary>표 기본 행 수 (<see cref="TableGridLimits"/> 범위로 재단). 확정된 표가 CommitTable에서 한 번 쓴다.</summary>
     public int TableRows
     {
         get => _tableRows;
-        set => Set(ref _tableRows, Math.Clamp(value, 1, 10));
+        set => Set(ref _tableRows, TableGridLimits.Clamp(value));
     }
 
-    /// <summary>표 기본 열 수 (1..10).</summary>
+    /// <summary>표 기본 열 수 (<see cref="TableGridLimits"/> 범위로 재단).</summary>
     public int TableColumns
     {
         get => _tableColumns;
-        set => Set(ref _tableColumns, Math.Clamp(value, 1, 10));
+        set => Set(ref _tableColumns, TableGridLimits.Clamp(value));
     }
 
     /// <summary>

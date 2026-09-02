@@ -149,8 +149,7 @@ public sealed class SurfaceInputController(
     private Point _tableStart;
     private Shape? _previewTable;
     private TableStyle _activeTableStyle;
-    private int _currentTableRows;
-    private int _currentTableColumns;
+    private TableSize _tableSize;          // 진행 중 행·열 — 확정 시점에만 AppState로 (fix 57b043d)
     private Point _lastPointerPos;
     private Border? _tableBadge;
     private TextBlock? _tableBadgeText;
@@ -208,14 +207,18 @@ public sealed class SurfaceInputController(
         {
             if (e.Key is Key.Up or Key.Down or Key.Left or Key.Right)
             {
-                if (e.Key == Key.Up) _currentTableRows = Math.Clamp(_currentTableRows + 1, 1, 10);
-                else if (e.Key == Key.Down) _currentTableRows = Math.Clamp(_currentTableRows - 1, 1, 10);
-                else if (e.Key == Key.Right) _currentTableColumns = Math.Clamp(_currentTableColumns + 1, 1, 10);
-                else if (e.Key == Key.Left) _currentTableColumns = Math.Clamp(_currentTableColumns - 1, 1, 10);
+                var (axis, delta) = e.Key switch
+                {
+                    Key.Up => (TableAxis.Rows, +1),
+                    Key.Down => (TableAxis.Rows, -1),
+                    Key.Right => (TableAxis.Columns, +1),
+                    _ => (TableAxis.Columns, -1),
+                };
+                _tableSize = TableGestureRules.Adjust(_tableSize, axis, delta);
 
                 // 드래그 중 행·열은 이 컨트롤러의 진행 중 값이다. AppState에는 CommitTable이 1회만 쓴다 —
                 // 노치마다 쓰면 AppState.Changed가 z-밴드 재적용·전 서피스 ApplyState·설정 저장 예약을 매번 돌린다.
-                AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, _lastPointerPos, _currentTableRows, _currentTableColumns);
+                AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, _lastPointerPos, _tableSize.Rows, _tableSize.Columns);
                 UpdateTableBadge(_lastPointerPos);
                 e.Handled = true;
                 return;
@@ -330,7 +333,7 @@ public sealed class SurfaceInputController(
         }
         else if (_previewTable is not null)
         {
-            AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _currentTableRows, _currentTableColumns);
+            AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _tableSize.Rows, _tableSize.Columns);
             UpdateTableBadgePosition(pos);
         }
         else if (_eraserDragging && state.IsInteractive)
@@ -382,15 +385,9 @@ public sealed class SurfaceInputController(
         if (_previewTable is not null)
         {
             // 드래그 중 행·열은 진행 중 값이다 — AppState에는 CommitTable이 1회만 쓴다 (OnKeyDown과 같은 이유).
-            if (KeyboardState.Shift)
-            {
-                _currentTableColumns = Math.Clamp(_currentTableColumns + notches, 1, 10);
-            }
-            else
-            {
-                _currentTableRows = Math.Clamp(_currentTableRows + notches, 1, 10);
-            }
-            AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _currentTableRows, _currentTableColumns);
+            _tableSize = TableGestureRules.Adjust(
+                _tableSize, TableGestureRules.AxisForWheel(KeyboardState.Shift), notches);
+            AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _tableSize.Rows, _tableSize.Columns);
             UpdateTableBadge(pos);
             return true;
         }
@@ -811,16 +808,15 @@ public sealed class SurfaceInputController(
         _tableStart = pos;
         _lastPointerPos = pos;
         _activeTableStyle = GestureStyleSnapshot.ForTable(state, effectiveTool);
-        _currentTableRows = _activeTableStyle.Rows;
-        _currentTableColumns = _activeTableStyle.Columns;
+        _tableSize = new TableSize(_activeTableStyle.Rows, _activeTableStyle.Columns);
         _previewTable = AnnotationVisualFactory.CreateTableVisual(_activeTableStyle.Color, _activeTableStyle.Thickness);
-        AnnotationVisualFactory.UpdateTableVisual(_previewTable, pos, pos, _currentTableRows, _currentTableColumns);
+        AnnotationVisualFactory.UpdateTableVisual(_previewTable, pos, pos, _tableSize.Rows, _tableSize.Columns);
         inkCanvas.Children.Add(_previewTable);
 
         // 드래그 중 실시간 행/열 크기 HUD 배지 생성 (방안 2)
         _tableBadgeText = new TextBlock
         {
-            Text = $"{_currentTableRows} × {_currentTableColumns} {Strings.ShapeTable}",
+            Text = $"{_tableSize.Rows} × {_tableSize.Columns} {Strings.ShapeTable}",
             Foreground = Brushes.White,
             FontSize = 12,
             FontWeight = FontWeights.SemiBold,
@@ -847,7 +843,7 @@ public sealed class SurfaceInputController(
     {
         if (_tableBadgeText is not null)
         {
-            _tableBadgeText.Text = $"{_currentTableRows} × {_currentTableColumns} {Strings.ShapeTable}";
+            _tableBadgeText.Text = $"{_tableSize.Rows} × {_tableSize.Columns} {Strings.ShapeTable}";
         }
         UpdateTableBadgePosition(pos);
     }
@@ -881,12 +877,12 @@ public sealed class SurfaceInputController(
         {
             return;
         }
-        var element = new TableElement(_tableStart, rawEnd, _currentTableRows, _currentTableColumns, _activeTableStyle.Color, _activeTableStyle.Thickness);
+        var element = new TableElement(_tableStart, rawEnd, _tableSize.Rows, _tableSize.Columns, _activeTableStyle.Color, _activeTableStyle.Thickness);
         CommitElement(element, fade: _activeTableStyle.IsFading);
         // 확정된 표의 행·열을 다음 표의 기본값으로 기억한다 — 여기 **한 번**만 AppState에 쓴다.
         // 취소되거나 임계 미달로 폐기된 드래그의 행·열은 기억하지 않는다 (fix: 노치마다 쓰던 것을 확정 시점으로).
-        state.TableRows = _currentTableRows;
-        state.TableColumns = _currentTableColumns;
+        state.TableRows = _tableSize.Rows;
+        state.TableColumns = _tableSize.Columns;
     }
 
     private void DiscardTable()
