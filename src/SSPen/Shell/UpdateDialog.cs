@@ -83,7 +83,7 @@ public sealed class UpdateDialog : Window
 
         var notesBox = new TextBox
         {
-            Text = string.IsNullOrWhiteSpace(info.ReleaseNotes) ? "(릴리즈 설명이 없습니다.)" : info.ReleaseNotes,
+            Text = string.IsNullOrWhiteSpace(info.ReleaseNotes) ? Strings.UpdateReleaseNotesEmpty : info.ReleaseNotes,
             IsReadOnly = true,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             TextWrapping = TextWrapping.Wrap,

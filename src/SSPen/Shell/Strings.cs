@@ -113,6 +113,7 @@ public static class Strings
     public const string UpdateCurrentVersionLabel = "현재 버전:";
     public const string UpdateLatestVersionLabel = "최신 버전:";
     public const string UpdateReleaseNotesLabel = "변경 내용:";
+    public const string UpdateReleaseNotesEmpty = "(릴리즈 설명이 없습니다.)";
     public const string UpdateNow = "지금 업데이트";
     public const string UpdateLater = "나중에";
     public const string UpdateOpenWebPage = "웹페이지 열기";

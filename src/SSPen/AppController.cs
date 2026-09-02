@@ -237,38 +237,41 @@ public sealed class AppController : IShellActions, ISettingsHost
 
     public void CheckForUpdates() => CheckForUpdates(isManual: true);
 
+    /// <summary>표시 판정은 <see cref="UpdateCheckPresentation"/>이 소유한다 (35단계) — 여기는 결과별 UI 호출뿐이다.</summary>
     private void CheckForUpdates(bool isManual)
     {
         _updateService.CheckForUpdates(result =>
         {
-            if (result.Success && result.HasUpdate && result.ReleaseInfo is not null)
+            switch (UpdateCheckPresentation.Decide(result, isManual))
             {
-                var dialog = new UpdateDialog(result.ReleaseInfo, _updateService);
-                dialog.Show();
-                dialog.Activate();
-            }
-            else if (!result.Success)
-            {
-                if (isManual)
-                {
+                case UpdateCheckOutcome.ShowDialog:
+                    var dialog = new UpdateDialog(result.ReleaseInfo!, _updateService);
+                    dialog.Show();
+                    dialog.Activate();
+                    break;
+
+                case UpdateCheckOutcome.ShowErrorDialog:
                     MessageBox.Show(
                         result.ErrorMessage ?? Strings.UpdateFailedTitle,
                         Strings.AppName,
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
-                }
-                else
-                {
+                    break;
+
+                case UpdateCheckOutcome.LogError:
                     Log.Warn($"자동 업데이트 확인 실패: {result.ErrorMessage}");
-                }
-            }
-            else if (isManual)
-            {
-                MessageBox.Show(
-                    Strings.UpdateLatestAlready,
-                    Strings.AppName,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                    break;
+
+                case UpdateCheckOutcome.ShowUpToDate:
+                    MessageBox.Show(
+                        Strings.UpdateLatestAlready,
+                        Strings.AppName,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    break;
+
+                case UpdateCheckOutcome.Silent:
+                    break;
             }
         });
     }
