@@ -102,8 +102,8 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         _inkCanvas = new Canvas { ClipToBounds = true };
         _halo = new Ellipse
         {
-            Width = 40,
-            Height = 40,
+            Width = HaloPlacement.Diameter,
+            Height = HaloPlacement.Diameter,
             Visibility = Visibility.Collapsed,
             IsHitTestVisible = false,
         };
@@ -376,19 +376,16 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     /// <summary>공유 렌더 틱이 호출. 물리 커서 좌표가 이 모니터 안일 때만 표시.</summary>
     public void UpdateHalo(int physicalX, int physicalY)
     {
-        bool visible = _state.HaloActive
-            && _state.SurfacesVisible
-            && _monitor.WorkArea.Contains(physicalX, physicalY);
-        if (!visible)
+        // 판정·배치는 HaloPlacement가 소유한다 (42단계). 창은 DPI 조회(보일 때만)와 전사만.
+        if (!HaloPlacement.IsVisible(_state.HaloActive, _state.SurfacesVisible, _monitor.WorkArea, physicalX, physicalY))
         {
             _halo.Visibility = Visibility.Collapsed;
             return;
         }
         var dpi = VisualTreeHelper.GetDpi(this);
-        var local = CoordinateSpace.ToLogical(
-            physicalX - _monitor.WorkArea.X, physicalY - _monitor.WorkArea.Y, dpi.DpiScaleX);
-        Canvas.SetLeft(_halo, local.X - 20);
-        Canvas.SetTop(_halo, local.Y - 20);
+        var topLeft = HaloPlacement.TopLeft(_monitor.WorkArea, physicalX, physicalY, dpi.DpiScaleX);
+        Canvas.SetLeft(_halo, topLeft.X);
+        Canvas.SetTop(_halo, topLeft.Y);
         var c = _state.CurrentColor;
         _halo.Fill = new SolidColorBrush(Color.FromArgb(0x59, c.R, c.G, c.B));
         _halo.Visibility = Visibility.Visible;
