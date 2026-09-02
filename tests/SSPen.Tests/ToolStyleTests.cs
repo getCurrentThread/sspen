@@ -351,4 +351,36 @@ public class ToolStyleTests
         state.SetColor(ToolStyleGroup.Pen, Black); // 동일 값 → 미발생
         Assert.Equal(1, fired);
     }
+    // ---- 표 격자 기본값 (1..10 클램프, 22단계 TableGridLimits 단일화의 기준선) ----
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(1, 1)]
+    [InlineData(11, 10)]
+    [InlineData(10, 10)]
+    public void TableRows_SetOutOfRange_ClampsTo1To10(int requested, int expected)
+    {
+        var state = new AppState();
+
+        state.TableRows = requested;
+        state.TableColumns = requested;
+
+        Assert.Equal(expected, state.TableRows);
+        Assert.Equal(expected, state.TableColumns);
+    }
+
+    [Fact]
+    public void TableRows_SameValue_DoesNotRaiseChanged()
+    {
+        var state = new AppState();
+        int changed = 0;
+        state.Changed += () => changed++;
+
+        state.TableRows = state.TableRows;
+        state.TableColumns = state.TableColumns;
+        Assert.Equal(0, changed);
+
+        state.TableRows = 4;
+        Assert.Equal(1, changed);
+    }
 }
