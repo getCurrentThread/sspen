@@ -35,7 +35,7 @@ public sealed record SurfaceInputSeams
     public Func<DateTime> Now { get; init; } = () => DateTime.UtcNow;
 
     /// <summary>
-    /// 서피스 논리 경계 (R5). 렌더(<c>ContentSurfaceWindow.RedrawDecorations</c>)와 힌트(히트 테스트)가
+    /// 서피스 논리 경계 (R5). 렌더(<c>SurfaceDecorationPlanner.Plan</c>, 창이 <c>RedrawDecorations</c>에서 값을 넘긴다)와 힌트(히트 테스트)가
     /// <b>같은 값</b>을 써야 "그려지는 위치 == 잡히는 위치"가 성립한다. 창이 유일 소유자이므로
     /// 충실한 프로덕션 기본값이 없다 — 그래서 <c>required</c>다.
     ///

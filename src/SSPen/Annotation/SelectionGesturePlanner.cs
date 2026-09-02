@@ -146,7 +146,7 @@ public static class SelectionGesturePlanner
     {
         // 모니터에 걸친 선택은 이동만 허용한다 (SEL-LIM-5): 서피스마다 원점과 DPI가 달라
         // 두 문서의 논리 경계를 합친 그룹 프레임은 서로소인 좌표계의 합이라 의미가 없다.
-        // 술어는 렌더(ContentSurfaceWindow.RedrawDecorations)와 **같은 함수**를 쓴다 — 이름을 따로
+        // 술어는 렌더(SurfaceDecorationPlanner.Plan — 창의 RedrawDecorations가 부른다)와 **같은 함수**를 쓴다 — 이름을 따로
         // 두면 "그리는 조건"과 "잡히는 조건"이 다시 갈라져 보이지만 잡히지 않는 핸들이 생긴다.
         bool grabbable = SelectionGroup.HandlesGrabbable(owned.Count, selectionCount);
 

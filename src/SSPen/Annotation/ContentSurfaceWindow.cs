@@ -472,6 +472,8 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     /// <summary>
     /// 장식 재그리기. 드래그 중에는 선택집합이 불변이라 <c>SelectionChanged</c>가 오지 않으므로
     /// 변형 채널과 입력 컨트롤러가 직접 부른다 (CRIT-08).
+    /// 무엇을 어디에 그릴지는 <see cref="SurfaceDecorationPlanner"/>가 소유한다 (43단계) — 이 창은 결과를 순서대로 붙일 뿐
+    /// 핸들 가시성(<c>HandlesGrabbable</c>)을 재유도하지 않는다. 경계는 매 호출마다 <see cref="SurfaceBounds"/> 값을 넘긴다 (R5).
     /// </summary>
     public void RedrawDecorations()
     {
@@ -482,97 +484,18 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
 
         _decorationLayer.Children.Clear();
 
-        if (_marquee is { } marquee)
-        {
-            _decorationLayer.Children.Add(AnnotationVisualFactory.BuildMarquee(marquee));
-        }
-
-        var surfaceBounds = SurfaceBounds;
         var owned = SelectionGroup.OwnedBy(Document, _selection);
-
-        // 모니터에 걸친 선택은 경계만 그리고 핸들을 숨긴다 (SEL-LIM-5): 두 서피스의 논리 좌표계가
-        // 서로소라 공통 프레임이 성립하지 않으므로, 잡을 수 없는 핸들을 그리면 거짓 어포던스가 된다.
-        // 술어는 히트 테스트(SelectionGesturePlanner.Plan)와 **같은 함수**를 쓴다 —
-        // 소유 요소가 1개인 서피스는 아래 요소별 경로를 타므로, 그룹 분기에만 걸어두면 그쪽에 구멍이 난다.
-        bool handles = SelectionGroup.HandlesGrabbable(owned.Count, _selection.Count);
-
-        // R1: 다중 선택은 **하나의 그룹**으로 보인다 — 요소별 프레임 대신 공통 축 정렬 프레임 1개.
-        if (owned.Count >= SelectionGroup.MinGroupCount)
+        foreach (var primitive in SurfaceDecorationPlanner.Plan(owned, _selection.Count, _marquee, _gestureGroupFrame, SurfaceBounds))
         {
-            DrawGroupDecorations(owned, surfaceBounds, handles);
-            return;
-        }
-
-        foreach (var element in owned)
-        {
-            var corners = element.TransformedCorners();
-            _decorationLayer.Children.Add(AnnotationVisualFactory.BuildSelectionBorder(corners));
-            if (!handles)
+            _decorationLayer.Children.Add(primitive switch
             {
-                continue;
-            }
-
-            var bounds = element.LocalBounds;
-            var matrix = element.TransformMatrix;
-            foreach (var handle in TransformMath.SizeHandlesCornersFirst)
-            {
-                var center = matrix.Transform(TransformMath.HandleCenterLocal(bounds, handle));
-                _decorationLayer.Children.Add(
-                    AnnotationVisualFactory.BuildHandle(center, TransformMath.HandleScreenSize));
-            }
-
-            // 회전 핸들은 렌더와 힌트가 **같은 클램프된 위치**를 써야 한다 (R5).
-            var stemStart = TransformMath.TopCenterWorld(element.TransformState, bounds);
-            var rotate = TransformMath.ClampRotateHandle(
-                TransformMath.RotateHandleWorld(element.TransformState, bounds),
-                surfaceBounds,
-                TransformMath.HandleScreenSize / 2);
-            _decorationLayer.Children.Add(AnnotationVisualFactory.BuildRotateStem(stemStart, rotate));
-            _decorationLayer.Children.Add(
-                AnnotationVisualFactory.BuildHandle(rotate, TransformMath.HandleScreenSize));
+                MarqueePrimitive m => AnnotationVisualFactory.BuildMarquee(m.Rect),
+                OutlinePrimitive o => AnnotationVisualFactory.BuildSelectionBorder(o.Corners),
+                HandlePrimitive h => AnnotationVisualFactory.BuildHandle(h.Center, TransformMath.HandleScreenSize),
+                RotateStemPrimitive stem => AnnotationVisualFactory.BuildRotateStem(stem.From, stem.To),
+                _ => throw new InvalidOperationException(primitive.GetType().Name),
+            });
         }
-    }
-
-    /// <summary>
-    /// 그룹 장식 (R1): 공통 프레임 + 모서리 4핸들 + 회전 핸들 1개.
-    /// 측면 4핸들을 그리지 않는 이유는 <see cref="SelectionGroup"/> 참고 — 비등방 그룹 스케일은
-    /// 회전된 요소에 전단을 요구해 <see cref="ElementTransformState"/>로 표현할 수 없다.
-    ///
-    /// 회전 중에는 컨트롤러가 밀어 넣은 각도로 테두리·핸들·스템이 함께 돈다. 각도는 좌표 계산에만 쓰이며
-    /// 히트 테스트도 같은 <see cref="GroupFrame"/> 계산을 쓰므로 "그려지는 위치 == 잡히는 위치"가 유지된다 (R5).
-    /// </summary>
-    private void DrawGroupDecorations(List<AnnotationElement> owned, Rect surfaceBounds, bool handles)
-    {
-        GroupFrame? current = _gestureGroupFrame;
-        if (current is null && SelectionGroup.Frame(owned) is { } live)
-        {
-            current = new GroupFrame(live, 0);
-        }
-        if (current is not { } frame)
-        {
-            return;
-        }
-
-        _decorationLayer.Children.Add(
-            AnnotationVisualFactory.BuildSelectionBorder(SelectionGroup.Corners(frame)));
-        if (!handles)
-        {
-            return;
-        }
-
-        foreach (var handle in SelectionGroup.CornersClockwise)
-        {
-            _decorationLayer.Children.Add(AnnotationVisualFactory.BuildHandle(
-                SelectionGroup.CornerCenter(frame, handle), TransformMath.HandleScreenSize));
-        }
-
-        // 회전 핸들은 렌더와 힌트가 **같은 클램프된 위치**를 써야 한다 (R5).
-        var rotate = TransformMath.ClampRotateHandle(
-            SelectionGroup.RotateHandle(frame), surfaceBounds, TransformMath.HandleScreenSize / 2);
-        _decorationLayer.Children.Add(
-            AnnotationVisualFactory.BuildRotateStem(SelectionGroup.TopCenter(frame), rotate));
-        _decorationLayer.Children.Add(
-            AnnotationVisualFactory.BuildHandle(rotate, TransformMath.HandleScreenSize));
     }
 
     /// <summary>진행 중인 휠 확대를 지금 원장에 확정한다 (R7) — 선택 삭제처럼 요소를 없애는 조작 직전용.</summary>
