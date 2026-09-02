@@ -337,7 +337,9 @@ public sealed class AppController : IShellActions, ISettingsHost
         var surface = new ContentSurfaceWindow(
             monitor, _state, document, _ledger, _fading,
             _selection, OwnerOf, DpiOf, OnCommitTransform, EngageClickThrough,
-            () => _toolbar?.Hwnd ?? 0);
+            () => _toolbar?.Hwnd ?? 0,
+            // 사용자 문자열은 Shell/Strings에만 산다 — 창(Annotation)에는 포맷터로 주입한다 (26단계).
+            Strings.TableBadge);
         _surfaces.Add(surface);
         surface.Show();
         return surface;

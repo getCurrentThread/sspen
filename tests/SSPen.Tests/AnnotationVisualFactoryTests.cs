@@ -73,6 +73,28 @@ public class AnnotationVisualFactoryTests
         });
     }
 
+    // ---- 표 드래그 HUD 배지 (26단계): 텍스트는 인자, 위치는 앵커 + 오프셋 ----
+
+    [Fact]
+    public void BuildTableBadge_TextIsArgument_AndSitsAtAnchorPlusOffset()
+    {
+        RunSta(() =>
+        {
+            var badge = AnnotationVisualFactory.BuildTableBadge("2 × 3 표", new Point(10, 20));
+
+            Assert.Equal("2 × 3 표", ((System.Windows.Controls.TextBlock)badge.Child).Text);
+            Assert.False(badge.IsHitTestVisible);
+            Assert.Equal(10 + AnnotationVisualFactory.TableBadgeOffset, System.Windows.Controls.Canvas.GetLeft(badge));
+            Assert.Equal(20 + AnnotationVisualFactory.TableBadgeOffset, System.Windows.Controls.Canvas.GetTop(badge));
+
+            AnnotationVisualFactory.UpdateTableBadge(badge, "4 × 1 표", new Point(100, 200));
+
+            Assert.Equal("4 × 1 표", ((System.Windows.Controls.TextBlock)badge.Child).Text);
+            Assert.Equal(100 + AnnotationVisualFactory.TableBadgeOffset, System.Windows.Controls.Canvas.GetLeft(badge));
+            Assert.Equal(200 + AnnotationVisualFactory.TableBadgeOffset, System.Windows.Controls.Canvas.GetTop(badge));
+        });
+    }
+
     private static StrokeElement MakeStroke(Point a, Point b) =>
         new([a, b], Colors.Red, thickness: 4, isHighlighter: false);
 

@@ -11,7 +11,7 @@ namespace SSPen.Tests;
 /// 표(Table) 도구 제스처의 컨트롤러 수준 특성화 (리팩터링 18단계, R2/R8/ARCH-2).
 ///
 /// 837853a/948b037이 넣은 표 경로는 이 파일 이전에는 컨트롤러 수준 증인이 없었다. 여기서는 <b>오늘의 동작</b>을
-/// 그대로 고정한다 — 3px 커밋 임계(도형과 같은 값, Today), 행·열 1..10 클램프, 미리보기 Path 1 + HUD 배지 Border 1,
+/// 그대로 고정한다 — 3px 커밋 임계(도형과 같은 값, Today), 행·열 1..10 클램프, 미리보기 Path 1 + HUD 배지 힌트(26단계부터 창이 그린다),
 /// 취소 = 폐기(원장 항목 없음), 시작 시점 페이딩 스냅샷, 그리고 fix(표)가 정한 "행·열은 확정 시점에 1회만
 /// AppState에 쓴다". 뒤따르는 24~26단계(TableGestureRules·Wheel shift 인자·setTableBadge 이음매)는 이 파일이
 /// 초록인 채로 지나가야 한다.
@@ -35,7 +35,7 @@ public class SurfaceTableGestureTests
     private static readonly Point Far = new(110, 90);
 
     [Fact]
-    public void PointerDown_TableTool_ReturnsTrue_AddsPreviewPathAndBadgeBorder()
+    public void PointerDown_TableTool_ReturnsTrue_AddsPreviewPath_PushesBadgeHint()
     {
         RunSta(() =>
         {
@@ -45,8 +45,25 @@ public class SurfaceTableGestureTests
             Assert.True(h.Controller.PointerDown(Start, shift: false));
 
             Assert.Single(h.Canvas.Children.OfType<Path>());
-            Assert.Single(h.Canvas.Children.OfType<Border>());
-            Assert.Equal(2, h.Canvas.Children.Count);
+            Assert.Single(h.Canvas.Children); // 배지는 창이 그린다 (26단계 이음매) — 컨트롤러 캔버스에는 미리보기만
+            var hint = Assert.Single(h.BadgeHints);
+            Assert.Equal(new TableBadgeHint(Start, new TableSize(3, 3)), hint);
+        });
+    }
+
+    [Fact]
+    public void StartTable_PushesBadgeHintOnce_WithStateSize()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            h.State.ActiveTool = ToolKind.Table;
+            h.State.TableRows = 4;
+            h.State.TableColumns = 2;
+
+            h.Controller.PointerDown(Start, shift: false);
+
+            Assert.Equal(new TableSize(4, 2), Assert.Single(h.BadgeHints)!.Value.Size);
         });
     }
 
@@ -70,8 +87,10 @@ public class SurfaceTableGestureTests
             Assert.Equal(Start, table.Start);
             Assert.Equal(Far, table.End);
             Assert.Equal(1, h.Ledger.Count);
-            // 미리보기 Path와 배지 Border는 커밋과 함께 캔버스에서 사라진다 (커밋된 시각물은 창이 붙인다).
+            // 미리보기 Path는 커밋과 함께 캔버스에서 사라지고(커밋된 시각물은 창이 붙인다), 배지는 null 힌트 정확히 1회로 소멸한다.
             Assert.Empty(h.Canvas.Children);
+            Assert.Null(h.BadgeHints[^1]);
+            Assert.Equal(1, h.BadgeHints.Count(x => x is null));
         });
     }
 
@@ -89,6 +108,8 @@ public class SurfaceTableGestureTests
             Assert.Empty(h.Document.Elements);
             Assert.Equal(0, h.Ledger.Count);
             Assert.Empty(h.Canvas.Children);
+            Assert.Null(h.BadgeHints[^1]);
+            Assert.Equal(1, h.BadgeHints.Count(x => x is null));
         });
     }
 
@@ -210,6 +231,8 @@ public class SurfaceTableGestureTests
             Assert.Equal(0, h.Ledger.Count);
             Assert.Equal(3, h.State.TableRows);
             Assert.Equal(1, h.ReleaseCaptureCalls);
+            Assert.Null(h.BadgeHints[^1]); // 취소 = 폐기: 배지도 null 힌트 1회로 소멸 (CancelActiveInput의 DiscardTable 슬롯)
+            Assert.Equal(1, h.BadgeHints.Count(x => x is null));
         });
     }
 
@@ -227,7 +250,7 @@ public class SurfaceTableGestureTests
             var h = new Harness();
             h.State.ActiveTool = ToolKind.Table;
             h.Controller.PointerDown(Start, shift: false);
-            Assert.Equal(2, h.Canvas.Children.Count);
+            Assert.Single(h.Canvas.Children);
 
             h.State.ClickThrough = true; // → ActiveTool=None, IsInteractive=false (창은 여기서 ApplyState를 돈다)
             Assert.False(h.State.IsInteractive);
@@ -274,7 +297,10 @@ public class SurfaceTableGestureTests
             h.Controller.Wheel(Far, +1, shift: false);
 
             Assert.Single(h.Canvas.Children.OfType<Path>());
-            Assert.Single(h.Canvas.Children.OfType<Border>());
+            // 배지 힌트: 시작 1 + 이동 2 + 휠 1 = 4, 전부 non-null이고 마지막은 휠 이후 크기·위치를 담는다.
+            Assert.Equal(4, h.BadgeHints.Count);
+            Assert.DoesNotContain(null, h.BadgeHints);
+            Assert.Equal(new TableBadgeHint(Far, new TableSize(4, 3)), h.BadgeHints[^1]);
         });
     }
 

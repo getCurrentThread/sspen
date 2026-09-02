@@ -42,7 +42,8 @@ public class DecorationRenderTests
             _ => 1.0,
             (deltas, _) => ledger.RecordTransform(deltas),
             () => { },
-            () => 0);
+            () => 0,
+            (rows, columns) => $"{rows}x{columns}");
         return new Rig(surface, document, selection, state);
     }
 

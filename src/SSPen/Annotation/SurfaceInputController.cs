@@ -4,7 +4,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using SSPen.Interop;
-using SSPen.Shell;
 
 namespace SSPen.Annotation;
 
@@ -95,6 +94,8 @@ public sealed class SurfaceInputController(
     Action<Rect?> setMarquee,
     // 마퀴(setMarquee)와 타입을 묶지 않는다 — 마퀴는 설계상 영원히 축 정렬이다 (SEL-B-1).
     Action<GroupFrame?> setGestureGroupFrame,
+    // 표 드래그 HUD 배지 힌트 (26단계). 그리는 것은 창이다 — 컨트롤러는 WPF 시각물(Border/TextBlock)도 사용자 문자열도 만들지 않는다.
+    Action<TableBadgeHint?> setTableBadge,
     Action<IReadOnlyList<TransformDelta>, Point?> commitTransform,
     Action requestClickThrough,
     SurfaceInputSeams seams)
@@ -151,8 +152,6 @@ public sealed class SurfaceInputController(
     private TableStyle _activeTableStyle;
     private TableSize _tableSize;          // 진행 중 행·열 — 확정 시점에만 AppState로 (fix 57b043d)
     private Point _lastPointerPos;
-    private Border? _tableBadge;
-    private TextBlock? _tableBadgeText;
     private TextBox? _activeTextBox;
     private Point _textOrigin;
     private TextStyle _activeTextStyle;    // 텍스트 시작 시점 페이딩 판정 (사용자 요청 17차)
@@ -332,7 +331,7 @@ public sealed class SurfaceInputController(
         else if (_previewTable is not null)
         {
             AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _tableSize.Rows, _tableSize.Columns);
-            UpdateTableBadgePosition(pos);
+            PushTableBadge(pos);
         }
         else if (_eraserDragging && state.IsInteractive)
         {
@@ -453,7 +452,7 @@ public sealed class SurfaceInputController(
         }
         _tableSize = TableGestureRules.Adjust(_tableSize, axis, delta);
         AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, _lastPointerPos, _tableSize.Rows, _tableSize.Columns);
-        UpdateTableBadge(_lastPointerPos);
+        PushTableBadge(_lastPointerPos);
         return true;
     }
 
@@ -833,50 +832,14 @@ public sealed class SurfaceInputController(
         AnnotationVisualFactory.UpdateTableVisual(_previewTable, pos, pos, _tableSize.Rows, _tableSize.Columns);
         inkCanvas.Children.Add(_previewTable);
 
-        // 드래그 중 실시간 행/열 크기 HUD 배지 생성 (방안 2)
-        _tableBadgeText = new TextBlock
-        {
-            Text = $"{_tableSize.Rows} × {_tableSize.Columns} {Strings.ShapeTable}",
-            Foreground = Brushes.White,
-            FontSize = 12,
-            FontWeight = FontWeights.SemiBold,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        _tableBadge = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(0xDD, 0x1E, 0x1E, 0x1E)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(7, 3, 7, 3),
-            Child = _tableBadgeText,
-            IsHitTestVisible = false,
-        };
-        UpdateTableBadgePosition(pos);
-        inkCanvas.Children.Add(_tableBadge);
+        // 드래그 중 실시간 행/열 HUD 배지 (방안 2) — 그리는 것은 창이다 (setTableBadge 이음매, 26단계).
+        PushTableBadge(pos);
 
         host.CaptureMouse();
     }
 
-    private void UpdateTableBadge(Point pos)
-    {
-        if (_tableBadgeText is not null)
-        {
-            _tableBadgeText.Text = $"{_tableSize.Rows} × {_tableSize.Columns} {Strings.ShapeTable}";
-        }
-        UpdateTableBadgePosition(pos);
-    }
-
-    private void UpdateTableBadgePosition(Point pos)
-    {
-        if (_tableBadge is null)
-        {
-            return;
-        }
-        Canvas.SetLeft(_tableBadge, pos.X + 16);
-        Canvas.SetTop(_tableBadge, pos.Y + 16);
-    }
+    /// <summary>배지 힌트를 창에 민다 — 앵커는 포인터 위치, 크기는 진행 중 값. 창은 텍스트·위치만 갱신한다 (재구축 없음).</summary>
+    private void PushTableBadge(Point pos) => setTableBadge(new TableBadgeHint(pos, _tableSize));
 
     private void CommitTable(Point rawEnd)
     {
@@ -886,12 +849,7 @@ public sealed class SurfaceInputController(
         }
         inkCanvas.Children.Remove(_previewTable);
         _previewTable = null;
-        if (_tableBadge is not null)
-        {
-            inkCanvas.Children.Remove(_tableBadge);
-            _tableBadge = null;
-            _tableBadgeText = null;
-        }
+        setTableBadge(null); // 배지 소멸 — 창이 지운다 (커밋·폐기 모두).
 
         // 임계는 도형과 같은 단일 상수(R2)를 **읽는다** — 리터럴 3을 다시 적으면 같은 양에 이름이 둘 생긴다 (1단계 교훈).
         if (!ShapeGestureRules.ShouldCommit(_tableStart, rawEnd))
@@ -913,12 +871,7 @@ public sealed class SurfaceInputController(
             inkCanvas.Children.Remove(_previewTable);
             _previewTable = null;
         }
-        if (_tableBadge is not null)
-        {
-            inkCanvas.Children.Remove(_tableBadge);
-            _tableBadge = null;
-            _tableBadgeText = null;
-        }
+        setTableBadge(null); // 배지 소멸 — 창이 지운다 (커밋·폐기 모두).
     }
 
     // ---- 텍스트 도구 (ARCH-2: NOACTIVATE 일시 해제 핸드셰이크로 한국어 IME 지원) ----

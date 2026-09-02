@@ -83,6 +83,7 @@ internal class SurfaceHarness : ISurfaceHost
             Selection, OwnerLookup, _ => 1.0,
             rect => MarqueePushes.Add(rect),
             frame => FramePushes.Add(frame),
+            hint => BadgeHints.Add(hint),
             (deltas, drop) =>
             {
                 Commits.Add((deltas, drop));
@@ -123,6 +124,9 @@ internal class SurfaceHarness : ISurfaceHost
 
     /// <summary>마지막으로 밀린 제스처 프레임 (없으면 null).</summary>
     public GroupFrame? GestureGroupFrame => FramePushes.Count == 0 ? null : FramePushes[^1];
+
+    /// <summary>표 배지 힌트 푸시 전부 (해제 null 포함) — 26단계 이음매의 관측 창구.</summary>
+    public List<TableBadgeHint?> BadgeHints { get; } = [];
 
     public List<(IReadOnlyList<TransformDelta> Deltas, Point? Drop)> Commits { get; } = [];
 

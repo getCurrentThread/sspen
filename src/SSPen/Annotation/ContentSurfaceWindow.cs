@@ -17,6 +17,8 @@ namespace SSPen.Annotation;
 /// ARCH-6: 마우스 캡처로 획은 원점 서피스에 남고 모니터 이음새에서 클리핑된다.
 /// 입력 상태 머신은 <see cref="SurfaceInputController"/>에 위임하고, 이 창은 <see cref="ISurfaceHost"/>로
 /// ARCH-2 NOACTIVATE 핸드셰이크와 ARCH-6 마우스 캡처만 제공한다.
+/// 창이 그리는 힌트 채널은 셋이다 — 마퀴(<c>SetMarquee</c>), 제스처 프레임(<c>SetGestureGroupFrame</c>),
+/// 표 배지(<c>SetTableBadge</c>) — 각자 수명과 레이어가 달라 하나로 묶지 않는다.
 /// </summary>
 public sealed class ContentSurfaceWindow : Window, ISurfaceHost
 {
@@ -37,6 +39,15 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     private readonly SurfaceInputController _input;
     private readonly SelectionModel _selection;
     private Rect? _marquee;
+
+    /// <summary>
+    /// 표 드래그 HUD 배지 (26단계). 컨트롤러가 <c>setTableBadge</c> 힌트로 밀고 창이 잉크 캔버스 위에 그린다.
+    /// 장식 레이어에 두지 않는 이유: <see cref="RedrawDecorations"/>가 <c>Children.Clear()</c>로 비우고, 매 포인터
+    /// 이동마다 장식 전체를 재구축하면 비용이 는다 — 오늘(948b037)과 같은 잉크 캔버스 위 값 갱신을 유지한다.
+    /// 문자열은 합성 루트가 주입한 포맷터가 만든다 — 이 창은 Shell/Strings를 참조하지 않는다.
+    /// </summary>
+    private Border? _tableBadge;
+    private readonly Func<int, int, string> _tableBadgeText;
 
     /// <summary>
     /// 제스처 도중 입력 컨트롤러가 밀어 넣은 그룹 프레임 (R1). null이면 매 그리기마다 살아있는
@@ -60,9 +71,11 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
         Func<AnnotationDocument, double> dpiOf,
         Action<IReadOnlyList<TransformDelta>, (int X, int Y)?> commitTransform,
         Action requestClickThrough,
-        Func<nint> zAnchor)
+        Func<nint> zAnchor,
+        Func<int, int, string> tableBadgeText)
     {
         _monitor = monitor;
+        _tableBadgeText = tableBadgeText;
         _state = state;
         Document = document;
         _fading = fading;
@@ -130,7 +143,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
 
         _input = new SurfaceInputController(
             _inkCanvas, _state, Document, ledger, _fading, this,
-            selection, ownerLookup, dpiOf, SetMarquee, SetGestureGroupFrame,
+            selection, ownerLookup, dpiOf, SetMarquee, SetGestureGroupFrame, SetTableBadge,
             (deltas, drop) => commitTransform(deltas, drop is { } p ? ToPhysical(p) : null),
             // R5: 해제 제스처가 끝난 **뒤에** 상태를 바꾼다. 마우스 업 핸들러 안에서 곧바로 켜면
             // ApplyState → CancelActiveInput이 같은 콜 스택에서 재진입해 캡처 해제 순서가 뒤엉킨다.
@@ -403,6 +416,32 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost
     {
         _marquee = rect;
         RedrawDecorations();
+    }
+
+    /// <summary>
+    /// 표 드래그 HUD 배지 힌트 (26단계). null이면 제거. 첫 힌트에 만들고 이후에는 텍스트·위치만 갱신한다 —
+    /// 매 포인터 이동마다 불리므로 재구축하지 않는다. 캡처 때 배지가 사라지는 것은 <see cref="SetDecorationsVisible"/>이
+    /// 아니라 <c>SetSuspended → CancelActiveInput → DiscardTable(null 힌트)</c> 경로다 — 그 순서가 계약이다 (18단계 증인).
+    /// </summary>
+    public void SetTableBadge(TableBadgeHint? hint)
+    {
+        if (hint is not { } h)
+        {
+            if (_tableBadge is not null)
+            {
+                _inkCanvas.Children.Remove(_tableBadge);
+                _tableBadge = null;
+            }
+            return;
+        }
+        string text = _tableBadgeText(h.Size.Rows, h.Size.Columns);
+        if (_tableBadge is null)
+        {
+            _tableBadge = AnnotationVisualFactory.BuildTableBadge(text, h.Anchor);
+            _inkCanvas.Children.Add(_tableBadge);
+            return;
+        }
+        AnnotationVisualFactory.UpdateTableBadge(_tableBadge, text, h.Anchor);
     }
 
     /// <summary>

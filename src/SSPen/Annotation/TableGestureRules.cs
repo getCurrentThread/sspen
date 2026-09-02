@@ -1,3 +1,5 @@
+using System.Windows;
+
 namespace SSPen.Annotation;
 
 /// <summary>
@@ -24,6 +26,14 @@ public enum TableAxis
 
 /// <summary>진행 중 표의 크기. 드래그 중에는 컨트롤러 필드에만 살고 확정 시점에 <c>AppState</c>로 한 번 쓴다 (fix 57b043d).</summary>
 public readonly record struct TableSize(int Rows, int Columns);
+
+/// <summary>
+/// 드래그 중 HUD 배지 힌트 (26단계). 컨트롤러는 "무엇을 알릴지"(앵커·크기)만 밀고 창이 "어떻게 그릴지"를 소유한다 —
+/// 마퀴(<c>setMarquee</c>)·제스처 프레임(<c>setGestureGroupFrame</c>)과 같은 '창이 그리는 힌트' 채널이며, 세 타입은
+/// 서로 묶지 않는다 (SEL-B-1과 같은 이유: 각자 다른 수명·기하를 갖는다). 배지 문자열은 이 타입이 아니라 합성 루트가
+/// 창에 주입하는 포맷터가 만든다 — Annotation 계층은 사용자 문자열(Shell/Strings)을 모른다.
+/// </summary>
+public readonly record struct TableBadgeHint(Point Anchor, TableSize Size);
 
 /// <summary>
 /// 표 제스처의 순수 판정 (24단계, R2/D3). 휠·방향키가 어느 축을 얼마나 움직이는지만 정하고, 입력을 읽거나

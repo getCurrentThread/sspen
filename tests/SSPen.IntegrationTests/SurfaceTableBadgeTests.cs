@@ -11,7 +11,7 @@ namespace SSPen.IntegrationTests;
 /// 표(Table) 드래그 HUD 배지의 창 수준 증인 (리팩터링 18단계). 실제 <see cref="ContentSurfaceWindow"/>를 띄우고
 /// 잉크 캔버스에 배지 <c>Border</c>가 드래그 중 정확히 1개, 마우스 업 뒤 0개임을 고정한다.
 ///
-/// 24단계가 배지 소유권을 컨트롤러에서 창(<c>setTableBadge</c> 이음매)으로 옮길 때, 이음매 배선 누락은
+/// 26단계가 배지 소유권을 컨트롤러에서 창(<c>setTableBadge</c> 이음매)으로 옮겼다 — 이음매 배선 누락은
 /// 헤드리스 하네스로는 잡히지 않는다(하네스가 델리게이트를 세기만 한다). 이 증인이 그 구멍을 막는다.
 /// <c>Application</c>은 만들지 않는다 (LD-4/R24).
 /// </summary>
@@ -39,7 +39,8 @@ public class SurfaceTableBadgeTests
             _ => 1.0,
             (deltas, _) => ledger.RecordTransform(deltas),
             () => { },
-            () => 0);
+            () => 0,
+            (rows, columns) => $"{rows}x{columns}");
         return new Rig(surface, document, state);
     }
 

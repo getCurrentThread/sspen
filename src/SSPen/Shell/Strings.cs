@@ -32,6 +32,9 @@ public static class Strings
     public const string ShapeRectangle = "사각형";
     public const string ShapeEllipse = "타원";
     public const string ShapeTable = "표";
+
+    /// <summary>표 드래그 HUD 배지: "3 × 4 표". 합성 루트가 창에 포맷터로 주입한다 — Annotation 계층은 Strings를 모른다 (26단계).</summary>
+    public static string TableBadge(int rows, int columns) => $"{rows} × {columns} {ShapeTable}";
     public const string ShapeText = "텍스트";
 
     // 굵기 플라이아웃

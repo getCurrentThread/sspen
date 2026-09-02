@@ -304,6 +304,47 @@ public static class AnnotationVisualFactory
         return marquee;
     }
 
+    // ---- 표 드래그 HUD 배지 (방안 2, 26단계). 잉크가 아니라 UI지만 잉크 캔버스 위에 잠깐 떠 있는 일회성 힌트다. ----
+
+    /// <summary>배지가 포인터에서 떨어져 앉는 오프셋 (논리 px).</summary>
+    public const double TableBadgeOffset = 16;
+
+    /// <summary>
+    /// 표 드래그 HUD 배지. <paramref name="text"/>는 호출자(창)가 넘긴다 — 이 파일은 사용자 문자열을 모른다
+    /// (Strings는 Shell의 것이고 합성 루트가 창에 포맷터를 주입한다). 시각 구성은 948b037 그대로.
+    /// </summary>
+    public static Border BuildTableBadge(string text, Point anchor)
+    {
+        var badge = new Border
+        {
+            Background = CreateFrozen(Color.FromArgb(0xDD, 0x1E, 0x1E, 0x1E)),
+            BorderBrush = CreateFrozen(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(7, 3, 7, 3),
+            Child = new TextBlock
+            {
+                Text = text,
+                Foreground = Brushes.White,
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+            IsHitTestVisible = false,
+        };
+        UpdateTableBadge(badge, text, anchor);
+        return badge;
+    }
+
+    /// <summary>텍스트·위치만 갱신한다 — 매 포인터 이동마다 불리므로 재구축하지 않는다 (오늘과 같은 비용).</summary>
+    public static void UpdateTableBadge(Border badge, string text, Point anchor)
+    {
+        ((TextBlock)badge.Child).Text = text;
+        Canvas.SetLeft(badge, anchor.X + TableBadgeOffset);
+        Canvas.SetTop(badge, anchor.Y + TableBadgeOffset);
+    }
+
     public static SolidColorBrush StrokeBrush(Color color, bool highlighter) =>
         CreateFrozen(highlighter ? Color.FromArgb(0x66, color.R, color.G, color.B) : color);
 
