@@ -7,7 +7,8 @@ namespace SSPen.Interop;
 /// 서피스 창은 <c>WS_EX_NOACTIVATE</c> + <c>ShowActivated=false</c>라 키보드 포커스를 절대 갖지 못한다.
 /// 그래서 전역 핫키(Alt+Shift+V)로 선택 도구를 켠 흐름에서는 Shift가 항상 <c>None</c>으로 읽혀
 /// <b>Shift+클릭 다중 선택·마퀴 누적·회전 스냅·도형 제약이 전부 조용히 죽는다</b>.
-/// 같은 사실을 <c>Pin/PinClickThroughMonitor</c>가 이미 기록해 두었다(전역 훅에서는 비동기 키 상태를 직접 읽어라).
+/// 전역 훅에서도 같다 — <c>Pin/PinClickThroughMonitor</c>는 Ctrl을 <see cref="Control"/>로 읽는다
+/// (52단계에 자체 GetAsyncKeyState DllImport를 없애고 이 계층으로 합쳤다).
 /// </summary>
 internal static class KeyboardState
 {

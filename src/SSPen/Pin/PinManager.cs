@@ -13,10 +13,11 @@ public sealed class PinManager
     private readonly PinClickThroughMonitor _monitor;
     private readonly Func<nint> _zAnchor;
 
-    public PinManager(Func<nint> zAnchor)
+    /// <param name="hooks">복귀 마우스 훅의 OS 이음매 (52단계) — 합성 루트가 <see cref="LowLevelHook.Native"/>를 준다.</param>
+    public PinManager(Func<nint> zAnchor, IHookInstaller hooks)
     {
         _zAnchor = zAnchor;
-        _monitor = new PinClickThroughMonitor(this);
+        _monitor = new PinClickThroughMonitor(this, hooks);
     }
 
     public IReadOnlyList<PinWindow> Pins => _pins;

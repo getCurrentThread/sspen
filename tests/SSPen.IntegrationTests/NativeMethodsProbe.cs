@@ -3,9 +3,9 @@ using System.Runtime.InteropServices;
 namespace SSPen.IntegrationTests;
 
 /// <summary>
-/// 통합 테스트 전용 Win32 프로브. 앱의 <c>NativeMethods</c>는 internal이고
-/// InternalsVisibleTo를 두지 않는 정책이라, 테스트가 필요한 것만 여기서 따로 선언한다
-/// (교란 주입 + z-순서 리드백).
+/// 통합 테스트 전용 Win32 프로브. 앱의 <c>NativeMethods</c>는 internal이지만 InternalsVisibleTo로 보인다 —
+/// 그래도 교란 주입(SetWindowPos)과 z-순서 리드백(GetWindow/GetDesktopWindow/IsWindowVisible)은 여기서 따로 선언한다:
+/// 앱 P/Invoke 표면을 테스트 편의로 늘리지 않고, 프로브가 앱과 같은 바인딩을 공유해 서로의 오류를 가리지 않게 하기 위해서다.
 ///
 /// 앱 쪽 규칙과 달리 <c>[DllImport]</c>를 쓰는 이유: <c>[LibraryImport]</c> 소스 생성기는
 /// unsafe 코드를 방출해 <c>AllowUnsafeBlocks</c>가 필요한데, 테스트 프로젝트에 그 스위치를

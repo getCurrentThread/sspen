@@ -149,7 +149,7 @@ public sealed class AppController : IShellActions, ISettingsHost
         };
 
         // 핀 z-앵커: 항상 마지막 서피스 바로 아래 (F5: 잉크는 핀 위).
-        _pins = new PinManager(() => _surfaces.Count > 0 ? _surfaces[^1].Hwnd : 0);
+        _pins = new PinManager(() => _surfaces.Count > 0 ? _surfaces[^1].Hwnd : 0, hooks: LowLevelHook.Native);
         _pins.PinsChanged += ApplyZBand;
 
         _shellHotkeys = new ShellHotkeys(
@@ -167,11 +167,13 @@ public sealed class AppController : IShellActions, ISettingsHost
 
         // R3/R4: 맨 ESC/Delete/Backspace는 서피스가 받을 수 없으므로 조건부 저수준 훅이 담당한다.
         // 게이트는 상태와 선택집합 양쪽에서 바뀌므로 두 이벤트 모두 구독한다.
+        // 훅 배관은 Interop/LowLevelHook.Native — 핀 복귀 훅과 같은 OS 이음매다 (52단계); 인자는 이름으로 넘긴다.
         _selectionKeys = new SelectionKeyMonitor(
             _dispatcher, _state, _selection,
             blocked: () => _capture.IsActive || _settingsWindow is not null || _tray?.IsMenuOpen == true,
             clearSelection: _commands.ClearSelectionByEscape,
-            deleteSelection: _commands.DeleteSelection);
+            deleteSelection: _commands.DeleteSelection,
+            hooks: LowLevelHook.Native);
         _state.Changed += _selectionKeys.Refresh;
         _selection.SelectionChanged += _selectionKeys.Refresh;
         // 캡처 세션도 blocked 게이트에 들어가므로 시작·종료가 재판정 계기여야 한다 — 없으면

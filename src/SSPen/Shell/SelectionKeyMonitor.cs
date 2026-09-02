@@ -16,8 +16,8 @@ namespace SSPen.Shell;
 /// 왜 <c>RegisterHotKey</c>가 아닌가: 맨 ESC/Delete/Backspace를 전역 등록하면 SS Pen이 떠 있는
 /// 내내 모든 앱에서 그 키를 빼앗는다. 대화상자 취소도, 문서 편집 중 글자 지우기도 죽는다.
 ///
-/// 그래서 <c>PinClickThroughMonitor</c>의 <b>조건부 훅</b> 패턴을 그대로 따른다: 필요할 때만
-/// 걸고 필요 없어지면 즉시 해제한다. 게이트가 참인 구간(선택 도구 + 선택집합 있음 + 인터랙티브)에서는
+/// 그래서 <c>PinClickThroughMonitor</c>와 같은 <b>조건부 훅</b> 관용구(<see cref="Interop.LowLevelHook"/>, 52단계)를
+/// 쓴다: 필요할 때만 걸고 필요 없어지면 즉시 해제한다. 게이트가 참인 구간(선택 도구 + 선택집합 있음 + 인터랙티브)에서는
 /// 서피스가 화면(작업 영역)의 마우스 클릭을 흡수하고 있으므로, 그 키를 가져가는 것도 일관된 동작이다.
 /// 상시 훅은 금지다.
 ///
@@ -37,21 +37,22 @@ public sealed class SelectionKeyMonitor : IDisposable
     private readonly Func<bool> _blocked;
     private readonly Action _clearSelection;
     private readonly Action _deleteSelection;
-    private readonly NativeMethods.HookProc _proc; // GC 고정
-    private nint _hook;
+    private readonly LowLevelHook _hook;
     private bool _disposed;
 
     /// <param name="blocked">
     /// 훅을 걸면 안 되는 구간 (D7): 캡처 세션·설정 창·트레이 컨텍스트 메뉴. 셋 다 자기 ESC 의미론
     /// (<c>IsCancel</c> 버튼·폴더 선택 대화상자·영역 선택 취소·메뉴 닫기)을 갖고 있어 삼키면 안 된다.
     /// </param>
+    /// <param name="hooks">OS 훅 이음매 — 프로덕션은 <see cref="LowLevelHook.Native"/>, 테스트는 가짜 (52단계).</param>
     public SelectionKeyMonitor(
         Dispatcher dispatcher,
         AppState state,
         SelectionModel selection,
         Func<bool> blocked,
         Action clearSelection,
-        Action deleteSelection)
+        Action deleteSelection,
+        IHookInstaller hooks)
     {
         _dispatcher = dispatcher;
         _state = state;
@@ -59,7 +60,7 @@ public sealed class SelectionKeyMonitor : IDisposable
         _blocked = blocked;
         _clearSelection = clearSelection;
         _deleteSelection = deleteSelection;
-        _proc = HookProc;
+        _hook = new LowLevelHook(NativeMethods.WH_KEYBOARD_LL, OnKeyboardEvent, hooks);
     }
 
     /// <summary>훅이 필요한 상태인가 — 이 술어가 이 클래스의 안전성 전부다.</summary>
@@ -77,19 +78,19 @@ public sealed class SelectionKeyMonitor : IDisposable
             return;
         }
         bool needed = Needed;
-        if (needed && _hook == 0)
+        if (needed && !_hook.IsInstalled)
         {
-            _hook = NativeMethods.SetWindowsHookEx(NativeMethods.WH_KEYBOARD_LL, _proc, 0, 0);
-            Log.Info($"선택 키 훅 설치 {(_hook == 0 ? "실패" : "완료")}");
+            bool installed = _hook.Install();
+            Log.Info($"선택 키 훅 설치 {(installed ? "완료" : "실패")}");
         }
-        else if (!needed && _hook != 0)
+        else if (!needed && _hook.IsInstalled)
         {
-            NativeMethods.UnhookWindowsHookEx(_hook);
-            _hook = 0;
+            _hook.Uninstall();
             Log.Info("선택 키 훅 해제");
         }
     }
 
+    /// <summary>래치한다: Dispose 뒤 Refresh는 무동작 (래퍼는 래치하지 않으므로 여기서 정한다 — 52단계 이전과 같은 의미).</summary>
     public void Dispose()
     {
         if (_disposed)
@@ -97,20 +98,17 @@ public sealed class SelectionKeyMonitor : IDisposable
             return;
         }
         _disposed = true;
-        if (_hook != 0)
-        {
-            NativeMethods.UnhookWindowsHookEx(_hook);
-            _hook = 0;
-        }
+        _hook.Dispose();
     }
 
-    private nint HookProc(int nCode, nint wParam, nint lParam)
+    /// <summary>훅 콜백 (nCode &lt; 0 통과와 "소비 = 1 반환"은 <see cref="LowLevelHook"/> 소유). true = 소비.</summary>
+    private bool OnKeyboardEvent(nint wParam, nint lParam)
     {
         // WM_SYSKEYDOWN은 **받지 않는다** — 그것은 정의상 Alt가 눌린 키다. Alt+Esc(창 순환)처럼
         // 셸이 소유한 조합을 우리가 삼키면 안 된다. 맨 키는 언제나 WM_KEYDOWN으로 온다.
-        if (nCode < 0 || (int)wParam != NativeMethods.WM_KEYDOWN)
+        if ((int)wParam != NativeMethods.WM_KEYDOWN)
         {
-            return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
+            return false;
         }
 
         var data = Marshal.PtrToStructure<NativeMethods.KBDLLHOOKSTRUCT>(lParam);
@@ -118,7 +116,7 @@ public sealed class SelectionKeyMonitor : IDisposable
         // 그 사이에 선택이 비거나 캡처가 시작되면 낡은 훅이 남의 앱 키를 삼킬 수 있다.
         if (!Needed)
         {
-            return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
+            return false;
         }
 
         // 계약은 'Ctrl/Alt/Win 없는' ESC/Delete/Backspace다 (클래스 문서). 게이트가 없으면
@@ -126,7 +124,7 @@ public sealed class SelectionKeyMonitor : IDisposable
         // KeyboardState.NonShiftModifier 참고 — Shift는 선택 도구 자신의 다중 선택 수식키다.
         if (KeyboardState.NonShiftModifier)
         {
-            return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
+            return false;
         }
 
         Action? action = (int)data.vkCode switch
@@ -137,10 +135,10 @@ public sealed class SelectionKeyMonitor : IDisposable
         };
         if (action is null)
         {
-            return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
+            return false;
         }
 
         _dispatcher.BeginInvoke(action);
-        return 1; // 소비: 하위 창으로 보내지 않는다.
+        return true; // 소비: 하위 창으로 보내지 않는다.
     }
 }

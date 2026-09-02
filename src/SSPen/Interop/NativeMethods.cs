@@ -57,10 +57,13 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetWindowRect(nint hWnd, out RECT lpRect);
 
-    // ---- 저수준 키보드 훅 (R3/R4: 서피스 창은 WS_EX_NOACTIVATE라 키보드 포커스를 갖지 못한다) ----
+    // ---- 저수준 훅 (키보드 R3/R4: 서피스 창은 WS_EX_NOACTIVATE라 키보드 포커스를 갖지 못한다; 마우스 AC-17: 통과 핀 복귀).
+    //      SetWindowsHookEx/UnhookWindowsHookEx/CallNextHookEx의 호출자는 LowLevelHook.Native 하나다 (52단계) ----
     internal const int WH_KEYBOARD_LL = 13;
+    internal const int WH_MOUSE_LL = 14;
     internal const int WM_KEYDOWN = 0x0100;
     internal const int WM_SYSKEYDOWN = 0x0104;
+    internal const int WM_MBUTTONDOWN = 0x0207;
 
     internal const int VK_BACK = 0x08;
     internal const int VK_ESCAPE = 0x1B;
@@ -81,10 +84,18 @@ internal static partial class NativeMethods
         public nuint dwExtraInfo;
     }
 
-    internal delegate nint HookProc(int nCode, nint wParam, nint lParam);
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MSLLHOOKSTRUCT
+    {
+        public POINT pt;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public nuint dwExtraInfo;
+    }
 
     [DllImport("user32.dll", EntryPoint = "SetWindowsHookExW", SetLastError = true)]
-    internal static extern nint SetWindowsHookEx(int idHook, HookProc lpfn, nint hMod, uint dwThreadId);
+    internal static extern nint SetWindowsHookEx(int idHook, LowLevelHookProc lpfn, nint hMod, uint dwThreadId);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
