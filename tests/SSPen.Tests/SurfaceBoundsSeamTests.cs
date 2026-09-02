@@ -120,64 +120,9 @@ public class SurfaceBoundsSeamTests
     }
 
     /// <summary>
-    /// 컨트롤러 1대 + 그 협력자들. 창 대신 <see cref="ISurfaceHost"/>를 무동작으로 채우고,
     /// 서피스 경계는 <b>테스트가 주는 델리게이트</b>가 그대로 흘러 들어간다 (캔버스에서 유도하지 않는다 —
     /// 그러면 이 스위트가 검증하려는 배선을 캔버스가 대신 메워 버린다).
     /// </summary>
-    private sealed class Harness : ISurfaceHost
-    {
-        public Harness(Func<Rect> surfaceBounds)
-        {
-            Canvas = new Canvas();
-            State = new AppState();
-            Document = new AnnotationDocument("test");
-            Selection = new SelectionModel();
-            Ledger = new UndoLedger(OwnerLookup, Selection);
-            Fading = new FadingInkController(new FadeSchedulerCore());
-            Controller = new SurfaceInputController(
-                Canvas, State, Document, Ledger, Fading, this,
-                Selection, OwnerLookup, _ => 1.0,
-                _ => { },
-                _ => { },
-                (deltas, drop) => Commits.Add((deltas, drop)),
-                () => { },
-                new SurfaceInputSeams
-                {
-                    SurfaceBounds = surfaceBounds,
-                    IdleScheduler = Idle,
-                });
-        }
-
-        /// <summary>휠 유휴 디바운스 가짜 (R7) — 만료는 테스트가 직접 일으킨다.</summary>
-        public FakeIdleScheduler Idle { get; } = new();
-
-        public Canvas Canvas { get; }
-
-        public AppState State { get; }
-
-        public AnnotationDocument Document { get; }
-
-        public SelectionModel Selection { get; }
-
-        public UndoLedger Ledger { get; }
-
-        public FadingInkController Fading { get; }
-
-        public SurfaceInputController Controller { get; }
-
-        public List<(IReadOnlyList<TransformDelta> Deltas, Point? Drop)> Commits { get; } = [];
-
-        private AnnotationDocument? OwnerLookup(AnnotationElement element) =>
-            Document.Elements.Contains(element) ? Document : null;
-
-        public void SetNoActivate(bool on) { }
-
-        public void ActivateWindow() { }
-
-        public void CaptureMouse() { }
-
-        public void ReleaseMouseCapture() { }
-
-        public DpiScale GetDpi() => new(1.0, 1.0);
-    }
+    private sealed class Harness(Func<Rect> surfaceBounds)
+        : SurfaceHarness(new SurfaceHarnessOptions { SurfaceBounds = surfaceBounds });
 }

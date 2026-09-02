@@ -297,71 +297,9 @@ public class SurfaceEntryPointTests
     private static StrokeElement MakeStroke(Point a, Point b) =>
         new([a, b], Colors.Red, thickness: 4, isHighlighter: false);
 
-    /// <summary>컨트롤러 1대 + 그 협력자들. 창 대신 <see cref="ISurfaceHost"/>를 무동작으로 채운다.</summary>
-    private sealed class Harness : ISurfaceHost
-    {
-        public Harness(Func<DateTime>? now = null)
-        {
-            Canvas = new Canvas();
-            State = new AppState();
-            Document = new AnnotationDocument("test");
-            Selection = new SelectionModel();
-            Ledger = new UndoLedger(OwnerLookup, Selection);
-            Fading = new FadingInkController(new FadeSchedulerCore());
-            Controller = new SurfaceInputController(
-                Canvas, State, Document, Ledger, Fading, this,
-                Selection, OwnerLookup, _ => 1.0,
-                rect => Marquee = rect,
-                frame => GestureGroupFrame = frame,
-                (deltas, drop) => Commits.Add((deltas, drop)),
-                () => ClickThroughRequests++,
-                new SurfaceInputSeams
-                {
-                    // 프로덕션(창)과 **같은 식**으로 캔버스에서 유도한다. measure/arrange가 없으므로
-                    // 값은 (0,0,0,0)이고, 그래서 위 문서대로 이 스위트는 어떤 핸들도 잡지 않는다.
-                    SurfaceBounds = () => new Rect(0, 0, Canvas.ActualWidth, Canvas.ActualHeight),
-                    Now = now ?? (() => DateTime.UtcNow),
-                    // R7: 실제 DispatcherTimer는 펌프 없는 STA 쓰레드에서 영영 틱하지 않는다.
-                    IdleScheduler = Idle,
-                });
-        }
-
-        /// <summary>휠 유휴 디바운스 가짜 (R7) — 만료는 테스트가 직접 일으킨다.</summary>
-        public FakeIdleScheduler Idle { get; } = new();
-
-        public Canvas Canvas { get; }
-
-        public AppState State { get; }
-
-        public AnnotationDocument Document { get; }
-
-        public SelectionModel Selection { get; }
-
-        public UndoLedger Ledger { get; }
-
-        public FadingInkController Fading { get; }
-
-        public SurfaceInputController Controller { get; }
-
-        public Rect? Marquee { get; private set; }
-
-        public GroupFrame? GestureGroupFrame { get; private set; }
-
-        public List<(IReadOnlyList<TransformDelta> Deltas, Point? Drop)> Commits { get; } = [];
-
-        public int ClickThroughRequests { get; private set; }
-
-        private AnnotationDocument? OwnerLookup(AnnotationElement element) =>
-            Document.Elements.Contains(element) ? Document : null;
-
-        public void SetNoActivate(bool on) { }
-
-        public void ActivateWindow() { }
-
-        public void CaptureMouse() { }
-
-        public void ReleaseMouseCapture() { }
-
-        public DpiScale GetDpi() => new(1.0, 1.0);
-    }
+    /// <summary>
+    /// 캔버스 미측정 — SurfaceBounds가 (0,0,0,0)이라 이 스위트는 어떤 핸들도 잡지 않는다 (파일 머리 문서).
+    /// </summary>
+    private sealed class Harness(Func<DateTime>? now = null)
+        : SurfaceHarness(new SurfaceHarnessOptions { Now = now });
 }

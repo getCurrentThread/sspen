@@ -353,60 +353,13 @@ public class WheelScaleControllerTests
 
     /// <summary>
     /// <see cref="SurfaceInputController"/> 1대. 커밋을 <b>프로덕션과 같이</b> 원장에 흘려
-    /// (<c>AppController.CommitTransform</c>의 <c>RecordTransform</c> 자리) 항목 순서를 관측한다.
+    /// (<c>AppController.OnCommitTransform</c>의 <c>RecordTransform</c> 자리) 항목 순서를 관측한다.
     /// 이관 판정은 재현하지 않는다 — 서피스가 하나뿐이라 항상 제자리다.
     /// </summary>
-    private sealed class ControllerRig : ISurfaceHost
-    {
-        public ControllerRig()
+    private sealed class ControllerRig()
+        : SurfaceHarness(new SurfaceHarnessOptions
         {
-            Canvas = new Canvas();
-            State = new AppState();
-            Document = new AnnotationDocument("test");
-            Selection = new SelectionModel();
-            Ledger = new UndoLedger(OwnerLookup, Selection);
-            Fading = new FadingInkController(new FadeSchedulerCore());
-            Controller = new SurfaceInputController(
-                Canvas, State, Document, Ledger, Fading, this,
-                Selection, OwnerLookup, _ => 1.0,
-                _ => { },
-                _ => { },
-                (deltas, _) => Ledger.RecordTransform(deltas),
-                () => { },
-                new SurfaceInputSeams
-                {
-                    SurfaceBounds = () => new Rect(0, 0, 1920, 1080),
-                    IdleScheduler = Idle,
-                });
-        }
-
-        public Canvas Canvas { get; }
-
-        public AppState State { get; }
-
-        public AnnotationDocument Document { get; }
-
-        public SelectionModel Selection { get; }
-
-        public UndoLedger Ledger { get; }
-
-        public FadingInkController Fading { get; }
-
-        public FakeIdleScheduler Idle { get; } = new();
-
-        public SurfaceInputController Controller { get; }
-
-        private AnnotationDocument? OwnerLookup(AnnotationElement element) =>
-            Document.Elements.Contains(element) ? Document : null;
-
-        public void SetNoActivate(bool on) { }
-
-        public void ActivateWindow() { }
-
-        public void CaptureMouse() { }
-
-        public void ReleaseMouseCapture() { }
-
-        public DpiScale GetDpi() => new(1.0, 1.0);
-    }
+            SurfaceBounds = () => new Rect(0, 0, 1920, 1080),
+            CommitToLedger = true,
+        });
 }
