@@ -1,3 +1,4 @@
+using System.Windows.Media;
 using SSPen.Annotation;
 using SSPen.Shell;
 using Xunit;
@@ -6,7 +7,8 @@ namespace SSPen.Tests;
 
 /// <summary>
 /// 툴바 버튼↔상태 매핑 검증 (god file 분할, ARCH-11 후속): 도형/펜 그룹 재클릭 로테이션,
-/// IsActive 매핑, IconFor 글리프 반영.
+/// IsActive 매핑, IconFor 글리프 반영. 36단계부터는 어댑터(ToolbarParts/StripBuilder/Flyouts/Window)에
+/// 인라인이던 순수 판정(점 지름 표·보드 배지·퀵스와치 링·현재 칸·같은 도구 재선택 해제)의 특성화 표도 여기 둔다.
 /// </summary>
 public class ToolbarStateMapTests
 {
@@ -229,5 +231,114 @@ public class ToolbarStateMapTests
         Assert.Equal(1, ToolbarStateMap.NextQuickColorSlotByWheel(0, -120, 6));
         Assert.Equal(5, ToolbarStateMap.NextQuickColorSlotByWheel(0, 120, 6));
         Assert.Equal(0, ToolbarStateMap.NextQuickColorSlotByWheel(0, 0, 6));
+    }
+
+    // ----- 36단계: 어댑터에 인라인이던 순수 판정의 특성화 (추출 전 값을 그대로 적었다 — 보존이지 승인이 아니다) -----
+
+    /// <summary>미리보기 원 지름 표 (ToolbarParts.UpdatePreviewDot에 있던 8/11/14/18/22 그대로). 단계가 늘면 이 표가 빨갛다.</summary>
+    [Theory]
+    [MemberData(nameof(ThicknessScaleTests.AllSteps), MemberType = typeof(ThicknessScaleTests))]
+    public void PreviewDotDiameter_EveryStep_MatchesTable(ThicknessStep step)
+    {
+        double expected = step switch
+        {
+            ThicknessStep.XSmall => 8,
+            ThicknessStep.Small => 11,
+            ThicknessStep.Medium => 14,
+            ThicknessStep.Large => 18,
+            ThicknessStep.XLarge => 22,
+            _ => throw new Xunit.Sdk.XunitException($"새 단계 {step}의 미리보기 점 지름을 이 표에 적으세요."),
+        };
+
+        Assert.Equal(expected, ToolbarStateMap.PreviewDotDiameter(step));
+    }
+
+    /// <summary>굵기 플라이아웃 점 지름 표 (ToolbarFlyouts.BuildThicknessFlyout의 6/10/14/18/22 그대로).</summary>
+    [Theory]
+    [MemberData(nameof(ThicknessScaleTests.AllSteps), MemberType = typeof(ThicknessScaleTests))]
+    public void FlyoutThicknessDotDiameter_EveryStep_MatchesTable(ThicknessStep step)
+    {
+        double expected = step switch
+        {
+            ThicknessStep.XSmall => 6,
+            ThicknessStep.Small => 10,
+            ThicknessStep.Medium => 14,
+            ThicknessStep.Large => 18,
+            ThicknessStep.XLarge => 22,
+            _ => throw new Xunit.Sdk.XunitException($"새 단계 {step}의 플라이아웃 점 지름을 이 표에 적으세요."),
+        };
+
+        Assert.Equal(expected, ToolbarStateMap.FlyoutThicknessDotDiameter(step));
+    }
+
+    /// <summary>
+    /// 세 굵기 표는 합치지 않는다 (f70c3fb의 원칙): 미리보기 점·플라이아웃 점·ThicknessScale(펜 px)은 목적이 다른 양이다.
+    /// 작은 두 단계에서 두 점 표가 갈라지는 것이 그 증거 — 하나로 합치면 이 단언이 빨갛다.
+    /// </summary>
+    [Fact]
+    public void PreviewDot_AndFlyoutDot_AreDifferentTables()
+    {
+        Assert.NotEqual(ToolbarStateMap.PreviewDotDiameter(ThicknessStep.XSmall), ToolbarStateMap.FlyoutThicknessDotDiameter(ThicknessStep.XSmall));
+        Assert.NotEqual(ToolbarStateMap.PreviewDotDiameter(ThicknessStep.Small), ToolbarStateMap.FlyoutThicknessDotDiameter(ThicknessStep.Small));
+        Assert.NotEqual(ToolbarStateMap.PreviewDotDiameter(ThicknessStep.XSmall), ThicknessScale.PenPixels(ThicknessStep.XSmall));
+    }
+
+    /// <summary>보드 배지 (사용자 조타 14차): 없음이면 숨김, 블랙보드만 검정 (ToolbarParts.RefreshButton의 두 삼항 그대로).</summary>
+    [Theory]
+    [InlineData(BoardMode.None, false, false)]
+    [InlineData(BoardMode.White, true, false)]
+    [InlineData(BoardMode.Black, true, true)]
+    public void BoardBadge_VisibilityAndColor_FollowBoard(BoardMode board, bool visible, bool black)
+    {
+        Assert.Equal(visible, ToolbarStateMap.BoardBadgeVisible(board));
+        Assert.Equal(black, ToolbarStateMap.BoardBadgeIsBlack(board));
+    }
+
+    [Fact]
+    public void QuickSwatchBorderThickness_SameAsCurrentColor_Is2()
+    {
+        Assert.Equal(2, ToolbarStateMap.QuickSwatchBorderThickness(Colors.Red, Colors.Red));
+    }
+
+    [Fact]
+    public void QuickSwatchBorderThickness_OtherColor_Is0()
+    {
+        Assert.Equal(0, ToolbarStateMap.QuickSwatchBorderThickness(Colors.Red, Colors.Blue));
+    }
+
+    /// <summary>같은 도구 재선택 시 해제 (Epic Pen 동작: 도구 없음 = 포인터 모드) — 스트립 버튼과 플라이아웃 항목이 같은 판정을 쓴다.</summary>
+    [Theory]
+    [InlineData(ToolKind.Pen, ToolKind.Pen, ToolKind.None)]
+    [InlineData(ToolKind.Select, ToolKind.Select, ToolKind.None)]
+    [InlineData(ToolKind.Pen, ToolKind.Eraser, ToolKind.Eraser)]
+    [InlineData(ToolKind.None, ToolKind.Select, ToolKind.Select)]
+    public void ToggleTool_SameToolReleases_OtherToolSelects(ToolKind current, ToolKind requested, ToolKind expected)
+    {
+        Assert.Equal(expected, ToolbarStateMap.ToggleTool(current, requested));
+    }
+
+    [Fact]
+    public void CurrentQuickColorSlot_Found_ReturnsIndex()
+    {
+        Color[] quick = [Colors.Red, Colors.Green, Colors.Blue];
+
+        Assert.Equal(2, ToolbarStateMap.CurrentQuickColorSlot(quick, Colors.Blue));
+    }
+
+    /// <summary>어느 칸에도 없으면 0 — 확장 팔레트 색을 쓰는 중 휠을 돌리면 첫 칸부터 순환한다 (오늘 동작).</summary>
+    [Fact]
+    public void CurrentQuickColorSlot_NotFound_ReturnsZero()
+    {
+        Color[] quick = [Colors.Red, Colors.Green, Colors.Blue];
+
+        Assert.Equal(0, ToolbarStateMap.CurrentQuickColorSlot(quick, Colors.Yellow));
+    }
+
+    [Fact]
+    public void CurrentQuickColorSlot_DuplicateColor_ReturnsFirstMatch()
+    {
+        Color[] quick = [Colors.Red, Colors.Blue, Colors.Blue];
+
+        Assert.Equal(1, ToolbarStateMap.CurrentQuickColorSlot(quick, Colors.Blue));
     }
 }

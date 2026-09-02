@@ -190,20 +190,21 @@ public sealed class ToolbarFlyouts
 
     private void SelectTool(ToolKind tool)
     {
-        // 같은 도구 재선택 시 해제 (Epic Pen 동작: 도구 없음 = 포인터 모드).
-        _state.ActiveTool = _state.ActiveTool == tool ? ToolKind.None : tool;
+        // 같은 도구 재선택 시 해제 — 판정은 ToolbarStateMap.ToggleTool (스트립 버튼 ToolbarWindow.SelectTool과 동일).
+        _state.ActiveTool = ToolbarStateMap.ToggleTool(_state.ActiveTool, tool);
     }
 
     private void BuildThicknessFlyout()
     {
         // Epic Pen 크기 선택기 대응 (사용자 조타: 5단계): 실제 크기의 채워진 원 5개, 라벨 없음.
+        // 점 지름 표는 ToolbarStateMap.FlyoutThicknessDotDiameter가 소유한다 (미리보기 원 표와 별개).
         var panel = FlyoutPanel();
         _thicknessItems.Clear();
-        panel.Children.Add(ThicknessItem(6, ThicknessStep.XSmall));
-        panel.Children.Add(ThicknessItem(10, ThicknessStep.Small));
-        panel.Children.Add(ThicknessItem(14, ThicknessStep.Medium));
-        panel.Children.Add(ThicknessItem(18, ThicknessStep.Large));
-        panel.Children.Add(ThicknessItem(22, ThicknessStep.XLarge));
+        panel.Children.Add(ThicknessItem(ThicknessStep.XSmall));
+        panel.Children.Add(ThicknessItem(ThicknessStep.Small));
+        panel.Children.Add(ThicknessItem(ThicknessStep.Medium));
+        panel.Children.Add(ThicknessItem(ThicknessStep.Large));
+        panel.Children.Add(ThicknessItem(ThicknessStep.XLarge));
         var border = FlyoutBorder(panel);
         border.MouseWheel += (_, e) =>
         {
@@ -226,8 +227,9 @@ public sealed class ToolbarFlyouts
         }
     }
 
-    private Border ThicknessItem(double diameter, ThicknessStep step)
+    private Border ThicknessItem(ThicknessStep step)
     {
+        double diameter = ToolbarStateMap.FlyoutThicknessDotDiameter(step);
         var dot = new System.Windows.Shapes.Ellipse
         {
             Width = diameter,

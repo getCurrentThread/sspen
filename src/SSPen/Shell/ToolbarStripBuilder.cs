@@ -6,126 +6,6 @@ using SSPen.Annotation;
 
 namespace SSPen.Shell;
 
-/// <summary>버튼 시각 요소 묶음: 배경/글리프/플라이아웃 삼각형/색 배지(도구 그룹별).</summary>
-internal sealed record ButtonParts(
-    Border Root,
-    TextBlock Glyph,
-    (string Regular, string Filled) Icon,
-    System.Windows.Shapes.Polygon? FlyoutMark,
-    System.Windows.Shapes.Ellipse? ColorBadge,
-    ToolStyleGroup? BadgeGroup);
-
-/// <summary>
-/// 스트립 조립 산출물 (god file 분할, ARCH-11 후속): 버튼 딕셔너리·퀵스와치·미리보기 원·
-/// 현재 색 스와치·보드 배지·메뉴 패널을 묶고, RefreshButton/RefreshActiveStates/UpdatePreviewDot
-/// 갱신 로직을 메서드로 제공한다 (StateMap 소비).
-/// </summary>
-public sealed class ToolbarParts
-{
-    internal readonly Dictionary<ToolbarButtonId, ButtonParts> Buttons;
-
-    // 사용자 요청 17차: 색을 담아 두지 않고 **칸 번호**만 담는다 — 설정에서 바로가기 색을
-    // 바꾸면 빌드 시점에 박아 둔 색은 영원히 옛 색으로 남는다.
-    internal readonly List<(Border Swatch, int Slot)> QuickSwatches;
-    private readonly StackPanel? _menuPanel;
-
-    internal System.Windows.Shapes.Ellipse? PreviewDot;
-    internal Border? CurrentColorSwatch;
-    internal Border? BoardBadge;
-
-    internal ToolbarParts(
-        Dictionary<ToolbarButtonId, ButtonParts> buttons,
-        List<(Border Swatch, int Slot)> quickSwatches,
-        StackPanel? menuPanel)
-    {
-        Buttons = buttons;
-        QuickSwatches = quickSwatches;
-        _menuPanel = menuPanel;
-    }
-
-    private bool MenuCollapsed => _menuPanel is { Visibility: Visibility.Collapsed };
-
-    /// <summary>접히는 메뉴 영역(눈 버튼 아래 전체)의 표시 여부를 설정한다.</summary>
-    public void SetMenuCollapsed(bool collapsed)
-    {
-        if (_menuPanel is not null)
-        {
-            _menuPanel.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-        }
-    }
-
-    public void RefreshButton(AppState state, ToolbarButtonId id)
-    {
-        if (!Buttons.TryGetValue(id, out var parts))
-        {
-            return;
-        }
-        bool active = ToolbarStateMap.IsActive(state, id, MenuCollapsed);
-        var icon = ToolbarStateMap.IconFor(state, id, MenuCollapsed, parts.Icon);
-        parts.Root.Background = active ? ToolbarTheme.AccentBrush : Brushes.Transparent;
-        parts.Glyph.Text = active ? icon.Filled : icon.Regular;
-        parts.Glyph.FontFamily = active ? Icons.Filled : Icons.Regular;
-        parts.Glyph.Foreground = active ? Brushes.White : ToolbarTheme.IconBrush;
-        if (parts.FlyoutMark is not null)
-        {
-            parts.FlyoutMark.Fill = active ? Brushes.White : ToolbarTheme.IconBrush;
-        }
-        if (parts.ColorBadge is not null && parts.BadgeGroup is not null)
-        {
-            var badgeGroup = ToolbarStateMap.BadgeGroupFor(state, id, parts.BadgeGroup.Value);
-            parts.ColorBadge.Fill = ToolbarTheme.Freeze(new SolidColorBrush(state.ColorOf(badgeGroup)));
-        }
-        // 보드 그룹 버튼 (사용자 조타 14차): 활성 보드 색 스와치 배지.
-        if (id == ToolbarButtonId.Board && BoardBadge is not null)
-        {
-            BoardBadge.Visibility = state.Board == BoardMode.None ? Visibility.Collapsed : Visibility.Visible;
-            BoardBadge.Background = state.Board == BoardMode.Black ? Brushes.Black : Brushes.White;
-        }
-    }
-
-    public void RefreshActiveStates(AppState state)
-    {
-        foreach (var id in Buttons.Keys.ToList())
-        {
-            RefreshButton(state, id);
-        }
-        UpdatePreviewDot(state);
-        if (CurrentColorSwatch is not null)
-        {
-            CurrentColorSwatch.Background = ToolbarTheme.Freeze(new SolidColorBrush(state.CurrentColor));
-        }
-        foreach (var (swatch, slot) in QuickSwatches)
-        {
-            if (slot >= state.QuickColors.Count)
-            {
-                continue;
-            }
-            var color = state.QuickColors[slot];
-            swatch.Background = ToolbarTheme.Freeze(new SolidColorBrush(color));
-            swatch.BorderThickness = new Thickness(color == state.CurrentColor ? 2 : 0);
-        }
-    }
-
-    public void UpdatePreviewDot(AppState state)
-    {
-        if (PreviewDot is null)
-        {
-            return;
-        }
-        double diameter = state.Thickness switch
-        {
-            ThicknessStep.XSmall => 8,
-            ThicknessStep.Small => 11,
-            ThicknessStep.Medium => 14,
-            ThicknessStep.Large => 18,
-            _ => 22,
-        };
-        PreviewDot.Width = diameter;
-        PreviewDot.Height = diameter;
-        PreviewDot.Fill = ToolbarTheme.Freeze(new SolidColorBrush(state.CurrentColor));
-    }
-}
-
 /// <summary>
 /// 툴바 스트립 조립 (god file 분할, ARCH-11 후속): BuildStrip/MakeButton/BuildPreviewButton/
 /// BuildQuickColors/AttachTooltip/MakeBoardBadge — 시각 트리를 구성하고 산출물을 <see cref="ToolbarParts"/>로 반환한다.
@@ -287,16 +167,8 @@ public static class ToolbarStripBuilder
 
             grid.MouseWheel += (_, e) =>
             {
-                int currentIdx = -1;
-                for (int i = 0; i < state.QuickColors.Count; i++)
-                {
-                    if (state.QuickColors[i] == state.CurrentColor)
-                    {
-                        currentIdx = i;
-                        break;
-                    }
-                }
-                if (currentIdx < 0) currentIdx = 0;
+                // 휠 시점에 현재 칸을 찾는다 (없으면 0) — 판정은 ToolbarStateMap.CurrentQuickColorSlot.
+                int currentIdx = ToolbarStateMap.CurrentQuickColorSlot(state.QuickColors, state.CurrentColor);
                 int nextIdx = ToolbarStateMap.NextQuickColorSlotByWheel(currentIdx, e.Delta, state.QuickColors.Count);
                 state.CurrentColor = state.QuickColors[nextIdx];
                 e.Handled = true;

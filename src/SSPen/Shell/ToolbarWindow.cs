@@ -141,8 +141,8 @@ public sealed class ToolbarWindow : Window
 
     private void SelectTool(ToolKind tool)
     {
-        // 같은 도구 재선택 시 해제 (Epic Pen 동작: 도구 없음 = 포인터 모드).
-        _state.ActiveTool = _state.ActiveTool == tool ? ToolKind.None : tool;
+        // 같은 도구 재선택 시 해제 — 판정은 ToolbarStateMap.ToggleTool (플라이아웃 항목 ToolbarFlyouts.SelectTool과 동일).
+        _state.ActiveTool = ToolbarStateMap.ToggleTool(_state.ActiveTool, tool);
     }
 
     private void RotateShapes() => _state.ActiveTool = ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, _state.ActiveTool);

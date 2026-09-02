@@ -1,10 +1,13 @@
+using System.Windows.Media;
 using SSPen.Annotation;
 
 namespace SSPen.Shell;
 
 /// <summary>
 /// 툴바 버튼 ↔ 상태 매핑 순수 함수 (god file 분할, ARCH-11 후속): 활성 판정·아이콘·배지 그룹.
-/// 도형/펜 그룹 재클릭 로테이션 순환 데이터도 함께 소유한다.
+/// 도형/펜 그룹 재클릭 로테이션 순환 데이터도 함께 소유한다. 36단계부터 어댑터(ToolbarParts/StripBuilder/Flyouts/Window)에
+/// 인라인이던 값 판정(점 지름 표·보드 배지·퀵스와치 링·현재 칸·같은 도구 재선택 해제)도 여기 둔다 — 입력은 AppState가
+/// 아니라 값(ThicknessStep/BoardMode/Color/ToolKind)이라 헤드리스 표로 잠긴다 (X7/R9).
 /// </summary>
 public static class ToolbarStateMap
 {
@@ -136,4 +139,57 @@ public static class ToolbarStateMap
             _ => ToolStyleGroup.Pen,
         }
         : fallback;
+
+    // ----- 36단계: 어댑터에 인라인이던 값 판정. 어댑터는 값을 읽어 넘기고 결과를 UI 속성에 쓰기만 한다. -----
+
+    /// <summary>
+    /// 스트립 미리보기 원 지름 (Epic Pen 채워진 원 대응). 플라이아웃 점(<see cref="FlyoutThicknessDotDiameter"/>)·
+    /// <see cref="ThicknessScale"/>(펜 px)와 값이 일부 겹치지만 목적이 다른 표라 합치지 않는다 (f70c3fb의 원칙).
+    /// </summary>
+    public static double PreviewDotDiameter(ThicknessStep step) => step switch
+    {
+        ThicknessStep.XSmall => 8,
+        ThicknessStep.Small => 11,
+        ThicknessStep.Medium => 14,
+        ThicknessStep.Large => 18,
+        _ => 22,
+    };
+
+    /// <summary>굵기 플라이아웃의 실제 크기 점 5개 지름 (사용자 조타: 5단계, 라벨 없음).</summary>
+    public static double FlyoutThicknessDotDiameter(ThicknessStep step) => step switch
+    {
+        ThicknessStep.XSmall => 6,
+        ThicknessStep.Small => 10,
+        ThicknessStep.Medium => 14,
+        ThicknessStep.Large => 18,
+        _ => 22,
+    };
+
+    /// <summary>보드 버튼 우상단 스와치 배지 표시 여부 (사용자 조타 14차): 보드가 없으면 숨김.</summary>
+    public static bool BoardBadgeVisible(BoardMode board) => board != BoardMode.None;
+
+    /// <summary>보드 배지 색: 블랙보드만 검정, 그 외(화이트·없음)는 흰색 — 없음일 때는 어차피 숨겨진다.</summary>
+    public static bool BoardBadgeIsBlack(BoardMode board) => board == BoardMode.Black;
+
+    /// <summary>
+    /// 퀵컬러 스와치 흰 링 두께: 현재 색과 같은 칸만 2, 아니면 0 (플러시 모자이크 유지).
+    /// 같은 색이 두 칸이면 둘 다 강조된다 — 보존이지 승인이 아니다.
+    /// </summary>
+    public static double QuickSwatchBorderThickness(Color slotColor, Color currentColor) => slotColor == currentColor ? 2 : 0;
+
+    /// <summary>현재 색이 든 퀵컬러 칸 (첫 일치); 어느 칸에도 없으면 0 — 휠 순환의 출발점.</summary>
+    public static int CurrentQuickColorSlot(IReadOnlyList<Color> quickColors, Color currentColor)
+    {
+        for (int i = 0; i < quickColors.Count; i++)
+        {
+            if (quickColors[i] == currentColor)
+            {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    /// <summary>같은 도구 재선택 시 해제 (Epic Pen 동작: 도구 없음 = 포인터 모드) — 스트립 버튼과 플라이아웃 항목이 같은 판정을 쓴다.</summary>
+    public static ToolKind ToggleTool(ToolKind current, ToolKind requested) => current == requested ? ToolKind.None : requested;
 }
