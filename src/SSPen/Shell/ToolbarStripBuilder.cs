@@ -7,15 +7,16 @@ using SSPen.Annotation;
 namespace SSPen.Shell;
 
 /// <summary>
-/// 툴바 스트립 조립 (god file 분할, ARCH-11 후속): BuildStrip/MakeButton/BuildPreviewButton/
-/// BuildQuickColors/MakeBoardBadge — 시각 트리를 구성하고 산출물을 <see cref="ToolbarParts"/>로 반환한다.
+/// 툴바 스트립 조립 (god file 분할, ARCH-11 후속): <see cref="ToolbarLayout"/> 스펙(순수 데이터, 51단계)을 Realize 루프가
+/// 시각 트리로 실현한다 — MakeButton/BuildPreviewButton/BuildQuickColors/MakeBoardBadge — 산출물은 <see cref="ToolbarParts"/>.
 /// 툴팁은 <see cref="ToolbarTooltips.Attach"/>가 만들고 <see cref="ToolbarFlyouts.RegisterTooltip"/>에 등록한다 (37단계).
 /// </summary>
 public static class ToolbarStripBuilder
 {
     /// <summary>
     /// 스트립(로고+버튼 스택+플라이아웃 호스트)을 조립해 host UI(Grid)와 <see cref="ToolbarParts"/>를 반환한다.
-    /// 버튼↔플라이아웃 연결(어느 버튼이 어느 플라이아웃을 여는지)은 여기서 확정한다.
+    /// 항목 순서·버튼 속성은 <see cref="ToolbarLayout"/>이 들고, 클릭 동작(ActionFor)과 플라이아웃 종류→Popup(PopupFor) 연결은
+    /// 여기 두 스위치가 확정한다 — 스펙에 델리게이트·WPF 객체를 싣지 않기 위해서다. 빠진 팔은 Build 시점에 던진다 (X7/R9).
     /// </summary>
     public static (UIElement Host, ToolbarTheme.LogoBadge Logo, ToolbarParts Parts) Build(
         AppState state,
@@ -33,18 +34,41 @@ public static class ToolbarStripBuilder
         StackPanel? menuPanel = null;
         ToolbarParts? parts = null;
 
-        Border MakeButton(
-            ToolbarButtonId id,
-            string tooltip,
-            (string Regular, string Filled) icon,
-            Action onClick,
-            bool hasFlyout = false,
-            ToolStyleGroup? badgeGroup = null,
-            string? hotkeyId = null)
+        // 51단계: 클릭 동작은 스펙이 아니라 이 스위치가 잇는다 — 동작은 전부 Build 인자(state/actions/창 콜백)를 닫아야 하고,
+        // Action은 비교할 수 없어 스펙에 실으면 스냅샷이 불가능하다. 빠진 팔은 던진다 (ToolbarStateMap.IsActive와 같은 X7/R9 트립와이어).
+        Action ActionFor(ToolbarButtonId id) => id switch
         {
+            ToolbarButtonId.Visibility => onToggleMenuCollapsed,
+            ToolbarButtonId.ClickThrough => () => state.ClickThrough = !state.ClickThrough,
+            ToolbarButtonId.Select => () => onSelectTool(ToolKind.Select),
+            ToolbarButtonId.Shapes => onRotateShapes,
+            ToolbarButtonId.Pen => onRotatePenGroup,
+            ToolbarButtonId.Eraser => () => onSelectTool(ToolKind.Eraser),
+            ToolbarButtonId.Fading => onToggleFading,
+            ToolbarButtonId.Undo => actions.Undo,
+            ToolbarButtonId.ClearAll => actions.ClearAll,
+            ToolbarButtonId.Board => onRotateBoard,
+            ToolbarButtonId.Capture => actions.StartCapture,
+            ToolbarButtonId.Settings => actions.OpenSettings,
+            _ => throw new ArgumentOutOfRangeException(nameof(id), id, "클릭 동작이 배선되지 않은 버튼 (X7/R9)"),
+        };
+
+        // 플라이아웃 종류 → Popup. 링크의 증인은 ToolbarStripBuilderTests.Build_FlyoutBearingEntries_AreThePlacementTargetsOfTheirFlyouts.
+        Popup PopupFor(ToolbarFlyoutKind kind) => kind switch
+        {
+            ToolbarFlyoutKind.Shapes => flyouts.ShapesFlyout,
+            ToolbarFlyoutKind.Pen => flyouts.PenFlyout,
+            ToolbarFlyoutKind.Fading => flyouts.FadingFlyout,
+            ToolbarFlyoutKind.Board => flyouts.BoardFlyout,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Popup이 배선되지 않은 플라이아웃 종류 (X7/R9)"),
+        };
+
+        Border MakeButton(ToolbarButtonEntry entry)
+        {
+            var onClick = ActionFor(entry.Id);
             var glyph = new TextBlock
             {
-                Text = icon.Regular,
+                Text = entry.Icon.Regular,
                 FontFamily = Icons.Regular,
                 FontSize = 20,
                 Foreground = ToolbarTheme.IconBrush,
@@ -55,7 +79,7 @@ public static class ToolbarStripBuilder
             content.Children.Add(glyph);
 
             System.Windows.Shapes.Polygon? flyoutMark = null;
-            if (hasFlyout)
+            if (entry.HasFlyout)
             {
                 // Epic Pen의 우하단 모서리 삼각형: 하위 메뉴 존재 어포던스.
                 flyoutMark = ToolbarTheme.FlyoutMark();
@@ -63,14 +87,14 @@ public static class ToolbarStripBuilder
             }
 
             System.Windows.Shapes.Ellipse? badge = null;
-            if (badgeGroup is not null)
+            if (entry.BadgeGroup is not null)
             {
                 // 색 사용 도구의 그룹별 색 배지 (Epic Pen의 펜 색 점 대응 — 사용자 조타: 도구별 개별 색).
                 badge = new System.Windows.Shapes.Ellipse
                 {
                     Width = 8,
                     Height = 8,
-                    Fill = new SolidColorBrush(state.ColorOf(badgeGroup.Value)),
+                    Fill = new SolidColorBrush(state.ColorOf(entry.BadgeGroup.Value)),
                     Stroke = Brushes.White,
                     StrokeThickness = 1,
                     HorizontalAlignment = HorizontalAlignment.Right,
@@ -88,26 +112,26 @@ public static class ToolbarStripBuilder
                 Background = Brushes.Transparent,
                 Child = content,
             };
-            ToolbarTooltips.Attach(actions, button, tooltip, hotkeyId, flyouts.RegisterTooltip);
+            ToolbarTooltips.Attach(actions, button, entry.Tooltip, entry.HotkeyId, flyouts.RegisterTooltip);
             button.MouseEnter += (_, _) =>
             {
-                if (!hasFlyout)
+                if (!entry.HasFlyout)
                 {
                     // 플라이아웃 없는 버튼 호버 시 열린 서브메뉴 즉시 닫기 (빠릿한 전환).
                     flyouts.CloseFlyoutsExcept(null);
                 }
-                if (!ToolbarStateMap.IsActive(state, id, menuPanel is { Visibility: Visibility.Collapsed }))
+                if (!ToolbarStateMap.IsActive(state, entry.Id, menuPanel is { Visibility: Visibility.Collapsed }))
                 {
                     button.Background = ToolbarTheme.ButtonHoverBrush;
                 }
             };
-            button.MouseLeave += (_, _) => parts!.RefreshButton(state, id);
+            button.MouseLeave += (_, _) => parts!.RefreshButton(state, entry.Id);
             button.MouseLeftButtonUp += (_, _) => onClick();
-            buttons[id] = new ButtonParts(button, glyph, icon, flyoutMark, badge, badgeGroup);
+            buttons[entry.Id] = new ButtonParts(button, glyph, entry.Icon, flyoutMark, badge, entry.BadgeGroup);
             return button;
         }
 
-        UIElement BuildPreviewButton()
+        UIElement BuildPreviewButton(ToolbarPreviewEntry entry)
         {
             var previewDot = new System.Windows.Shapes.Ellipse
             {
@@ -124,7 +148,7 @@ public static class ToolbarStripBuilder
                 Background = Brushes.Transparent,
                 Child = host,
             };
-            ToolbarTooltips.Attach(actions, button, Strings.Thickness, "thickness-pair", flyouts.RegisterTooltip);
+            ToolbarTooltips.Attach(actions, button, entry.Tooltip, entry.HotkeyId, flyouts.RegisterTooltip);
             flyouts.ThicknessFlyout.PlacementTarget = button;
             flyouts.HoverOpen(button, flyouts.ThicknessFlyout);
             host.Children.Add(ToolbarTheme.FlyoutMark());
@@ -201,92 +225,84 @@ public static class ToolbarStripBuilder
             return stack;
         }
 
+        // 도형/펜 버튼의 휠: 그룹 순환 (판정은 ToolbarStateMap.NextInCycle).
+        void AttachToolCycleWheel(Border button, ToolKind[] cycle) =>
+            button.MouseWheel += (_, e) =>
+            {
+                state.ActiveTool = ToolbarStateMap.NextInCycle(cycle, state.ActiveTool, e.Delta);
+                e.Handled = true;
+            };
+
+        // 항목 하나를 시각 요소로 실현한다. 버튼의 문장 순서는 MakeButton → 휠 → 보드 배지 → 플라이아웃 연결 — 51단계 이전의
+        // 조립 순서 그대로다 (MouseEnter 핸들러 순서: 호버 브러시 → HoverOpen; 보드 버튼 Grid 자식 순서: 글리프, 삼각형, 배지).
+        UIElement Realize(ToolbarLayoutEntry entry)
+        {
+            switch (entry)
+            {
+                case ToolbarSeparatorEntry:
+                    return ToolbarTheme.Separator();
+                case ToolbarQuickColorsEntry:
+                    return BuildQuickColors();
+                case ToolbarPreviewEntry preview:
+                    return BuildPreviewButton(preview);
+                case ToolbarButtonEntry b:
+                {
+                    var button = MakeButton(b);
+                    switch (b.Wheel)
+                    {
+                        case ToolbarWheel.None:
+                            break;
+                        case ToolbarWheel.ShapeCycle:
+                            AttachToolCycleWheel(button, ToolbarStateMap.ShapeCycle);
+                            break;
+                        case ToolbarWheel.PenCycle:
+                            AttachToolCycleWheel(button, ToolbarStateMap.PenCycle);
+                            break;
+                        case ToolbarWheel.FadingDuration:
+                            button.MouseWheel += (_, e) =>
+                            {
+                                double nextSec = FadingDurations.StepByWheel(actions.FadingSeconds, e.Delta);
+                                actions.SetFadingDuration(nextSec);
+                                flyouts.HighlightFadingSelection();
+                                e.Handled = true;
+                            };
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException(nameof(entry), entry, $"휠 동작 {b.Wheel}이 Realize에 배선되지 않았다 (X7/R9)");
+                    }
+                    if (b.Id == ToolbarButtonId.Board)
+                    {
+                        // 배지 부착은 데이터가 아니라 Id == Board로 잇는다 (ToolbarParts.RefreshButton과 같은 키) — ToolbarLayout의 보드 항목 주석 참조.
+                        var boardBadge = MakeBoardBadge();
+                        ((Grid)button.Child).Children.Add(boardBadge);
+                        parts!.BoardBadge = boardBadge;
+                    }
+                    if (b.Flyout is { } kind)
+                    {
+                        var popup = PopupFor(kind);
+                        popup.PlacementTarget = button;
+                        flyouts.HoverOpen(button, popup);
+                    }
+                    return button;
+                }
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(entry), entry, "Realize에 배선되지 않은 항목 종류 (X7/R9)");
+            }
+        }
+
         // 메뉴 패널을 먼저 만들어 ToolbarParts를 한 번만 구성하고, 이후 MakeButton 클로저가 이를 채운다.
         menuPanel = new StackPanel { Orientation = Orientation.Vertical };
         parts = new ToolbarParts(buttons, quickSwatches, menuPanel);
 
         var stack2 = new StackPanel { Orientation = Orientation.Vertical };
 
-        // 눈 버튼: 메뉴 접기/펼치기 + 판서 동시 숨김/표시 (사용자 조타). Alt+Shift+1/트레이는 판서만 토글.
-        stack2.Children.Add(MakeButton(ToolbarButtonId.Visibility, Strings.Visibility, Icons.Eye, onToggleMenuCollapsed));
-
-        // 접히는 메뉴 영역: 눈 버튼 아래 전체.
+        // 눈 버튼은 접히는 메뉴 위에 남는다; 메뉴 항목 순서·그룹·구분선은 ToolbarLayout.Menu(순수 데이터, 51단계)가 든다.
+        stack2.Children.Add(Realize(ToolbarLayout.Visibility));
         stack2.Children.Add(menuPanel);
-        var menu = menuPanel;
-
-        // 그룹 1: 클릭 통과.
-        menu.Children.Add(MakeButton(ToolbarButtonId.ClickThrough, Strings.ClickThrough, Icons.Cursor, () => state.ClickThrough = !state.ClickThrough, hotkeyId: "clickthrough"));
-        menu.Children.Add(ToolbarTheme.Separator());
-
-        // 선택 도구 (SEL-15): 기존 획을 고르고 이동·크기·회전한다. 그리기가 아니라 조작이므로
-        // 그리기 도구 그룹 앞에 두고, 색·굵기를 쓰지 않으므로 색 배지도 없다 (SEL-5).
-        menu.Children.Add(MakeButton(ToolbarButtonId.Select, Strings.Select, Icons.Select, () => onSelectTool(ToolKind.Select), hotkeyId: "select"));
-
-        // 그룹 2: 그리기 도구 (도형·펜·형광펜은 각자 그룹 색 배지, 플라이아웃 어포던스 삼각형).
-        var shapesButton = MakeButton(ToolbarButtonId.Shapes, Strings.Shapes, Icons.Shapes, onRotateShapes, hasFlyout: true, badgeGroup: ToolStyleGroup.Shape);
-        shapesButton.MouseWheel += (_, e) =>
+        foreach (var entry in ToolbarLayout.Menu)
         {
-            state.ActiveTool = ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, state.ActiveTool, e.Delta);
-            e.Handled = true;
-        };
-        flyouts.ShapesFlyout.PlacementTarget = shapesButton;
-        flyouts.HoverOpen(shapesButton, flyouts.ShapesFlyout);
-        menu.Children.Add(shapesButton);
-
-        // 펜 그룹 버튼 (사용자 조타: 펜·형광펜·텍스트를 한 그룹으로 — Epic Pen 펜+A 플라이아웃 대응).
-        var penButton = MakeButton(ToolbarButtonId.Pen, Strings.Pen, Icons.Pen, onRotatePenGroup, hasFlyout: true, badgeGroup: ToolStyleGroup.Pen, hotkeyId: "pen");
-        penButton.MouseWheel += (_, e) =>
-        {
-            state.ActiveTool = ToolbarStateMap.NextInCycle(ToolbarStateMap.PenCycle, state.ActiveTool, e.Delta);
-            e.Handled = true;
-        };
-        flyouts.PenFlyout.PlacementTarget = penButton;
-        flyouts.HoverOpen(penButton, flyouts.PenFlyout);
-        menu.Children.Add(penButton);
-        menu.Children.Add(MakeButton(ToolbarButtonId.Eraser, Strings.Eraser, Icons.Eraser, () => onSelectTool(ToolKind.Eraser), hotkeyId: "eraser"));
-
-        // 페이딩 잉크 (사용자 요청 17차): 도구가 아니라 그리기 도구에 얹히는 토글.
-        // 색 배지를 뗀 이유: 이제 자체 색이 없다 — 획 색은 현재 도구(펜·형광펜·도형)의 색을 따른다.
-        // 지속 시간은 호버 플라이아웃에서 고른다.
-        var fadingButton = MakeButton(
-            ToolbarButtonId.Fading, Strings.HotkeyFadingInk, Icons.Timer,
-            onToggleFading,
-            hasFlyout: true, hotkeyId: "fading");
-        fadingButton.MouseWheel += (_, e) =>
-        {
-            double nextSec = FadingDurations.StepByWheel(actions.FadingSeconds, e.Delta);
-            actions.SetFadingDuration(nextSec);
-            flyouts.HighlightFadingSelection();
-            e.Handled = true;
-        };
-        flyouts.FadingFlyout.PlacementTarget = fadingButton;
-        flyouts.HoverOpen(fadingButton, flyouts.FadingFlyout);
-        menu.Children.Add(fadingButton);
-
-        // 현재 색 + 굵기 미리보기 (Epic Pen의 채워진 원 대응): 활성 그룹 기준, 호버 시 굵기 선택기.
-        menu.Children.Add(BuildPreviewButton());
-        menu.Children.Add(ToolbarTheme.Separator());
-
-        // 그룹 3: 편집.
-        menu.Children.Add(MakeButton(ToolbarButtonId.Undo, Strings.Undo, Icons.ArrowUndo, actions.Undo, hotkeyId: "undo"));
-        menu.Children.Add(MakeButton(ToolbarButtonId.ClearAll, Strings.ClearAll, Icons.Delete, actions.ClearAll, hotkeyId: "clear"));
-        menu.Children.Add(ToolbarTheme.Separator());
-
-        // 그룹 4: 보드/캡처/설정. 보드 그룹 버튼 (사용자 조타 14차): 클릭 = 없음→화이트→블랙 로테이션,
-        // 호버 플라이아웃 = 직접 선택, 활성 보드는 우상단 스와치 배지로 표시.
-        var boardButton = MakeButton(ToolbarButtonId.Board, Strings.Board, Icons.Whiteboard, onRotateBoard, hasFlyout: true, hotkeyId: "whiteboard");
-        var boardBadge = ToolbarStripBuilder.MakeBoardBadge();
-        ((Grid)boardButton.Child).Children.Add(boardBadge);
-        parts.BoardBadge = boardBadge;
-        flyouts.BoardFlyout.PlacementTarget = boardButton;
-        flyouts.HoverOpen(boardButton, flyouts.BoardFlyout);
-        menu.Children.Add(boardButton);
-        menu.Children.Add(MakeButton(ToolbarButtonId.Capture, Strings.Capture, Icons.Camera, actions.StartCapture, hotkeyId: "capture"));
-        menu.Children.Add(MakeButton(ToolbarButtonId.Settings, Strings.Settings, Icons.Settings, actions.OpenSettings));
-        menu.Children.Add(ToolbarTheme.Separator());
-
-        // 그룹 5: 퀵컬러 6칸 (2열 x 3행) + 현재 색 대형 스와치 + 빠른 색상 확장.
-        menu.Children.Add(BuildQuickColors());
+            menuPanel.Children.Add(Realize(entry));
+        }
 
         var strip = new Border
         {

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Shapes;
 using SSPen.Annotation;
@@ -16,7 +17,9 @@ namespace SSPen.Tests;
 /// 등록을 <c>System.IO.Packaging.PackUriHelper</c> 정적 생성자로 대신한다.
 ///
 /// 이 스파이크가 초록이라는 것은 버튼 순서·구분선·플라이아웃 연결(스트립 "레이아웃 스펙")을 창 없이 고정할 수 있다는 뜻이다 —
-/// 그 스펙을 데이터로 빼는 <c>ToolbarLayout</c>은 후속 로드맵이다 (이 커밋은 프로덕션 무변경).
+/// 그 스펙은 51단계에서 <see cref="ToolbarLayout"/> 순수 데이터로 뺐다. 이 파일의 STA 사실들은 이제 "실현이 스펙을 따른다"의
+/// 교차 증인이고(같은 순서 배열을 <c>ToolbarLayoutTests.Menu_Sequence_MatchesSnapshot</c>(MTA)이 든다), 종류→Popup 연결은
+/// <see cref="Build_FlyoutBearingEntries_AreThePlacementTargetsOfTheirFlyouts"/>가 잠근다.
 /// </summary>
 public class ToolbarStripBuilderTests
 {
@@ -43,7 +46,7 @@ public class ToolbarStripBuilderTests
         }
     }
 
-    private sealed record Strip(UIElement Host, ToolbarParts Parts, FakeShellActions Actions, AppState State);
+    private sealed record Strip(UIElement Host, ToolbarParts Parts, FakeShellActions Actions, AppState State, ToolbarFlyouts Flyouts);
 
     private static Strip BuildStrip()
     {
@@ -59,7 +62,7 @@ public class ToolbarStripBuilderTests
             onSelectTool: _ => { },
             onToggleFading: () => { },
             onRotateBoard: () => { });
-        return new Strip(host, parts, actions, state);
+        return new Strip(host, parts, actions, state, flyouts);
     }
 
     /// <summary>host(Grid) → outer(StackPanel) → strip(Border) → stack2(StackPanel) → [눈 버튼, 메뉴 패널].</summary>
@@ -148,6 +151,32 @@ public class ToolbarStripBuilderTests
         Click(strip.Parts.Buttons[ToolbarButtonId.ClickThrough].Root);
 
         Assert.True(strip.State.ClickThrough);
+    });
+
+    /// <summary>
+    /// 51단계: 종류→Popup 연결(ToolbarStripBuilder.Build의 PopupFor)의 유일한 증인. 스펙의 플라이아웃 버튼마다 그 종류의 Popup이
+    /// 버튼을 PlacementTarget으로 갖고, 미리보기 항목의 실현 요소는 굵기 Popup의 PlacementTarget이다 — 한 팔이 뒤바뀌면 여기서 빨간불.
+    /// </summary>
+    [Fact]
+    public void Build_FlyoutBearingEntries_AreThePlacementTargetsOfTheirFlyouts() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+
+        Popup PopupOf(ToolbarFlyoutKind kind) => kind switch
+        {
+            ToolbarFlyoutKind.Shapes => strip.Flyouts.ShapesFlyout,
+            ToolbarFlyoutKind.Pen => strip.Flyouts.PenFlyout,
+            ToolbarFlyoutKind.Fading => strip.Flyouts.FadingFlyout,
+            ToolbarFlyoutKind.Board => strip.Flyouts.BoardFlyout,
+            _ => throw new Xunit.Sdk.XunitException($"새 플라이아웃 종류 {kind}를 이 증인에 적으세요."),
+        };
+
+        var flyoutButtons = ToolbarLayout.Menu.OfType<ToolbarButtonEntry>().Where(b => b.Flyout is not null).ToList();
+        Assert.Equal(4, flyoutButtons.Count);
+        Assert.All(flyoutButtons, b => Assert.Same(strip.Parts.Buttons[b.Id].Root, PopupOf(b.Flyout!.Value).PlacementTarget));
+
+        int previewIndex = ToolbarLayout.Menu.ToList().FindIndex(e => e is ToolbarPreviewEntry);
+        Assert.Same(MenuPanel(strip.Host).Children[previewIndex], strip.Flyouts.ThicknessFlyout.PlacementTarget);
     });
 
     private static void Click(UIElement element) =>

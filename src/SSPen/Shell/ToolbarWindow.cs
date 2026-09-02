@@ -13,7 +13,7 @@ namespace SSPen.Shell;
 /// 플라이아웃 모서리 삼각형 어포던스, 현재 색·굵기 미리보기 원, 펜/형광펜 색 배지,
 /// 그룹 구분선, 하단 현재 색 대형 스와치. 아이콘은 Fluent UI System Icons만 사용 (자산 미복사, F21).
 /// 플라이아웃(도형/굵기/보드/빠른 색상 확장)은 WPF Popup으로 호스팅 (플랜 ARCH-11 확정).
-/// 시각 조립은 <see cref="ToolbarStripBuilder"/>, 플라이아웃 호스팅은 <see cref="ToolbarFlyouts"/>,
+/// 레이아웃 스펙은 <see cref="ToolbarLayout"/>(순수 데이터, 51단계), 시각 조립은 <see cref="ToolbarStripBuilder"/>, 플라이아웃 호스팅은 <see cref="ToolbarFlyouts"/>,
 /// 버튼↔상태 매핑은 <see cref="ToolbarStateMap"/>가 각각 소유한다 (god file 분할, ARCH-11 후속).
 /// 이 클래스는 창 수명·조립·배선만 담당한다.
 /// </summary>
