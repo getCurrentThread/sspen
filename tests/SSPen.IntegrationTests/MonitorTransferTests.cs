@@ -68,7 +68,7 @@ public class MonitorTransferTests
     /// 서피스를 프로덕션과 똑같은 이관 후보 목록으로 투사 (<c>AppController.TransferSurfaces</c> 동일 형태).
     /// </summary>
     private static List<TransferSurface> Surfaces(Rig rig) =>
-        [.. rig.Surfaces.Select(s => new TransferSurface(s.Document, s.Monitor.Bounds, s.DpiScale))];
+        [.. rig.Surfaces.Select(s => new TransferSurface(s.Document, s.Monitor.WorkArea, s.DpiScale))];
 
     /// <summary>
     /// 이관을 **프로덕션 경로로** 수행한다. 절차를 재구현하지 않는 것이 핵심이다 —
@@ -368,7 +368,7 @@ public class MonitorTransferTests
             Assert.True(rig.Selection.Contains(element));
 
             // 그리고 화면 안 지점은 반드시 대상을 찾아야 한다 — 판정이 항상 null이 아님을 못박는다.
-            var inside = rig.Surfaces[1].Monitor.Bounds;
+            var inside = rig.Surfaces[1].Monitor.WorkArea;
             var found = SelectionTransfer.ResolveTarget(
                 surfaces, inside.X + inside.Width / 2, inside.Y + inside.Height / 2);
             Assert.NotNull(found);
