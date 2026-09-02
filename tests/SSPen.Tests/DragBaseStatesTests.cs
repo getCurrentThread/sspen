@@ -14,12 +14,11 @@ namespace SSPen.Tests;
 /// <c>CancelActiveInput</c>을 부른다)에서 이동·그룹 스케일·그룹 회전의 롤백이 통째로
 /// 무동작이 되어 <b>화면에는 변형된 채 원장에는 없는</b> 변형이 남았다.
 ///
-/// 컨트롤러 수준 end-to-end 증인은 아직 쓸 수 없다 — 드래그 진입점이
-/// <c>OnMouseLeftButtonDown(MouseButtonEventArgs)</c> 하나뿐이고 그 인자는
-/// <c>MouseDevice</c>/<c>PresentationSource</c> 없이 만들 수 없다. 진짜 end-to-end 회귀는
-/// 진입점이 분리된 뒤
-/// <c>SurfaceCancelOrderTests.Cancel_MidGroupRotateWithClearedSelection_RestoresEveryTransform</c>
-/// 이름으로 붙는다. 그때까지는 아래 타입 수준 증인 + 리플렉션 트립와이어가 방어한다.
+/// 컨트롤러 수준 end-to-end 증인은 9단계(a3046fd)가 <c>Point</c> 진입점을 분리한 뒤
+/// <c>SurfaceCancelOrderTests.LostMouseUp_ThenNewPress_CancelStillRollsBackInFlightTransform</c>
+/// 으로 붙었다 (8단계가 예약했던 이름 <c>Cancel_MidGroupRotateWithClearedSelection_…</c>은
+/// 도착하지 않았다 — 링크는 실제 증인 이름을 가리켜야 한다). 아래 타입 수준 증인 +
+/// 리플렉션 트립와이어는 그 위에 남는 방어선이다.
 /// </summary>
 public class DragBaseStatesTests
 {

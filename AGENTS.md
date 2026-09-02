@@ -96,7 +96,7 @@ CI (`.github/workflows/ci.yml`) runs on `windows-latest` for every push/PR: rest
 
 ## Runtime/Tooling Preferences
 
-- **.NET SDK 10 on Windows** is required (`net10.0-windows`, WPF). No `global.json`, no `Directory.Build.props`, no `.editorconfig`, no analyzers, no CI — do not assume any exist.
+- **.NET SDK 10 on Windows** is required (`net10.0-windows`, WPF). No `global.json`, no `Directory.Build.props`, no `.editorconfig`, no analyzers — do not assume any exist. CI is the GitHub Actions workflow described under Development Commands (`.github/workflows/ci.yml`, `release.yml`); there is no other CI.
 - **Zero NuGet packages in the app project**; keep it that way unless there is a compelling reason. Tests use xUnit 2.9.3 + `Microsoft.NET.Test.Sdk` 17.13.0 + `xunit.runner.visualstudio` 3.0.2.
 - Release distribution is **self-contained win-x64** chosen at CLI time (no publish props in the csproj); `build/publish.ps1` verifies self-containment (masks `DOTNET_ROOT`) and compiles the installer with Inno Setup 6 (`winget install JRSoftware.InnoSetup`).
 - `publish/` and `artifacts/` (ad-hoc QA PowerShell harness) are gitignored build outputs — never track them.
@@ -108,6 +108,8 @@ CI (`.github/workflows/ci.yml`) runs on `windows-latest` for every push/PR: rest
 - **Integration tests** (`tests/SSPen.IntegrationTests/`): real windows, real BitBlt pixel assertions, real `RegisterHotKey`, real exstyle read-back, multi-surface transfer. Every test body runs through `StaRunner.Run` (STA thread, 60 s hard timeout, exception rethrow via `ExceptionDispatchInfo`); use `StaRunner.PumpMessages()` to drain the dispatcher. Uses dynamic topology enumeration and seams (`MonitorTopology.SetProviderForTesting`) so tests succeed on any hardware configuration.
 - **Integration parallelism is disabled** (`AssemblyInfo.cs`, `DisableTestParallelization = true`). The suite contends over one shared resource — the physical screen — so a class that shows a fullscreen topmost surface will corrupt another class's BitBlt pixel assertions. That failure only appears in a full-suite run and passes per-class, so do not re-enable it.
 - **Mixed-DPI simulation**: Mixed-DPI transfer and coordinate rebasing are thoroughly verified in headless `VirtualTopologySimulationTests` and `CoordinateSpaceTests` with `r ≠ 1`.
+- **Baseline (2026-09-02, runner case counts from `dotnet test`)**: unit 808 / integration 38 / E2E 17. Refactoring commit bodies record `유닛 N→M` in runner case counts (Theory rows expanded), never in `[Fact]`/`[Theory]` method counts — the two differ (605 methods vs 808 cases).
+- **WPF objects on the xUnit thread**: `Geometry`/`StreamGeometry`/`GeometryGroup` and `StylusPointCollection` can be created on xUnit's default MTA thread (measured 2026-09-02). Only visual-tree objects (`Canvas`, `Path`, `TextBox`, windows) need the STA helper (`RunSta`).
 - When adding features, put the logic in a pure, injectable core (matching the existing split) and unit-test it; reserve integration tests for genuine Win32/WPF runtime behavior.
 
 ## Agent Tool-Call Rules (learned the hard way)
