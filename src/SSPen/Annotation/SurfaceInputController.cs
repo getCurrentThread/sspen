@@ -213,8 +213,8 @@ public sealed class SurfaceInputController(
                 else if (e.Key == Key.Right) _currentTableColumns = Math.Clamp(_currentTableColumns + 1, 1, 10);
                 else if (e.Key == Key.Left) _currentTableColumns = Math.Clamp(_currentTableColumns - 1, 1, 10);
 
-                state.TableRows = _currentTableRows;
-                state.TableColumns = _currentTableColumns;
+                // 드래그 중 행·열은 이 컨트롤러의 진행 중 값이다. AppState에는 CommitTable이 1회만 쓴다 —
+                // 노치마다 쓰면 AppState.Changed가 z-밴드 재적용·전 서피스 ApplyState·설정 저장 예약을 매번 돌린다.
                 AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, _lastPointerPos, _currentTableRows, _currentTableColumns);
                 UpdateTableBadge(_lastPointerPos);
                 e.Handled = true;
@@ -381,15 +381,14 @@ public sealed class SurfaceInputController(
     {
         if (_previewTable is not null)
         {
+            // 드래그 중 행·열은 진행 중 값이다 — AppState에는 CommitTable이 1회만 쓴다 (OnKeyDown과 같은 이유).
             if (KeyboardState.Shift)
             {
                 _currentTableColumns = Math.Clamp(_currentTableColumns + notches, 1, 10);
-                state.TableColumns = _currentTableColumns;
             }
             else
             {
                 _currentTableRows = Math.Clamp(_currentTableRows + notches, 1, 10);
-                state.TableRows = _currentTableRows;
             }
             AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _currentTableRows, _currentTableColumns);
             UpdateTableBadge(pos);
@@ -884,6 +883,10 @@ public sealed class SurfaceInputController(
         }
         var element = new TableElement(_tableStart, rawEnd, _currentTableRows, _currentTableColumns, _activeTableStyle.Color, _activeTableStyle.Thickness);
         CommitElement(element, fade: _activeTableStyle.IsFading);
+        // 확정된 표의 행·열을 다음 표의 기본값으로 기억한다 — 여기 **한 번**만 AppState에 쓴다.
+        // 취소되거나 임계 미달로 폐기된 드래그의 행·열은 기억하지 않는다 (fix: 노치마다 쓰던 것을 확정 시점으로).
+        state.TableRows = _currentTableRows;
+        state.TableColumns = _currentTableColumns;
     }
 
     private void DiscardTable()
