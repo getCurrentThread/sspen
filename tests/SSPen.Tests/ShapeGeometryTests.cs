@@ -4,8 +4,12 @@ using Xunit;
 
 namespace SSPen.Tests;
 
-/// <summary>WI-9류: 화살촉 순수 기하 검증 (AnnotationVisualFactory.ArrowHead) — 영길이/길이 clamp/좌우 대칭.</summary>
-public class ArrowGeometryTests
+/// <summary>
+/// WI-9류: 화살촉 순수 기하 검증 (<see cref="ShapeGeometry.ArrowHead"/>) — 영길이/길이 clamp/좌우 대칭.
+/// 21단계에서 <c>ArrowGeometryTests</c>를 대상 타입 1:1 이름으로 개명했다. 마지막 두 증인은 ARCH-16
+/// "렌더 날개점 == 경계 날개점"이 함수 하나로 성립함을 고정한다.
+/// </summary>
+public class ShapeGeometryTests
 {
     private const double Tolerance = 1e-6;
 
@@ -13,7 +17,7 @@ public class ArrowGeometryTests
     public void ArrowHead_ZeroLength_ReturnsEndTwice()
     {
         var end = new Point(50, 50);
-        var (h1, h2) = AnnotationVisualFactory.ArrowHead(end, end);
+        var (h1, h2) = ShapeGeometry.ArrowHead(end, end);
         Assert.Equal(end, h1);
         Assert.Equal(end, h2);
     }
@@ -24,7 +28,7 @@ public class ArrowGeometryTests
         // 길이 10 * 0.25 = 2.5 → 최소 8로 clamp.
         var start = new Point(0, 0);
         var end = new Point(10, 0);
-        var (h1, h2) = AnnotationVisualFactory.ArrowHead(start, end);
+        var (h1, h2) = ShapeGeometry.ArrowHead(start, end);
         double dist1 = (end - h1).Length;
         double dist2 = (end - h2).Length;
         Assert.Equal(8, dist1, 3);
@@ -37,7 +41,7 @@ public class ArrowGeometryTests
         // 길이 200 * 0.25 = 50 → 최대 24로 clamp.
         var start = new Point(0, 0);
         var end = new Point(200, 0);
-        var (h1, h2) = AnnotationVisualFactory.ArrowHead(start, end);
+        var (h1, h2) = ShapeGeometry.ArrowHead(start, end);
         double dist1 = (end - h1).Length;
         double dist2 = (end - h2).Length;
         Assert.Equal(24, dist1, 3);
@@ -50,7 +54,7 @@ public class ArrowGeometryTests
         // 길이 60 * 0.25 = 15 → clamp 범위(8..24) 내부라 그대로 사용.
         var start = new Point(0, 0);
         var end = new Point(60, 0);
-        var (h1, h2) = AnnotationVisualFactory.ArrowHead(start, end);
+        var (h1, h2) = ShapeGeometry.ArrowHead(start, end);
         double dist1 = (end - h1).Length;
         double dist2 = (end - h2).Length;
         Assert.Equal(15, dist1, 3);
@@ -62,7 +66,7 @@ public class ArrowGeometryTests
     {
         var start = new Point(0, 0);
         var end = new Point(100, 0);
-        var (h1, h2) = AnnotationVisualFactory.ArrowHead(start, end);
+        var (h1, h2) = ShapeGeometry.ArrowHead(start, end);
 
         // 수평 화살표: 두 날개점은 x축에 대해 y가 서로 반대 부호로 대칭.
         Assert.Equal(h1.X, h2.X, 3);
@@ -75,7 +79,7 @@ public class ArrowGeometryTests
     {
         var start = new Point(0, 0);
         var end = new Point(100, 100);
-        var (h1, h2) = AnnotationVisualFactory.ArrowHead(start, end);
+        var (h1, h2) = ShapeGeometry.ArrowHead(start, end);
 
         double dist1 = (end - h1).Length;
         double dist2 = (end - h2).Length;
@@ -96,7 +100,7 @@ public class ArrowGeometryTests
     {
         var start = new Point(0, 0);
         var end = new Point(100, 0);
-        var (h1, h2) = AnnotationVisualFactory.ArrowHead(start, end);
+        var (h1, h2) = ShapeGeometry.ArrowHead(start, end);
 
         // 화살 축(end→start 방향)과 각 날개(end→h) 사이 각도가 ±25도(스펙 spread = PI/7).
         var shaftDir = start - end;
@@ -110,5 +114,28 @@ public class ArrowGeometryTests
         double angle2 = Math.Acos(Math.Clamp(Vector.Multiply(shaftDir, wing2Dir), -1, 1)) * 180 / Math.PI;
         Assert.Equal(180.0 / 7, angle1, 1);
         Assert.Equal(180.0 / 7, angle2, 1);
+    }
+
+    // ---- ARCH-16: 렌더와 경계는 같은 함수를 쓴다 (21단계) ----
+
+    [Fact]
+    public void ArrowVisualWings_LieInsideShapeElementLocalBounds()
+    {
+        var start = new Point(20, 30);
+        var end = new Point(140, 90);
+        var arrow = new ShapeElement(ShapeKind.Arrow, start, end, System.Windows.Media.Colors.Red, 4);
+
+        var (wing1, wing2) = ShapeGeometry.ArrowHead(start, end);
+
+        // 팩토리가 그리는 날개점(같은 함수)이 모델의 로컬 경계 안에 있다 — 마퀴가 촉을 놓치지 않는다.
+        Assert.True(arrow.LocalBounds.Contains(wing1));
+        Assert.True(arrow.LocalBounds.Contains(wing2));
+    }
+
+    [Fact]
+    public void ArrowHead_LivesOnlyInShapeGeometry_ByReflection()
+    {
+        Assert.Null(typeof(AnnotationVisualFactory).GetMethod("ArrowHead"));
+        Assert.NotNull(typeof(ShapeGeometry).GetMethod("ArrowHead"));
     }
 }

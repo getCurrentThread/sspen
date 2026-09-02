@@ -214,7 +214,7 @@ public sealed class ShapeElement : AnnotationElement
             {
                 return bounds;
             }
-            var (wing1, wing2) = AnnotationVisualFactory.ArrowHead(Start, End);
+            var (wing1, wing2) = ShapeGeometry.ArrowHead(Start, End);
             bounds.Union(wing1);
             bounds.Union(wing2);
             return bounds;

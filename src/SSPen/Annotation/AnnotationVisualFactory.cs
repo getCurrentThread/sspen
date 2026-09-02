@@ -210,7 +210,7 @@ public static class AnnotationVisualFactory
             {
                 var group = new GeometryGroup();
                 group.Children.Add(new LineGeometry(start, end));
-                var (h1, h2) = ArrowHead(start, end);
+                var (h1, h2) = ShapeGeometry.ArrowHead(start, end);
                 group.Children.Add(new LineGeometry(end, h1));
                 group.Children.Add(new LineGeometry(end, h2));
                 path.Data = group;
@@ -231,24 +231,6 @@ public static class AnnotationVisualFactory
                 break;
             }
         }
-    }
-
-    /// <summary>화살촉 두 날개점을 계산하는 순수 기하 함수 (테스트 대상으로 public 승격).</summary>
-    public static (Point, Point) ArrowHead(Point start, Point end)
-    {
-        double dx = end.X - start.X;
-        double dy = end.Y - start.Y;
-        double length = Math.Sqrt(dx * dx + dy * dy);
-        if (length < double.Epsilon)
-        {
-            return (end, end);
-        }
-        double headLength = Math.Clamp(length * 0.25, 8, 24);
-        double angle = Math.Atan2(dy, dx);
-        const double spread = Math.PI / 7; // ≈25도
-        return (
-            new Point(end.X - headLength * Math.Cos(angle - spread), end.Y - headLength * Math.Sin(angle - spread)),
-            new Point(end.X - headLength * Math.Cos(angle + spread), end.Y - headLength * Math.Sin(angle + spread)));
     }
 
     // ---- 선택 장식 (SEL-10). 잉크가 아니라 UI이므로 별도 레이어에 그리고 캡처에서 제외된다 (f4). ----

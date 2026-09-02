@@ -114,7 +114,7 @@ public class AnnotationElementTests
     {
         // ARCH-16: 날개 두 점이 시작점→끝점 사각형 밖으로 나가므로 Bounds만 쓰면 촉을 놓친다.
         var arrow = new ShapeElement(ShapeKind.Arrow, new Point(0, 0), new Point(100, 0), Colors.Red, 2);
-        var (wing1, wing2) = AnnotationVisualFactory.ArrowHead(arrow.Start, arrow.End);
+        var (wing1, wing2) = ShapeGeometry.ArrowHead(arrow.Start, arrow.End);
 
         var bounds = arrow.LocalBounds;
 
