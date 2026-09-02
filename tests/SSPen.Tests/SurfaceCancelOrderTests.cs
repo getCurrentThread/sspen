@@ -1,4 +1,3 @@
-using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -6,6 +5,7 @@ using System.Windows.Shapes;
 using SSPen.Annotation;
 using Xunit;
 
+using static SSPen.Tests.StaThread;
 namespace SSPen.Tests;
 
 /// <summary>
@@ -252,27 +252,6 @@ public class SurfaceCancelOrderTests
             Assert.Equal(ElementTransformState.Identity, b.TransformState);
             Assert.Empty(h.Commits); // 롤백은 원장에 아무것도 싣지 않는다
         });
-    }
-
-    /// <summary>WPF 시각 객체를 만드는 본문만 STA 쓰레드로 보낸다 (예외는 스택 보존해 재던진다).</summary>
-    private static void RunSta(Action body)
-    {
-        ExceptionDispatchInfo? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                body();
-            }
-            catch (Exception ex)
-            {
-                failure = ExceptionDispatchInfo.Capture(ex);
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        failure?.Throw();
     }
 
     /// <summary>컨트롤러 1대 + 그 협력자들. 창 대신 <see cref="ISurfaceHost"/>를 기록하는 가짜로 채운다.</summary>

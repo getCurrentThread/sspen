@@ -1,10 +1,10 @@
-using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using SSPen.Annotation;
 using Xunit;
 
+using static SSPen.Tests.StaThread;
 namespace SSPen.Tests;
 
 /// <summary>
@@ -296,27 +296,6 @@ public class SurfaceEntryPointTests
 
     private static StrokeElement MakeStroke(Point a, Point b) =>
         new([a, b], Colors.Red, thickness: 4, isHighlighter: false);
-
-    /// <summary>WPF 시각 객체를 만드는 본문만 STA 쓰레드로 보낸다 (예외는 스택 보존해 재던진다).</summary>
-    private static void RunSta(Action body)
-    {
-        ExceptionDispatchInfo? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                body();
-            }
-            catch (Exception ex)
-            {
-                failure = ExceptionDispatchInfo.Capture(ex);
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        failure?.Throw();
-    }
 
     /// <summary>컨트롤러 1대 + 그 협력자들. 창 대신 <see cref="ISurfaceHost"/>를 무동작으로 채운다.</summary>
     private sealed class Harness : ISurfaceHost
