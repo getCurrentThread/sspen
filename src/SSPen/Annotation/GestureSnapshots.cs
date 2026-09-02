@@ -46,20 +46,20 @@ public static class GestureStyleSnapshot
             state.CurrentColor,
             highlighter ? state.HighlighterThickness : state.PenThickness,
             highlighter,
-            state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
+            state.FadingInk && ToolKindRules.FadingAppliesTo(effectiveTool));
     }
 
     /// <summary>도형 스타일 동결 (색·<see cref="AppState.ShapeThickness"/>·페이딩).</summary>
     public static ShapeStyle ForShape(AppState state, ToolKind effectiveTool) =>
-        new(state.CurrentColor, state.ShapeThickness, state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
+        new(state.CurrentColor, state.ShapeThickness, state.FadingInk && ToolKindRules.FadingAppliesTo(effectiveTool));
 
     /// <summary>표 스타일 동결 (색·<see cref="AppState.ShapeThickness"/>·행·열·페이딩).</summary>
     public static TableStyle ForTable(AppState state, ToolKind effectiveTool) =>
-        new(state.CurrentColor, state.ShapeThickness, state.TableRows, state.TableColumns, state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
+        new(state.CurrentColor, state.ShapeThickness, state.TableRows, state.TableColumns, state.FadingInk && ToolKindRules.FadingAppliesTo(effectiveTool));
 
     /// <summary>텍스트 스타일 동결 (색·<see cref="AppState.TextFontSize"/>·페이딩).</summary>
     public static TextStyle ForText(AppState state, ToolKind effectiveTool) =>
-        new(state.CurrentColor, state.TextFontSize, state.FadingInk && AppState.FadingAppliesTo(effectiveTool));
+        new(state.CurrentColor, state.TextFontSize, state.FadingInk && ToolKindRules.FadingAppliesTo(effectiveTool));
 }
 
 /// <summary>

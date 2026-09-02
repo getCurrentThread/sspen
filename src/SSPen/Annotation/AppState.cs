@@ -2,46 +2,6 @@ using System.Windows.Media;
 
 namespace SSPen.Annotation;
 
-public enum ToolKind
-{
-    None,
-    Pen,
-    Highlighter,
-    Eraser,
-    Line,
-    Arrow,
-    Rectangle,
-    Ellipse,
-    Table,
-    Text,
-    Select,    // 필기내용선택 (SEL-4): 어떤 ToolStyleGroup에도 속하지 않는다 (f12). 열거 말단에 추가.
-}
-
-/// <summary>굵기 5단계 (사용자 조타: Epic Pen 크기 선택기 5점 대응).</summary>
-public enum ThicknessStep
-{
-    XSmall,
-    Small,
-    Medium,
-    Large,
-    XLarge,
-}
-
-public enum BoardMode
-{
-    None,
-    White,
-    Black,
-}
-
-/// <summary>색·굵기를 개별 보유하는 도구 그룹 (사용자 조타: 펜/형광펜/도형 개별 스타일).</summary>
-public enum ToolStyleGroup
-{
-    Pen,
-    Highlighter,
-    Shape,
-}
-
 /// <summary>
 /// 앱 전역 도구 상태 머신. 서피스/툴바/핫키가 모두 이 상태를 구독한다.
 /// 상호작용 규칙: 서피스가 입력을 받는 조건 = SurfacesVisible && ActiveTool != None && !ClickThrough.
@@ -157,12 +117,7 @@ public sealed class AppState
     /// 선택 도구에서도 **읽기 경로는 손대지 않는다** (SEL-B-2, f12-a): 포괄 폴백이 <c>Select</c>를 흡수해
     /// 강조 커서 후광이 펜 색으로 정상 표시된다. 무시 대상은 아래 쓰기 경로뿐이다.
     /// </summary>
-    public ToolStyleGroup ActiveStyleGroup => _activeTool switch
-    {
-        ToolKind.Highlighter => ToolStyleGroup.Highlighter,
-        ToolKind.Line or ToolKind.Arrow or ToolKind.Rectangle or ToolKind.Ellipse or ToolKind.Table or ToolKind.Text => ToolStyleGroup.Shape,
-        _ => ToolStyleGroup.Pen,
-    };
+    public ToolStyleGroup ActiveStyleGroup => ToolKindRules.StyleGroupOf(_activeTool);
 
     /// <summary>바로가기 색상 읽기 (순서 = 툴바 모자이크 칸 순서 = Ctrl+Shift+1..6).</summary>
     public IReadOnlyList<Color> QuickColors => _quickColors;
@@ -356,15 +311,7 @@ public sealed class AppState
     /// <summary>
     /// 지금 그리는 요소가 페이딩 대상인가 = 토글이 켜져 있고 현재 도구가 그리기 도구일 때.
     /// </summary>
-    public bool FadingApplies => _fadingInk && FadingAppliesTo(_activeTool);
-
-    /// <summary>
-    /// 페이딩이 업힐 수 있는 도구인가 (사용자 요청 17차: 펜·도형 조합).
-    /// 지우개·선택·도구 없음은 새 요소를 만들지 않으므로 페이딩 개념이 성립하지 않는다.
-    /// </summary>
-    public static bool FadingAppliesTo(ToolKind tool) => tool is
-        ToolKind.Pen or ToolKind.Highlighter or ToolKind.Text
-        or ToolKind.Line or ToolKind.Arrow or ToolKind.Rectangle or ToolKind.Ellipse or ToolKind.Table;
+    public bool FadingApplies => _fadingInk && ToolKindRules.FadingAppliesTo(_activeTool);
 
     /// <summary>서피스가 마우스 입력을 받는가 (ARCH-1 히트테스트 배경 스위치와 연동).</summary>
     public bool IsInteractive => SurfacesVisible && ActiveTool != ToolKind.None && !ClickThrough;
