@@ -86,6 +86,10 @@ public static class Strings
     public const string SettingsMonitorsHint = "판서 서피스를 띄울 화면을 선택합니다.";
     public const string PrimaryMonitorBadge = "(주 화면)";
 
+    /// <summary>설정 창 판서 화면 목록의 한 줄: "1번 화면: \\.\DISPLAY1 (1920×1080)". 모니터 크기는 물리 픽셀(Bounds)이다.</summary>
+    public static string SettingsMonitorLabel(int index, string deviceName, int width, int height) =>
+        $"{index}번 화면: {deviceName} ({width}×{height})";
+
     // 바로가기 색상 편집 (사용자 요청 17차).
     public const string SettingsQuickColors = "바로가기 색상";
     public const string SettingsQuickColorsHint = "칸을 눌러 색을 바꿉니다 (Ctrl+Shift+1~6).";

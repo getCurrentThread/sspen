@@ -106,7 +106,7 @@ public sealed class SettingsWindow : Window
         for (int i = 0; i < monitors.Count; i++)
         {
             var m = monitors[i];
-            string label = $"{i + 1}번 화면: {m.DeviceName} ({m.Bounds.Width}×{m.Bounds.Height})" + (m.IsPrimary ? $" {Strings.PrimaryMonitorBadge}" : "");
+            string label = Strings.SettingsMonitorLabel(i + 1, m.DeviceName, m.Bounds.Width, m.Bounds.Height) + (m.IsPrimary ? $" {Strings.PrimaryMonitorBadge}" : "");
             bool isChecked = !s.DisabledMonitors.Contains(m.DeviceName);
             var cb = new CheckBox
             {
@@ -359,32 +359,27 @@ public sealed class SettingsWindow : Window
         }
     }
 
+    /// <summary>
+    /// 확인: 컨트롤 → 값 스냅샷은 여기, 값 → AppSettings는 <see cref="SettingsFormRules"/> (41단계).
+    /// <c>_host.Settings</c>를 제자리 변형하고 ApplyGeneralSettings를 정확히 1회 부른다 — 새 AppSettings를 만들면 폼에 없는
+    /// 필드(핫키·툴바 위치·페이딩·도구별 스타일)가 소실된다.
+    /// </summary>
     private void Apply()
     {
+        var values = new SettingsFormValues(
+            RunAtLogin: _runAtLogin.IsChecked == true,
+            CheckUpdateOnStart: _checkUpdate.IsChecked == true,
+            WheelAdjustsPenSize: _wheelSize.IsChecked == true,
+            SyncToolStyles: _syncStyles.IsChecked == true,
+            BoardAllMonitors: _boardAll.IsChecked == true,
+            DefaultBoardIsBlack: _boardBlack.IsChecked == true,
+            QuickColors: _quickColors,
+            HighlightCursor: _halo.IsChecked == true,
+            SaveFolder: _saveFolder.Text,
+            Monitors: [.. _monitorCheckBoxes.Select(item => (item.DeviceName, item.CheckBox.IsChecked == true))]);
+
         var updated = _host.Settings;
-        updated.RunAtLogin = _runAtLogin.IsChecked == true;
-        updated.CheckUpdateOnStart = _checkUpdate.IsChecked == true;
-        updated.WheelAdjustsPenSize = _wheelSize.IsChecked == true;
-        updated.SyncToolStyles = _syncStyles.IsChecked == true;
-        updated.BoardAllMonitors = _boardAll.IsChecked == true;
-        updated.DefaultBoardIsBlack = _boardBlack.IsChecked == true;
-        updated.QuickColors = [.. _quickColors.Select(ColorPalette.ToHex)];
-        updated.HighlightCursor = _halo.IsChecked == true;
-        updated.SaveFolder = _saveFolder.Text == Capture.CaptureFileNaming.DefaultSaveFolder()
-            ? string.Empty
-            : _saveFolder.Text;
-
-        var disabled = _monitorCheckBoxes
-            .Where(item => item.CheckBox.IsChecked != true)
-            .Select(item => item.DeviceName)
-            .ToList();
-        // 모든 모니터가 비활성화되는 것을 방지: 최소 1개는 켠다
-        if (_monitorCheckBoxes.Count > 0 && disabled.Count == _monitorCheckBoxes.Count)
-        {
-            disabled.RemoveAt(0);
-        }
-        updated.DisabledMonitors = disabled;
-
+        SettingsFormRules.ApplyTo(updated, values, Capture.CaptureFileNaming.DefaultSaveFolder());
         _host.ApplyGeneralSettings(updated);
     }
 }
