@@ -166,6 +166,7 @@ public sealed class SurfaceInputController(
     // 조용히 죽는다. 그래서 KeyboardState(GetAsyncKeyState)로 읽는다.
     // 이벤트당 **한 번만** 읽는 것은 동작 보존이다 — 옮기기 전의 Shift 읽기 지점들은 한 이벤트가
     // 그중 최대 하나에만 도달하도록 if/else-if 사다리와 switch로 서로 배타적이었다.
+    // 휠의 Shift(표 드래그 중 열 조절)도 같은 규약이다 — Point 진입점 안에서 GetAsyncKeyState를 읽지 않는다 (25단계).
     //
     // Handled는 **반환값이 참일 때만** 세운다. `e.Handled = 반환값`으로 대입하면 상위에서
     // 이미 세워 둔 Handled를 false로 되돌려, 오늘 서피스가 통과시키는 입력의 소비 여부가 바뀐다.
@@ -195,7 +196,7 @@ public sealed class SurfaceInputController(
 
     public void OnMouseWheel(MouseWheelEventArgs e)
     {
-        if (Wheel(e.GetPosition(inkCanvas), e.Delta > 0 ? +1 : -1))
+        if (Wheel(e.GetPosition(inkCanvas), e.Delta > 0 ? +1 : -1, KeyboardState.Shift))
         {
             e.Handled = true;
         }
@@ -203,26 +204,23 @@ public sealed class SurfaceInputController(
 
     public void OnKeyDown(KeyEventArgs e)
     {
-        if (_previewTable is not null)
+        // 표 드래그 중 방향키: 상하 = 행, 좌우 = 열. 판정·적용은 Point-free 진입점 AdjustTable이 소유하고
+        // 여기는 Key→(축, ±1) 매핑만 한다. 이 어댑터는 서피스가 활성(키보드 포커스)일 때만 도달한다 — 서피스는 영구
+        // NOACTIVATE라 텍스트 커밋 직후 포커스가 남은 채 툴바 휠로 표 도구를 고른 좁은 경로뿐이다 (F4 실측 판정).
+        if (_previewTable is not null && e.Key is (Key.Up or Key.Down or Key.Left or Key.Right))
         {
-            if (e.Key is Key.Up or Key.Down or Key.Left or Key.Right)
+            var (axis, delta) = e.Key switch
             {
-                var (axis, delta) = e.Key switch
-                {
-                    Key.Up => (TableAxis.Rows, +1),
-                    Key.Down => (TableAxis.Rows, -1),
-                    Key.Right => (TableAxis.Columns, +1),
-                    _ => (TableAxis.Columns, -1),
-                };
-                _tableSize = TableGestureRules.Adjust(_tableSize, axis, delta);
-
-                // 드래그 중 행·열은 이 컨트롤러의 진행 중 값이다. AppState에는 CommitTable이 1회만 쓴다 —
-                // 노치마다 쓰면 AppState.Changed가 z-밴드 재적용·전 서피스 ApplyState·설정 저장 예약을 매번 돌린다.
-                AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, _lastPointerPos, _tableSize.Rows, _tableSize.Columns);
-                UpdateTableBadge(_lastPointerPos);
+                Key.Up => (TableAxis.Rows, +1),
+                Key.Down => (TableAxis.Rows, -1),
+                Key.Right => (TableAxis.Columns, +1),
+                _ => (TableAxis.Columns, -1),
+            };
+            if (AdjustTable(axis, delta))
+            {
                 e.Handled = true;
-                return;
             }
+            return;
         }
 
         // 키 판정은 어댑터가 소유한다 — Escape()는 "열린 텍스트 상자를 확정한다"이므로
@@ -378,18 +376,21 @@ public sealed class SurfaceInputController(
         host.ReleaseMouseCapture();
     }
 
-    /// <summary>휠 진입점. 반환값이 <c>e.Handled</c> 판정이다 — 모니터에 걸친 선택(SEL-LIM-5)과
-    /// 설정이 꺼진 비선택 도구(WI-16)는 오늘 Handled를 세우지 않고 휠을 통과시킨다.</summary>
-    public bool Wheel(Point pos, int notches)
+    /// <summary>
+    /// 휠 진입점. 반환값이 <c>e.Handled</c> 판정이다 — 모니터에 걸친 선택(SEL-LIM-5)과
+    /// 설정이 꺼진 비선택 도구(WI-16)는 오늘 Handled를 세우지 않고 휠을 통과시킨다.
+    /// <paramref name="shift"/>는 어댑터가 이벤트당 한 번 읽어 넘긴다 (D3). 기본값을 두지 않는 이유: 배선 누락이
+    /// 조용한 오동작이 아니라 컴파일 에러여야 한다 (<see cref="SurfaceInputSeams"/>의 <c>required</c>와 같은 발상).
+    /// </summary>
+    public bool Wheel(Point pos, int notches, bool shift)
     {
+        // 표 드래그 중에는 휠이 행·열 조절이다. 이 분기는 라우터의 비인터랙티브 가드보다 **앞**에서 선점하지만
+        // "비인터랙티브인데 미리보기가 살아 있는" 상태는 지속되지 않는다 — 창의 ApplyState가 전환 즉시
+        // CancelActiveInput을 동기로 불러 DiscardTable이 먼저 돈다 (18단계 증인). 그래서 라우터 표에 행을 더하지 않는다.
         if (_previewTable is not null)
         {
-            // 드래그 중 행·열은 진행 중 값이다 — AppState에는 CommitTable이 1회만 쓴다 (OnKeyDown과 같은 이유).
-            _tableSize = TableGestureRules.Adjust(
-                _tableSize, TableGestureRules.AxisForWheel(KeyboardState.Shift), notches);
-            AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, pos, _tableSize.Rows, _tableSize.Columns);
-            UpdateTableBadge(pos);
-            return true;
+            _lastPointerPos = pos;
+            return AdjustTable(TableGestureRules.AxisForWheel(shift), notches);
         }
 
         // 중재는 순수 표가 소유한다 (R7/SEL-5/WI-16). SEL-LIM-5 게이트만 여기 남는다.
@@ -434,6 +435,25 @@ public sealed class SurfaceInputController(
             return false;
         }
         CommitText();
+        return true;
+    }
+
+    /// <summary>
+    /// 표 드래그 중 행·열 조절의 Point-free 진입점 (25단계). 휠 어댑터와 방향키 어댑터가 모두 여기로 온다.
+    /// 반환값이 <c>e.Handled</c> 판정이다 — 표 드래그 중이 아니면 false(입력을 소비하지 않는다).
+    /// 드래그 중 행·열은 진행 중 값(<c>_tableSize</c>)이다 — AppState에는 CommitTable이 1회만 쓴다 (fix 57b043d):
+    /// 노치마다 쓰면 AppState.Changed가 z-밴드 재적용·전 서피스 ApplyState·설정 저장 예약을 매번 돌린다.
+    /// 시각물의 기준점은 마지막 포인터 위치다 — 휠은 호출 전에 그 값을 갱신하고, 방향키는 마지막 이동 위치를 쓴다.
+    /// </summary>
+    public bool AdjustTable(TableAxis axis, int delta)
+    {
+        if (_previewTable is null)
+        {
+            return false;
+        }
+        _tableSize = TableGestureRules.Adjust(_tableSize, axis, delta);
+        AnnotationVisualFactory.UpdateTableVisual(_previewTable, _tableStart, _lastPointerPos, _tableSize.Rows, _tableSize.Columns);
+        UpdateTableBadge(_lastPointerPos);
         return true;
     }
 
@@ -873,7 +893,8 @@ public sealed class SurfaceInputController(
             _tableBadgeText = null;
         }
 
-        if ((rawEnd - _tableStart).Length < 3)
+        // 임계는 도형과 같은 단일 상수(R2)를 **읽는다** — 리터럴 3을 다시 적으면 같은 양에 이름이 둘 생긴다 (1단계 교훈).
+        if (!ShapeGestureRules.ShouldCommit(_tableStart, rawEnd))
         {
             return;
         }

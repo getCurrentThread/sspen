@@ -13,15 +13,16 @@ namespace SSPen.Tests;
 /// 837853a/948b037이 넣은 표 경로는 이 파일 이전에는 컨트롤러 수준 증인이 없었다. 여기서는 <b>오늘의 동작</b>을
 /// 그대로 고정한다 — 3px 커밋 임계(도형과 같은 값, Today), 행·열 1..10 클램프, 미리보기 Path 1 + HUD 배지 Border 1,
 /// 취소 = 폐기(원장 항목 없음), 시작 시점 페이딩 스냅샷, 그리고 fix(표)가 정한 "행·열은 확정 시점에 1회만
-/// AppState에 쓴다". 뒤따르는 22~24단계(TableGestureRules·Wheel shift 인자·setTableBadge 이음매)는 이 파일이
+/// AppState에 쓴다". 뒤따르는 24~26단계(TableGestureRules·Wheel shift 인자·setTableBadge 이음매)는 이 파일이
 /// 초록인 채로 지나가야 한다.
 ///
 /// 정직한 표기:
-/// - <c>Wheel</c>의 표 분기는 아직 <c>KeyboardState.Shift</c>(GetAsyncKeyState)를 직접 읽는다 (D3 위반, 23단계가
-///   고친다). 그래서 이 파일은 Shift가 눌리지 않은 상태를 전제로 <b>행(rows)</b>만 단언한다 — 실행 중 Shift를 누르고
-///   있으면 열이 바뀌어 빨갛다. 23단계에서 <c>Wheel_ShiftDuringTableDrag_ChangesColumnsNotRows</c>가 붙는다.
-/// - <c>OnKeyDown</c>(방향키) 어댑터는 <c>KeyEventArgs</c>가 <c>PresentationSource</c>를 요구해 헤드리스로 구동할 수
-///   없다. 23단계의 Point-free 진입점 <c>AdjustTable</c>이 생긴 뒤 <c>AdjustTable_WithoutTableDrag_ReturnsFalse</c>로 붙는다.
+/// - 25단계부터 <c>Wheel(pos, notches, shift)</c>가 Shift를 인자로 받으므로(D3) 이 파일은 결정적이다 —
+///   <c>Wheel_ShiftDuringTableDrag_ChangesColumnsNotRows</c>가 열 경로를 덮는다.
+/// - <c>OnKeyDown</c>(방향키) 어댑터 자체는 <c>KeyEventArgs</c>가 <c>PresentationSource</c>를 요구해 헤드리스로 구동할 수
+///   없다. 그 본문은 25단계의 Point-free 진입점 <c>AdjustTable</c>이 소유하며 여기서 직접 구동한다 — 어댑터에 남은
+///   Key→축 매핑 4줄만 증인이 없다(리뷰 게이트). 그 어댑터는 서피스가 활성일 때만 도달한다(텍스트 커밋 직후 포커스가
+///   남은 채 툴바 휠로 표 도구를 고른 경로, F4 실측 판정).
 /// - 비인터랙티브 전환은 창(<c>ContentSurfaceWindow.ApplyState</c>)이 <c>CancelActiveInput</c>을 동기로 부르는 것이
 ///   계약이다. 창이 없는 이 하네스는 그 호출을 테스트가 대신 한다.
 /// - WPF Geometry 류는 MTA에서도 만들어지지만(2026-09-02 실측) 이 파일은 Canvas·Path·Border를 다루므로 STA다.
@@ -122,7 +123,7 @@ public class SurfaceTableGestureTests
             h.State.ActiveTool = ToolKind.Table;
 
             h.Controller.PointerDown(Start, shift: false);
-            Assert.True(h.Controller.Wheel(Far, +1));
+            Assert.True(h.Controller.Wheel(Far, +1, shift: false));
             h.Controller.PointerUp(Far, shift: false);
 
             var table = Assert.IsType<TableElement>(Assert.Single(h.Document.Elements));
@@ -140,7 +141,7 @@ public class SurfaceTableGestureTests
             h.State.ActiveTool = ToolKind.Table;
 
             h.Controller.PointerDown(Start, shift: false);
-            Assert.True(h.Controller.Wheel(Far, +20));
+            Assert.True(h.Controller.Wheel(Far, +20, shift: false));
             h.Controller.PointerUp(Far, shift: false);
 
             Assert.Equal(10, Assert.IsType<TableElement>(Assert.Single(h.Document.Elements)).Rows);
@@ -156,7 +157,7 @@ public class SurfaceTableGestureTests
             h.State.ActiveTool = ToolKind.Table;
 
             h.Controller.PointerDown(Start, shift: false);
-            Assert.True(h.Controller.Wheel(Far, -20));
+            Assert.True(h.Controller.Wheel(Far, -20, shift: false));
             h.Controller.PointerUp(Far, shift: false);
 
             Assert.Equal(1, Assert.IsType<TableElement>(Assert.Single(h.Document.Elements)).Rows);
@@ -178,8 +179,8 @@ public class SurfaceTableGestureTests
             h.State.Changed += () => changed++;
 
             h.Controller.PointerDown(Start, shift: false);
-            h.Controller.Wheel(Far, +1);
-            h.Controller.Wheel(Far, +1);
+            h.Controller.Wheel(Far, +1, shift: false);
+            h.Controller.Wheel(Far, +1, shift: false);
             Assert.Equal(0, changed);
             Assert.Equal(3, h.State.TableRows);
 
@@ -200,7 +201,7 @@ public class SurfaceTableGestureTests
             h.State.ActiveTool = ToolKind.Table;
 
             h.Controller.PointerDown(Start, shift: false);
-            h.Controller.Wheel(Far, +1);
+            h.Controller.Wheel(Far, +1, shift: false);
             h.Controller.PointerMove(Far, shift: false, leftPressed: true);
             h.Controller.CancelActiveInput();
 
@@ -232,7 +233,7 @@ public class SurfaceTableGestureTests
             Assert.False(h.State.IsInteractive);
             h.Controller.CancelActiveInput();
 
-            Assert.False(h.Controller.Wheel(Far, +1));
+            Assert.False(h.Controller.Wheel(Far, +1, shift: false));
             Assert.Empty(h.Canvas.Children);
             Assert.Empty(h.Document.Elements);
         });
@@ -270,10 +271,81 @@ public class SurfaceTableGestureTests
             h.Controller.PointerDown(Start, shift: false);
             h.Controller.PointerMove(new Point(40, 40), shift: false, leftPressed: true);
             h.Controller.PointerMove(Far, shift: false, leftPressed: true);
-            h.Controller.Wheel(Far, +1);
+            h.Controller.Wheel(Far, +1, shift: false);
 
             Assert.Single(h.Canvas.Children.OfType<Path>());
             Assert.Single(h.Canvas.Children.OfType<Border>());
+        });
+    }
+
+    // ---- 25단계: Wheel shift 인자 (D3) + Point-free AdjustTable ----
+
+    [Fact]
+    public void Wheel_ShiftDuringTableDrag_ChangesColumnsNotRows()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            h.State.ActiveTool = ToolKind.Table;
+
+            h.Controller.PointerDown(Start, shift: false);
+            Assert.True(h.Controller.Wheel(Far, +2, shift: true));
+            h.Controller.PointerUp(Far, shift: false);
+
+            var table = Assert.IsType<TableElement>(Assert.Single(h.Document.Elements));
+            Assert.Equal(3, table.Rows);
+            Assert.Equal(5, table.Columns);
+        });
+    }
+
+    [Fact]
+    public void AdjustTable_WithoutTableDrag_ReturnsFalse()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            h.State.ActiveTool = ToolKind.Table;
+
+            Assert.False(h.Controller.AdjustTable(TableAxis.Rows, +1));
+            Assert.Empty(h.Canvas.Children);
+            Assert.Equal(3, h.State.TableRows);
+        });
+    }
+
+    [Fact]
+    public void AdjustTable_DuringTableDrag_MovesOnlyThatAxis_AndCommitCarriesIt()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            h.State.ActiveTool = ToolKind.Table;
+
+            h.Controller.PointerDown(Start, shift: false);
+            Assert.True(h.Controller.AdjustTable(TableAxis.Columns, -1));
+            Assert.True(h.Controller.AdjustTable(TableAxis.Rows, +3));
+            h.Controller.PointerUp(Far, shift: false);
+
+            var table = Assert.IsType<TableElement>(Assert.Single(h.Document.Elements));
+            Assert.Equal(6, table.Rows);
+            Assert.Equal(2, table.Columns);
+        });
+    }
+
+    /// <summary>표 분기가 라우터(WI-16 굵기 조절)보다 앞에서 선점한다 — 표 드래그 중 휠은 굵기를 건드리지 않는다.</summary>
+    [Fact]
+    public void Wheel_DuringTableDrag_DoesNotReachRouter_ThicknessUnchanged()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            h.State.ActiveTool = ToolKind.Table;
+            h.State.WheelAdjustsPenSize = true;
+            var before = h.State.ThicknessOf(ToolStyleGroup.Shape);
+
+            h.Controller.PointerDown(Start, shift: false);
+            Assert.True(h.Controller.Wheel(Far, +1, shift: false));
+
+            Assert.Equal(before, h.State.ThicknessOf(ToolStyleGroup.Shape));
         });
     }
 

@@ -121,7 +121,7 @@ public class SurfaceEntryPointTests
             var before = h.State.Thickness;
             h.State.SurfacesVisible = false;
 
-            Assert.False(h.Controller.Wheel(new Point(10, 10), notches: +1));
+            Assert.False(h.Controller.Wheel(new Point(10, 10), notches: +1, shift: false));
             Assert.Equal(before, h.State.Thickness);
         });
     }
@@ -137,7 +137,7 @@ public class SurfaceEntryPointTests
             h.Controller.PointerDown(new Point(500, 500), shift: false);
 
             // 드래그 중 휠은 삼키기만 한다 — 두 세션이 같은 요소를 잡지 못하게 (R7).
-            Assert.True(h.Controller.Wheel(new Point(500, 500), notches: +1));
+            Assert.True(h.Controller.Wheel(new Point(500, 500), notches: +1, shift: false));
             Assert.Empty(h.Commits);
         });
     }
@@ -155,7 +155,7 @@ public class SurfaceEntryPointTests
             h.Selection.Set([mine, theirs]); // 이 서피스는 둘 중 하나만 소유한다
 
             // SEL-LIM-5: 모니터에 걸친 선택은 확대하지 않고 휠을 통과시킨다.
-            Assert.False(h.Controller.Wheel(new Point(25, 25), notches: +1));
+            Assert.False(h.Controller.Wheel(new Point(25, 25), notches: +1, shift: false));
             Assert.Equal(new ElementTransformState(1, 1, 0, default), mine.TransformState);
         });
     }
@@ -170,7 +170,7 @@ public class SurfaceEntryPointTests
             h.State.WheelAdjustsPenSize = false;
             var before = h.State.Thickness;
 
-            Assert.False(h.Controller.Wheel(new Point(10, 10), notches: +1));
+            Assert.False(h.Controller.Wheel(new Point(10, 10), notches: +1, shift: false));
             Assert.Equal(before, h.State.Thickness);
         });
     }
@@ -185,7 +185,7 @@ public class SurfaceEntryPointTests
             h.State.WheelAdjustsPenSize = true;
             h.State.Thickness = ThicknessStep.Small;
 
-            Assert.True(h.Controller.Wheel(new Point(10, 10), notches: +1));
+            Assert.True(h.Controller.Wheel(new Point(10, 10), notches: +1, shift: false));
             Assert.Equal(ThicknessStep.Medium, h.State.Thickness);
         });
     }

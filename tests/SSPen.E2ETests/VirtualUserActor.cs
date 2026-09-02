@@ -177,11 +177,19 @@ public sealed class VirtualUserActor
         return this;
     }
 
-    /// <summary>마우스 휠 스케일링 시뮬레이션.</summary>
-    public VirtualUserActor Wheel(Point pos, int notches, int monitorIndex = 1)
+    /// <summary>마우스 휠 시뮬레이션 (선택 확대/축소, 굵기, 표 드래그 중 행·열). <paramref name="shift"/>는 D3대로 인자로 흘린다.</summary>
+    public VirtualUserActor Wheel(Point pos, int notches, int monitorIndex = 1, bool shift = false)
     {
         var input = Surface(monitorIndex).Input;
-        input.Wheel(pos, notches);
+        input.Wheel(pos, notches, shift);
+        Pump();
+        return this;
+    }
+
+    /// <summary>표 드래그 중 행·열 조절 — 방향키 어댑터의 본문인 Point-free 진입점을 직접 부른다 (25단계).</summary>
+    public VirtualUserActor AdjustTable(TableAxis axis, int delta, int monitorIndex = 1)
+    {
+        Surface(monitorIndex).Input.AdjustTable(axis, delta);
         Pump();
         return this;
     }

@@ -301,7 +301,7 @@ public class WheelScaleControllerTests
             h.State.ActiveTool = ToolKind.Select;
             h.Selection.Set([a]);
 
-            Assert.True(h.Controller.Wheel(new Point(110, 110), notches: +3));
+            Assert.True(h.Controller.Wheel(new Point(110, 110), notches: +3, shift: false));
             double scaled = a.TransformState.ScaleX;
             Assert.True(scaled > 1);
 
@@ -336,7 +336,7 @@ public class WheelScaleControllerTests
             h.State.ActiveTool = ToolKind.Select;
             h.Selection.Set([a]);
 
-            Assert.True(h.Controller.Wheel(new Point(110, 110), notches: +3));
+            Assert.True(h.Controller.Wheel(new Point(110, 110), notches: +3, shift: false));
             Assert.Equal(0, h.Ledger.Count);
 
             h.Controller.CancelActiveInput();
