@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows.Threading;
 using SSPen.Diagnostics;
 using SSPen.Interop;
@@ -18,11 +19,12 @@ public sealed class CaptureSessionController
     private readonly Func<bool> _toolbarVisible;
     private readonly Action<bool> _setToolbarVisible;
     private readonly Func<PinManager?> _pins;
-    private readonly Action<string> _warn;
+    private readonly Action<CaptureOutcome> _report;
     private readonly Func<string?> _saveFolder;
     private readonly Action _applyZBand;
     private readonly Action<bool> _setDecorationsVisible;
     private readonly Action<bool> _setSurfacesSuspended;
+    private readonly Action<bool> _setToastSuspended;
 
     private CaptureOverlayWindow? _captureOverlay;
     private bool _captureSessionActive;
@@ -33,21 +35,23 @@ public sealed class CaptureSessionController
         Func<bool> toolbarVisible,
         Action<bool> setToolbarVisible,
         Func<PinManager?> pins,
-        Action<string> warn,
+        Action<CaptureOutcome> report,
         Func<string?> saveFolder,
         Action applyZBand,
         Action<bool> setDecorationsVisible,
-        Action<bool> setSurfacesSuspended)
+        Action<bool> setSurfacesSuspended,
+        Action<bool> setToastSuspended)
     {
         _dispatcher = dispatcher;
         _toolbarVisible = toolbarVisible;
         _setToolbarVisible = setToolbarVisible;
         _pins = pins;
-        _warn = warn;
+        _report = report;
         _saveFolder = saveFolder;
         _applyZBand = applyZBand;
         _setDecorationsVisible = setDecorationsVisible;
         _setSurfacesSuspended = setSurfacesSuspended;
+        _setToastSuspended = setToastSuspended;
     }
 
     /// <summary>캡처 세션 진행 중 여부 (툴바 토글 가드 등에서 참조).</summary>
@@ -87,6 +91,8 @@ public sealed class CaptureSessionController
         // 서피스 창 자체를 숨기면 잉크까지 사라져 as-seen 인텐트가 깨지므로 장식 레이어만 숨긴다.
         _setDecorationsVisible(false);
         _setSurfacesSuspended(true);
+        // 토스트도 장식과 같은 이유로 숨긴다: 잉크가 아니라 UI라 결과물에 찍히면 안 된다 (SEL-17과 동일 논거).
+        _setToastSuspended(true);
 
         // 숨김이 다음 합성에 반영된 뒤 BitBlt (ARCH-4: DWM 경합 제거).
         _dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () =>
@@ -117,35 +123,62 @@ public sealed class CaptureSessionController
         System.Windows.Media.Imaging.BitmapSource snapshot,
         PhysicalRect virtualScreen)
     {
+        var outcome = CaptureOutcomeRules.Decide(action, region.IsEmpty, succeeded: true);
         try
         {
             if (action != CaptureAction.Cancel && !region.IsEmpty)
             {
                 var cropped = CaptureService.Crop(snapshot, region, virtualScreen);
-                switch (action)
-                {
-                    case CaptureAction.Copy:
-                        if (!CaptureOutputs.CopyToClipboard(cropped))
-                        {
-                            // 클리너 B1: 실패를 로그에만 두지 않고 사용자에게 알린다 (잠금 문자열).
-                            _warn(Strings.ClipboardCopyFailed);
-                        }
-                        break;
-                    case CaptureAction.Save:
-                        var folder = _saveFolder();
-                        CaptureOutputs.SavePng(cropped, string.IsNullOrEmpty(folder) ? null : folder);
-                        break;
-                    case CaptureAction.Pin:
-                        _pins()?.CreatePin(cropped, region);
-                        break;
-                }
+                outcome = Perform(action, region, cropped);
             }
         }
         finally
         {
             EndCaptureSession();
         }
-        Log.Info($"캡처 세션 종료: {action} {region}");
+        // 알림은 세션 정리 **뒤**에 낸다: 토스트는 z-밴드 멤버이고 EndCaptureSession이 재적용을 돌리므로,
+        // 앞에서 띄우면 오버레이가 사라지는 순간 밴드가 다시 계산되며 위치·순서가 한 프레임 흔들린다.
+        _report(outcome);
+        Log.Info($"캡처 세션 종료: {action} {region} → {outcome.Message}");
+    }
+
+    /// <summary>
+    /// 선택 결과물 처리. 판정은 <see cref="CaptureOutcomeRules"/>가 소유하고, 여기는 실행과 예외 포착만 한다.
+    ///
+    /// 저장 예외를 <b>여기서</b> 잡아야 하는 이유: 이전에는 <c>try/finally</c>에 catch가 없어
+    /// 읽기 전용 폴더·디스크 가득·분리된 드라이브가 그대로 <c>DispatcherUnhandledException</c>까지 올라가
+    /// "예기치 않은 오류가 발생했습니다"라는 일반 대화상자로 끝났다 — 어떤 조작이 실패했는지도, 이미지가
+    /// 사라졌다는 사실도 알 수 없었다. 좁은 예외만 잡는다 (프로그래밍 오류는 계속 위로 던진다).
+    /// </summary>
+    private CaptureOutcome Perform(CaptureAction action, PhysicalRect region, System.Windows.Media.Imaging.BitmapSource cropped)
+    {
+        switch (action)
+        {
+            case CaptureAction.Copy:
+                bool copied = CaptureOutputs.CopyToClipboard(cropped);
+                return CaptureOutcomeRules.Decide(action, regionEmpty: false, succeeded: copied);
+
+            case CaptureAction.Save:
+                var folder = _saveFolder();
+                try
+                {
+                    string path = CaptureOutputs.SavePng(cropped, string.IsNullOrEmpty(folder) ? null : folder);
+                    return CaptureOutcomeRules.Decide(action, regionEmpty: false, succeeded: true, savedPath: path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException)
+                {
+                    Log.Error("캡처 저장 실패", ex);
+                    return CaptureOutcomeRules.Decide(action, regionEmpty: false, succeeded: false, failure: ex);
+                }
+
+            case CaptureAction.Pin:
+                var pins = _pins();
+                pins?.CreatePin(cropped, region);
+                return CaptureOutcomeRules.Decide(action, regionEmpty: false, succeeded: pins is not null);
+
+            default:
+                return CaptureOutcomeRules.Decide(action, regionEmpty: false, succeeded: true);
+        }
     }
 
     /// <summary>
@@ -200,6 +233,7 @@ public sealed class CaptureSessionController
         // 핸들이 안 보여 조작할 수 없는 상태가 된다.
         _setDecorationsVisible(true);
         _setSurfacesSuspended(false);
+        _setToastSuspended(false);
         Log.Info("캡처 세션 정리: 선택 장식 및 서피스 입력 복원");
         _applyZBand();
         ActiveChanged?.Invoke();

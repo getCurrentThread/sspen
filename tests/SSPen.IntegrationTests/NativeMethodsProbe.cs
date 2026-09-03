@@ -30,6 +30,10 @@ internal static class NativeMethodsProbe
     private const uint GwChild = 5;
     private const uint GwHwndNext = 2;
 
+    /// <summary>exstyle 리드백 상수 (앱 NativeMethods와 같은 값을 테스트 쪽에서 따로 든다 — 프로브 원칙).</summary>
+    internal const long WsExNoActivate = 0x08000000;
+    internal const long WsExToolWindow = 0x00000080;
+
     /// <summary>z-순서상 <paramref name="upper"/>가 <paramref name="lower"/>보다 위인가.</summary>
     internal static bool IsAbove(nint upper, nint lower)
     {

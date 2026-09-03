@@ -129,6 +129,37 @@ public static class Strings
     public const string UpdateChecking = "업데이트를 확인하는 중...";
     public const string TrayCheckUpdate = "업데이트 확인";
 
+    // 캡처 결과 알림 (토스트). 이전에는 저장·복사 성공이 전부 침묵이었고 실패는 일반 치명적 대화상자로 샜다.
+    public const string CaptureSaved = "캡처를 저장했습니다";
+    public const string CaptureSaveFailed = "캡처를 저장하지 못했습니다. 저장 폴더의 권한과 남은 공간을 확인하세요.";
+    public const string CaptureCopied = "캡처를 클립보드에 복사했습니다";
+    public const string CapturePinned = "캡처를 화면에 고정했습니다";
+    public const string CapturePinFailed = "캡처를 화면에 고정하지 못했습니다.";
+    public const string OpenFolder = "폴더 열기";
+
+    /// <summary>저장 성공 토스트의 둘째 줄: 파일 이름만 보여 준다 (전체 경로는 토스트 폭을 넘긴다).</summary>
+    public static string CaptureSavedDetail(string fileName) => $"{CaptureSaved}: {fileName}";
+
+    // 파괴적 조작 확인·결과 (AC-19)
+    public const string ClearAllConfirmTitle = "전체 지우기";
+    public const string ClearAllDone = "판서를 지웠습니다";
+    public const string UndoNothing = "되돌릴 조작이 없습니다";
+
+    /// <summary>핀은 실행취소 대상이 아니므로(원장은 판서 문서만 다룬다) 개수를 밝혀 확인을 받는다.</summary>
+    public static string ClearAllConfirm(int pinCount) =>
+        $"판서를 모두 지우고 고정된 캡처 {pinCount}개를 닫습니다.\n고정된 캡처는 실행 취소로 되돌릴 수 없습니다.\n계속할까요?";
+
+    /// <summary>실행취소 조합키를 함께 알린다 — 지운 직후가 되돌리는 법을 알려 줄 유일한 시점이다.</summary>
+    public static string ClearAllDoneWithUndo(string undoCombo) => $"{ClearAllDone} (되돌리기: {undoCombo})";
+
+    // 설정 창 진단
+    /// <summary>단축키 충돌: 어느 항목이 이미 쓰고 있는지 이름으로 알린다.</summary>
+    public static string HotkeyAlreadyUsed(string name) => $"이미 \"{name}\"에 지정된 단축키입니다.";
+
+    /// <summary>판서 화면을 모두 해제하면 첫 화면을 되살린다 — 조용히 되돌리면 사용자는 설정이 무시됐다고 읽는다.</summary>
+    public static string MonitorRestored(string deviceName) =>
+        $"판서 화면을 최소 하나는 켜 두어야 해서 {deviceName}을(를) 다시 켰습니다.";
+
     // 진단/경고 (한국어 전용 제약)
     public const string HotkeyConflictWarning = "다음 단축키를 등록하지 못했습니다 (다른 앱과 충돌): ";
     public const string ClipboardCopyFailed = "클립보드 복사에 실패했습니다. 잠시 후 다시 시도하세요.";

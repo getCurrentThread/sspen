@@ -41,6 +41,10 @@ public sealed class AppController : IShellActions, ISettingsHost
     private PinManager? _pins;
     private readonly RenderTickController _renderTick;
     private readonly LedgerCommands _commands;
+    // 토스트는 시동에서 한 번 만들어 프로세스 수명 내내 살아 있다 — 그래야 z-밴드 호출 지점이 늘지 않는다
+    // (AGENTS L14; ToastWindow 문서 참조). 다른 창들과 마찬가지로 생성은 Start()다: 생성자에서 Window를
+    // 만들면 합성 루트를 STA 밖에서 세우는 테스트가 무너진다.
+    private ToastHost? _toasts;
 
     public AppController(SettingsService? settingsService = null)
     {
@@ -84,7 +88,7 @@ public sealed class AppController : IShellActions, ISettingsHost
                 }
             },
             pins: () => _pins,
-            warn: message => _tray?.ShowWarning(message),
+            report: ReportCaptureOutcome,
             saveFolder: () => _settingsBinder.Settings.SaveFolder,
             applyZBand: ApplyZBand,
             setDecorationsVisible: visible =>
@@ -100,7 +104,8 @@ public sealed class AppController : IShellActions, ISettingsHost
                 {
                     surface.SetSuspended(suspended);
                 }
-            });
+            },
+            setToastSuspended: suspended => _toasts?.SetSuspended(suspended));
     }
 
     public void Start()
@@ -131,6 +136,11 @@ public sealed class AppController : IShellActions, ISettingsHost
         {
             CreateSurface(monitor);
         }
+
+        // 토스트: 서피스보다 먼저, 툴바보다 앞서 HWND를 확보한다 — 이후의 모든 ApplyZBand가
+        // 토스트를 이미 포함하므로 알림을 낼 때마다 밴드를 다시 적용할 필요가 없다.
+        _toasts = new ToastHost(_dispatcher);
+        _toasts.Prepare();
 
         // 툴바: 저장된 위치 복원 (AC-21), 없으면 주 모니터 우측 기본값.
         _toolbar = new ToolbarWindow(_state, this);
@@ -231,6 +241,7 @@ public sealed class AppController : IShellActions, ISettingsHost
         }
         _surfaces.Clear();
         _toolbar?.Close();
+        _toasts?.Close();
     }
 
     public void ExitApp()
@@ -421,6 +432,53 @@ public sealed class AppController : IShellActions, ISettingsHost
     /// <summary>Alt+Shift+S 캡처 세션 (WI-11) — CaptureSessionController에 위임.</summary>
     public void StartCapture() => _capture.StartCapture();
 
+    /// <summary>
+    /// 캡처 결과를 사용자에게 알린다 — 판정은 <see cref="CaptureOutcomeRules"/>, 표시는 <see cref="ToastHost"/>,
+    /// 문구는 <see cref="Strings"/>가 각각 소유하고 여기는 셋을 잇는 배선뿐이다.
+    /// </summary>
+    private void ReportCaptureOutcome(CaptureOutcome outcome)
+    {
+        if (outcome.Message == CaptureMessageId.None || _toasts is null)
+        {
+            return;
+        }
+        string text = outcome.Message switch
+        {
+            CaptureMessageId.Saved => outcome.Path is { } path
+                ? Strings.CaptureSavedDetail(System.IO.Path.GetFileName(path))
+                : Strings.CaptureSaved,
+            CaptureMessageId.SaveFailed => Strings.CaptureSaveFailed,
+            CaptureMessageId.Copied => Strings.CaptureCopied,
+            CaptureMessageId.CopyFailed => Strings.ClipboardCopyFailed,
+            CaptureMessageId.Pinned => Strings.CapturePinned,
+            CaptureMessageId.PinFailed => Strings.CapturePinFailed,
+            _ => string.Empty,
+        };
+        Action? open = outcome.OfferOpenFolder && outcome.Path is { } saved
+            ? () => RevealInExplorer(saved)
+            : null;
+        _toasts.Show(new ToastRequest(
+            outcome.Kind, text, open is null ? null : Strings.OpenFolder, open));
+    }
+
+    /// <summary>저장한 파일을 탐색기에서 선택된 상태로 연다. 실패해도 알림 자체를 잃지 않는다.</summary>
+    private static void RevealInExplorer(string path)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{path}\"",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"탐색기 열기 실패: {ex.Message}");
+        }
+    }
+
     /// <summary>설정 창 (WI-16). 단일 인스턴스로 열림.</summary>
     public void OpenSettings()
     {
@@ -460,6 +518,7 @@ public sealed class AppController : IShellActions, ISettingsHost
     /// <summary>순서 정책은 <see cref="ZBandOrder"/>가, 적용 시점은 이 클래스의 호출 지점들이 소유한다 (33단계).</summary>
     private void ApplyZBand() =>
         WindowStyling.ApplyZBand(ZBandOrder.Build(
+            _toasts?.Hwnd ?? 0,
             _settingsWindow?.Hwnd ?? 0,
             _capture.OverlayHwnd,
             _toolbar?.Hwnd ?? 0,
