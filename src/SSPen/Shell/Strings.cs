@@ -67,6 +67,9 @@ public static class Strings
     public const string CapturePin = "핀 고정";
     public const string CaptureCancel = "취소";
 
+    /// <summary>기본 동작 배지: 바깥 클릭·Enter가 어느 버튼과 같은 결과인지 보이게 한다.</summary>
+    public const string CaptureDefaultBadge = "기본";
+
     // 설정 창
     public const string SettingsGeneral = "일반";
     public const string SettingsRunAtLogin = "윈도우 로그인 시 시작";

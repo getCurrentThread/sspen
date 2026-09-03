@@ -34,7 +34,11 @@ public sealed class CaptureOverlayWindow : Window
     private Point _dragStart;
     private bool _dragging;
     private bool _committed;
+    private bool _barVisibleOnPress;
     private Rect _selection = Rect.Empty;
+
+    /// <summary>도구모음이 떠 있는 동안의 확정 선택. 제자리 클릭으로 기본 동작을 낼 때 되살린다.</summary>
+    private Rect _committedSelection = Rect.Empty;
 
     public CaptureOverlayWindow(
         BitmapSource snapshot,
@@ -122,19 +126,16 @@ public sealed class CaptureOverlayWindow : Window
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
-        if (_actionBar.Visibility == Visibility.Visible)
+        // 도구모음 안을 눌렀으면 그 버튼의 핸들러가 처리한다 (여기선 손대지 않는다).
+        if (_actionBar.Visibility == Visibility.Visible && IsInsideActionBar(e.OriginalSource as DependencyObject))
         {
-            // 도구모음 안을 눌렀으면 그 버튼의 핸들러가 처리한다 (여기선 손대지 않는다).
-            if (IsInsideActionBar(e.OriginalSource as DependencyObject))
-            {
-                return;
-            }
-            // 그 밖 아무 곳이나 누르면 기본 동작 = 핀 고정 (사용자 요청 15차).
-            // 선택 영역 안을 눌러도, 밖을 눌러도 동일하게 핀으로 끝난다.
-            e.Handled = true;
-            Complete(CaptureAction.Pin);
             return;
         }
+        // 밖을 눌렀을 때의 판정은 **놓는 순간**에 한다: 제자리 클릭이면 기본 동작(핀),
+        // 끌었으면 다시 고르는 것이다. 예전에는 누르는 즉시 핀으로 확정해, 영역을 잘못 잡아
+        // 다시 끌려던 사용자가 원치 않는 핀 창을 얻었다 (CaptureOverlayRules 참조).
+        _barVisibleOnPress = _actionBar.Visibility == Visibility.Visible;
+        _actionBar.Visibility = Visibility.Collapsed;
         _dragStart = e.GetPosition(_canvas);
         _dragging = true;
         _committed = false;
@@ -166,14 +167,29 @@ public sealed class CaptureOverlayWindow : Window
         }
         _dragging = false;
         ReleaseMouseCapture();
-        _sizeReadout.Visibility = Visibility.Collapsed;
+
+        var released = e.GetPosition(_canvas);
+        double moved = Math.Max(Math.Abs(released.X - _dragStart.X), Math.Abs(released.Y - _dragStart.Y));
+        var verdict = CaptureOverlayRules.PointerVerdict(_barVisibleOnPress, insideBar: false, moved);
+        _barVisibleOnPress = false;
+        if (verdict == CapturePointerVerdict.CommitDefault)
+        {
+            // 확정한 선택을 되살려 그대로 기본 동작으로 끝낸다 (사용자 요청 15차).
+            _selection = _committedSelection;
+            Complete(CaptureOverlayRules.DefaultAction);
+            return;
+        }
 
         if (_selection.Width < 4 || _selection.Height < 4)
         {
             _selection = Rect.Empty;
+            _sizeReadout.Visibility = Visibility.Collapsed;
             UpdateSelectionVisual();
             return; // 너무 작은 드래그는 무시하고 다시 선택.
         }
+        // 크기 표시는 놓은 뒤에도 남긴다 — 어느 버튼을 누를지 고르는 동안 픽셀 크기가 사라지면
+        // 그 값을 확인하려고 처음부터 다시 끌어야 했다.
+        _committedSelection = _selection;
         ShowActionBar();
     }
 
@@ -217,18 +233,45 @@ public sealed class CaptureOverlayWindow : Window
         };
     }
 
+    /// <summary>
+    /// 실제 <see cref="Button"/>이다 (예전에는 <c>Border</c>였다). 그래서 탭 순서·Enter/Space·포커스 링이
+    /// 공짜로 따라온다 — 이전에는 오버레이 전체에서 키보드로 할 수 있는 일이 Esc뿐이었다.
+    /// 기본 동작에는 "기본" 배지를 달아 어느 버튼이 바깥 클릭·Enter와 같은 결과인지 보이게 한다.
+    /// </summary>
     private UIElement ActionButton(string label, CaptureAction action)
     {
-        var button = new Border
+        var content = new StackPanel { Orientation = Orientation.Horizontal };
+        content.Children.Add(new TextBlock { Text = label, Foreground = Brushes.White, FontSize = 13 });
+        if (action == CaptureOverlayRules.DefaultAction)
         {
+            content.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(ToolbarTheme.AccentColor),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(4, 0, 4, 0),
+                Margin = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock
+                {
+                    Text = Strings.CaptureDefaultBadge,
+                    Foreground = Brushes.White,
+                    FontSize = 10,
+                },
+            });
+        }
+
+        var button = new Button
+        {
+            Content = content,
             Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Foreground = Brushes.White,
             Padding = new Thickness(10, 6, 10, 6),
-            Child = new TextBlock { Text = label, Foreground = Brushes.White, FontSize = 13 },
+            Cursor = Cursors.Arrow,
+            IsDefault = action == CaptureOverlayRules.DefaultAction,
+            IsCancel = action == CaptureAction.Cancel,
         };
-        button.MouseEnter += (_, _) => button.Background =
-            new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
-        button.MouseLeave += (_, _) => button.Background = Brushes.Transparent;
-        button.MouseLeftButtonUp += (_, e) =>
+        button.Click += (_, e) =>
         {
             e.Handled = true;
             Complete(action);
