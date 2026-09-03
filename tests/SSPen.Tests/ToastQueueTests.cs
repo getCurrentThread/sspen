@@ -165,6 +165,51 @@ public class ToastQueueTests
         Assert.True(queue.Tick(clock()).StopTimer);
     }
 
+    // ---- 상태 리드아웃(Transient): 사건 보고와 달리 시간이 지나면 값이 아니라 거짓이 된다 ----
+
+    /// <summary>
+    /// 휠 열 노치가 열 개의 문구를 만들면 순서대로 26초를 재생하게 된다 — 그 중 옳은 것은 마지막
+    /// 하나뿐이다. 리드아웃은 줄을 서지 않고 표시 중인 것을 갈아 끼운다.
+    /// </summary>
+    [Fact]
+    public void Push_TransientBurst_KeepsOnlyTheLastState()
+    {
+        var (queue, clock) = Make(out _);
+
+        foreach (string text in new[] { "펜", "형광펜", "지우개" })
+        {
+            queue.Push(new ToastRequest(ToastKind.Info, text, Transient: true));
+        }
+
+        Assert.Equal("지우개", queue.Tick(clock()).Text);
+        // 표시 중인 하나가 끝나면 뒤에 아무것도 없다 (대기열에 쌓이지 않았다).
+        Assert.False(queue.Tick(clock().AddSeconds(3)).Visible);
+    }
+
+    /// <summary>오류를 밀어내고 "펜 · 굵기 3/5"가 뜨면 사용자는 실패를 못 본다.</summary>
+    [Fact]
+    public void Push_TransientWhileMoreSevereVisible_IsDropped()
+    {
+        var (queue, clock) = Make(out _);
+        queue.Push(new ToastRequest(ToastKind.Error, "저장하지 못했습니다"));
+
+        queue.Push(new ToastRequest(ToastKind.Info, "펜", Transient: true));
+
+        Assert.Equal("저장하지 못했습니다", queue.Tick(clock()).Text);
+    }
+
+    /// <summary>액션이 달린 토스트를 밀어내면 누를 기회를 뺏는 것이다 (예: "폴더 열기").</summary>
+    [Fact]
+    public void Push_TransientWhileActionableVisible_IsDropped()
+    {
+        var (queue, clock) = Make(out _);
+        queue.Push(new ToastRequest(ToastKind.Info, "저장했습니다", ActionLabel: "폴더 열기"));
+
+        queue.Push(new ToastRequest(ToastKind.Info, "펜", Transient: true));
+
+        Assert.Equal("저장했습니다", queue.Tick(clock()).Text);
+    }
+
     /// <summary>오늘 값 고정: 정보 2.6초 / 경고 4.5초 / 오류 6초. 바꾸려면 이 줄과 코어 주석을 함께 바꾼다.</summary>
     [Fact]
     public void DwellFor_IsLongerForMoreSevereKinds()

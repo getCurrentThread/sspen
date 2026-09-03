@@ -44,6 +44,8 @@ public class ToolbarStripBuilderTests
             FadingSeconds = seconds;
             Calls.Add($"fading:{seconds}");
         }
+
+        public void ShowStatusReadout() => Calls.Add("status");
     }
 
     private sealed record Strip(UIElement Host, ToolbarParts Parts, FakeShellActions Actions, AppState State, ToolbarFlyouts Flyouts);

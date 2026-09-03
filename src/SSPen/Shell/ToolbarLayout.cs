@@ -91,7 +91,9 @@ public static class ToolbarLayout
         // 그룹 2: 그리기 도구 (도형·펜·형광펜은 각자 그룹 색 배지, 플라이아웃 어포던스 삼각형).
         new ToolbarButtonEntry(
             ToolbarButtonId.Shapes, Strings.Shapes, Icons.Shapes,
-            Flyout: ToolbarFlyoutKind.Shapes, BadgeGroup: ToolStyleGroup.Shape, HotkeyId: null, Wheel: ToolbarWheel.ShapeCycle),
+            // "shape-cycle"은 테이블의 id가 아니라 합성 라벨이다 (선례: 미리보기의 "thickness-pair") —
+            // ShellHotkeys.HotkeyLabel이 ShapeCycle 순서대로 다섯 도형의 조합을 한 줄로 접는다.
+            Flyout: ToolbarFlyoutKind.Shapes, BadgeGroup: ToolStyleGroup.Shape, HotkeyId: "shape-cycle", Wheel: ToolbarWheel.ShapeCycle),
 
         // 펜 그룹 버튼 (사용자 조타: 펜·형광펜·텍스트를 한 그룹으로 — Epic Pen 펜+A 플라이아웃 대응).
         new ToolbarButtonEntry(

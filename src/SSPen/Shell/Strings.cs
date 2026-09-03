@@ -59,6 +59,9 @@ public static class Strings
     public const string TrayEnable = "판서 켜기";
     public const string TrayDisable = "판서 끄기";
     public const string TraySettings = "설정";
+
+    /// <summary>Alt+Shift+0으로 툴바를 숨기면 툴바 자신은 복귀 경로가 아니다 — 트레이가 유일한 발견 가능한 길이다.</summary>
+    public const string TrayShowToolbar = "툴바 보이기";
     public const string TrayExit = "종료";
 
     // 캡처 도구모음
@@ -162,6 +165,13 @@ public static class Strings
 
     /// <summary>실행취소 조합키를 함께 알린다 — 지운 직후가 되돌리는 법을 알려 줄 유일한 시점이다.</summary>
     public static string ClearAllDoneWithUndo(string undoCombo) => $"{ClearAllDone} (되돌리기: {undoCombo})";
+
+    // 상태 리드아웃 (AC-20): 도구·굵기·색은 툴바 스트립에만 인코딩돼 있어 툴바를 숨기거나
+    // 휠로 조용히 바뀌면 확인할 방법이 없었다. 1단계 토스트로 띄운다 — 새 창이 아니다.
+    public const string StatusNoTool = "도구 없음";
+
+    /// <summary>굵기 단계 표기: "굵기 3/5". 이름(작게·보통·크게)은 5단계에 대응되지 않아 번호를 쓴다.</summary>
+    public static string StatusThickness(int step, int count) => $"{Thickness} {step}/{count}";
 
     // 설정 창 진단
     /// <summary>단축키 충돌: 어느 항목이 이미 쓰고 있는지 이름으로 알린다.</summary>

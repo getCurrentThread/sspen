@@ -230,6 +230,8 @@ public static class ToolbarStripBuilder
             button.MouseWheel += (_, e) =>
             {
                 state.ActiveTool = ToolbarStateMap.NextInCycle(cycle, state.ActiveTool, e.Delta);
+                // 그룹 버튼은 하위 도구가 바뀌어도 같은 칸이 켜져 있고 플라이아웃 항목에도 선택 표시가 없다.
+                actions.ShowStatusReadout();
                 e.Handled = true;
             };
 
@@ -264,6 +266,8 @@ public static class ToolbarStripBuilder
                                 double nextSec = FadingDurations.StepByWheel(actions.FadingSeconds, e.Delta);
                                 actions.SetFadingDuration(nextSec);
                                 flyouts.HighlightFadingSelection();
+                                // 플라이아웃이 아직 열리지 않았다면(호버 지연) 강조는 아무 데도 보이지 않는다.
+                                actions.ShowStatusReadout();
                                 e.Handled = true;
                             };
                             break;

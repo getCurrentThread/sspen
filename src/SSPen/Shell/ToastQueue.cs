@@ -12,12 +12,16 @@ public enum ToastKind
 /// 토스트 한 건의 요청. <c>ActionLabel</c>이 있으면 클릭 가능한 토스트가 된다 (예: "폴더 열기").
 /// <c>OnAction</c>은 그 라벨을 눌렀을 때의 동작으로, <b>병합 판정에는 들어가지 않는다</b> —
 /// 같은 문구는 같은 알림이며 어느 쪽 델리게이트가 남든 동작이 같기 때문이다.
+///
+/// <c>Transient</c>는 <b>현재 상태를 읽어 주는</b> 알림이다(상태 리드아웃). 사건 보고와 달리 시간이 지나면
+/// 값이 아니라 <b>거짓</b>이 되므로 절대 줄을 서지 않는다 — 휠을 열 번 굴리면 열 번째 상태 하나만 옳다.
 /// </summary>
 public readonly record struct ToastRequest(
     ToastKind Kind,
     string Text,
     string? ActionLabel = null,
-    Action? OnAction = null);
+    Action? OnAction = null,
+    bool Transient = false);
 
 /// <summary>
 /// 한 틱의 표시 상태. <c>StopTimer</c>는 큐가 비어 타이머를 스스로 내려도 된다는 신호다
@@ -70,6 +74,18 @@ public sealed class ToastQueue(Func<DateTime> now)
         }
 
         var at = now();
+        if (request.Transient)
+        {
+            // 상태 리드아웃: 대기열에 넣지 않는다. 더 심각한 알림이 떠 있으면 아예 버린다 —
+            // 오류를 밀어내고 "펜 · 굵기 3/5"가 뜨면 사용자는 실패를 못 본다. 같은 등급이면 즉시 갈아 끼운다.
+            // 액션이 달린 토스트("폴더 열기")도 밀어내지 않는다 — 누를 기회를 뺏는 것이기 때문이다.
+            if (_current is { } shown && (shown.Kind > request.Kind || shown.ActionLabel is not null))
+            {
+                return;
+            }
+            Show(request, at);
+            return;
+        }
         if (_current is { } current)
         {
             if (SameMessage(current, request))

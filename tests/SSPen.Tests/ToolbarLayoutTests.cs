@@ -84,7 +84,7 @@ public class ToolbarLayoutTests
             ToolbarButtonId.Visibility => (Strings.Visibility, Icons.Eye, null, null, null, ToolbarWheel.None),
             ToolbarButtonId.ClickThrough => (Strings.ClickThrough, Icons.Cursor, null, null, "clickthrough", ToolbarWheel.None),
             ToolbarButtonId.Select => (Strings.Select, Icons.Select, null, null, "select", ToolbarWheel.None),
-            ToolbarButtonId.Shapes => (Strings.Shapes, Icons.Shapes, ToolbarFlyoutKind.Shapes, ToolStyleGroup.Shape, null, ToolbarWheel.ShapeCycle),
+            ToolbarButtonId.Shapes => (Strings.Shapes, Icons.Shapes, ToolbarFlyoutKind.Shapes, ToolStyleGroup.Shape, "shape-cycle", ToolbarWheel.ShapeCycle),
             ToolbarButtonId.Pen => (Strings.Pen, Icons.Pen, ToolbarFlyoutKind.Pen, ToolStyleGroup.Pen, "pen", ToolbarWheel.PenCycle),
             ToolbarButtonId.Eraser => (Strings.Eraser, Icons.Eraser, null, null, "eraser", ToolbarWheel.None),
             ToolbarButtonId.Fading => (Strings.HotkeyFadingInk, Icons.Timer, ToolbarFlyoutKind.Fading, null, "fading", ToolbarWheel.FadingDuration),
@@ -125,13 +125,15 @@ public class ToolbarLayoutTests
     {
         var ids = AllHotkeyIds().ToList();
 
-        Assert.Equal(10, ids.Count);
+        Assert.Equal(11, ids.Count);
         Assert.All(ids, id => Assert.False(string.IsNullOrWhiteSpace(id)));
         Assert.Equal(ids.Count, ids.Distinct(StringComparer.Ordinal).Count());
+        // 테이블에 없는 합성 id 두 개 — 아래 ResolvesThroughShellHotkeys가 실재를 증명한다.
         Assert.Contains("thickness-pair", ids);
+        Assert.Contains("shape-cycle", ids);
     }
 
-    /// <summary>오타 난 id(예: "click-through")는 툴팁의 핫키 줄을 조용히 비운다 — 여기서 잡는다. thickness-pair는 thinner/thicker 합성 라벨.</summary>
+    /// <summary>오타 난 id(예: "click-through")는 툴팁의 핫키 줄을 조용히 비운다 — 여기서 잡는다. thickness-pair·shape-cycle은 합성 라벨.</summary>
     [Fact]
     public void HotkeyIds_EveryOne_ResolvesThroughShellHotkeys()
     {

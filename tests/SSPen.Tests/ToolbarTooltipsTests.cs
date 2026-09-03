@@ -96,5 +96,7 @@ public class ToolbarTooltipsTests
         public double FadingSeconds => 1.0;
 
         public void SetFadingDuration(double seconds) { }
+
+        public void ShowStatusReadout() { }
     }
 }

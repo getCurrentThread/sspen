@@ -175,7 +175,7 @@ public sealed class AppController : IShellActions, ISettingsHost
         _hotkeys = new HotkeyService();
         _hotkeys.SetBindings(_shellHotkeys.BuildHotkeyMap());
 
-        _tray = new TrayIcon(_state, OpenSettings, ExitApp, () => CheckForUpdates(isManual: true));
+        _tray = new TrayIcon(_state, OpenSettings, ExitApp, () => CheckForUpdates(isManual: true), ShowToolbar);
         _tray.WarnHotkeyConflicts(_hotkeys.FailedBindings);
         _hotkeys.RegistrationFailuresChanged += failed => _tray?.WarnHotkeyConflicts(failed);
 
@@ -397,6 +397,17 @@ public sealed class AppController : IShellActions, ISettingsHost
     }
 
     /// <summary>
+    /// 현재 도구 상태 한 줄을 토스트로 알린다 (AC-20). 문구는 <see cref="StatusReadout"/>가, 표시는
+    /// 1단계 토스트가 맡는다 — 새 창도, 새 z-밴드 멤버도 없다. <c>Transient</c>라 휠을 연속으로 굴려도
+    /// 마지막 상태 하나만 남는다(줄 서지 않는다).
+    /// </summary>
+    public void ShowStatusReadout() =>
+        _toasts?.Show(new ToastRequest(
+            ToastKind.Info,
+            StatusReadout.Line(_state.ActiveTool, _state.Thickness, _state.CurrentColor, _state.FadingInk, FadingSeconds),
+            Transient: true));
+
+    /// <summary>
     /// 진행 중인 휠 확대를 지금 원장에 확정한다 (R7).
     ///
     /// <b>원장에 싣거나 원장을 소비하는 모든 진입점의 선두에서 불러야 한다</b> — <see cref="LedgerCommands"/>가
@@ -591,8 +602,27 @@ public sealed class AppController : IShellActions, ISettingsHost
         {
             return; // 캡처 세션 중 토글은 복원 플래그와 어긋나므로 무시 (아키텍트 어드바이저리).
         }
-        _toolbarVisible = !_toolbarVisible;
-        _toolbar.Visibility = _toolbarVisible ? Visibility.Visible : Visibility.Hidden;
+        SetToolbarVisible(!_toolbarVisible);
+    }
+
+    /// <summary>
+    /// 트레이 "툴바 보이기" (AC-22). 숨긴 툴바의 복귀 경로가 Alt+Shift+0 하나뿐이던 것을 고친다 —
+    /// 토글이 아니라 <b>보이기</b>인 이유: 이 메뉴를 여는 사람은 이미 툴바를 못 찾은 사람이라
+    /// 여기서 다시 숨겨지면 같은 곳을 두 번 돌게 된다.
+    /// </summary>
+    private void ShowToolbar()
+    {
+        if (_toolbar is null || _capture.IsActive)
+        {
+            return;
+        }
+        SetToolbarVisible(true);
+    }
+
+    private void SetToolbarVisible(bool visible)
+    {
+        _toolbarVisible = visible;
+        _toolbar!.Visibility = visible ? Visibility.Visible : Visibility.Hidden;
         ApplyZBand();
     }
 

@@ -15,12 +15,17 @@ public sealed class TrayIcon : IDisposable
     private readonly AppState _state;
     private readonly ToolStripMenuItem _toggleItem;
 
-    public TrayIcon(AppState state, Action openSettings, Action exitApp, Action checkUpdate)
+    public TrayIcon(AppState state, Action openSettings, Action exitApp, Action checkUpdate, Action showToolbar)
     {
         _state = state;
 
         _toggleItem = new ToolStripMenuItem();
         _toggleItem.Click += (_, _) => _state.SurfacesVisible = !_state.SurfacesVisible;
+
+        // 툴바를 숨기면(Alt+Shift+0) 되돌릴 UI가 화면에서 통째로 사라진다 — 같은 조합을 기억하는 것이
+        // 유일한 복귀 경로였다. 로고 툴팁은 로고째 숨겨지므로 대안이 못 된다.
+        var showToolbarItem = new ToolStripMenuItem(Strings.TrayShowToolbar);
+        showToolbarItem.Click += (_, _) => showToolbar();
 
         var checkUpdateItem = new ToolStripMenuItem(Strings.TrayCheckUpdate);
         checkUpdateItem.Click += (_, _) => checkUpdate();
@@ -33,6 +38,7 @@ public sealed class TrayIcon : IDisposable
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(_toggleItem);
+        menu.Items.Add(showToolbarItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(checkUpdateItem);
         menu.Items.Add(settingsItem);

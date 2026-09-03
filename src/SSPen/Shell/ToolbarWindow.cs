@@ -67,6 +67,9 @@ public sealed class ToolbarWindow : Window
                 return;
             }
             _state.ActiveTool = ToolbarStateMap.NextToolByWheel(_state.ActiveTool, e.Delta);
+            // 10개 도구 순환의 유일한 흔적은 버튼 배경 한 칸이다 — 그것도 그룹 버튼(펜·도형)은
+            // 하위 도구가 바뀌어도 같은 칸이 켜져 있어 무엇으로 바뀌었는지 알 수 없다.
+            _actions.ShowStatusReadout();
             e.Handled = true;
         };
 

@@ -143,6 +143,32 @@ public class ShellHotkeyMapTests
         Assert.Null(sut.HotkeyLabel("no-such-hotkey"));
     }
 
+    /// <summary>
+    /// 합성 라벨 두 개(미리보기의 굵기 쌍, 도형 그룹)는 테이블에 없는 id다 — 오타가 나면 툴팁의 핫키 줄이
+    /// 조용히 비므로 여기서 잡는다. 도형은 순환 순서(ShapeCycle)를 그대로 따르고 표는 핫키가 없어 빠진다.
+    /// </summary>
+    [Fact]
+    public void HotkeyLabel_CompositeIds_FoldTheSharedModifier()
+    {
+        var sut = CreateSut();
+
+        Assert.Equal("Alt+Shift+[ / ]", sut.HotkeyLabel("thickness-pair"));
+        Assert.Equal("Alt+Shift+L / A / U / E", sut.HotkeyLabel("shape-cycle"));
+    }
+
+    /// <summary>도형 그룹 라벨의 재료가 실재하는 id여야 한다 — 이름이 어긋나면 조합이 조용히 빠진다.</summary>
+    [Fact]
+    public void ToolHotkeyIds_EveryEntry_ExistsInTheTable()
+    {
+        var sut = CreateSut();
+        var table = sut.RemappableHotkeys.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
+
+        Assert.All(ShellHotkeys.ToolHotkeyIds.Values, id => Assert.Contains(id, table));
+        // 표(Table)는 실제로 핫키가 없다 — 있는 척하면 합성 라벨이 없는 조합을 가르친다.
+        Assert.DoesNotContain(ToolKind.Table, ShellHotkeys.ToolHotkeyIds.Keys);
+        Assert.DoesNotContain(ToolKind.None, ShellHotkeys.ToolHotkeyIds.Keys);
+    }
+
     /// <summary>50단계: 도구 핫키 아홉 개가 모두 <see cref="ToolbarStateMap.ToggleTool"/>의 답을 <see cref="AppState.ActiveTool"/>에 넣는다.
     /// 세 출발 상태(없음 / 같은 도구 / 다른 도구)에서 스트립 버튼 경로와 갈라지면 여기서 빨간불 — 이전에는 ShellHotkeys가 같은 삼항식을 한 벌 더 갖고 있었다.</summary>
     [Theory]

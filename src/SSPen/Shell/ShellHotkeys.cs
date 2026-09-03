@@ -108,14 +108,39 @@ public sealed class ShellHotkeys
         return map;
     }
 
+    /// <summary>
+    /// 도구 ↔ 핫키 id (그룹 버튼 합성 라벨의 단일 소유자). 표(<see cref="ToolKind.Table"/>)와
+    /// <see cref="ToolKind.None"/>은 실제로 핫키가 없어 빠져 있다 — <c>ShellHotkeyMapTests</c>가
+    /// 여기 있는 id가 전부 테이블에 실재하는지 검사한다.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<ToolKind, string> ToolHotkeyIds = new Dictionary<ToolKind, string>
+    {
+        [ToolKind.Pen] = "pen",
+        [ToolKind.Highlighter] = "highlighter",
+        [ToolKind.Eraser] = "eraser",
+        [ToolKind.Select] = "select",
+        [ToolKind.Line] = "line",
+        [ToolKind.Arrow] = "arrow",
+        [ToolKind.Rectangle] = "rectangle",
+        [ToolKind.Ellipse] = "ellipse",
+        [ToolKind.Text] = "text",
+    };
+
     /// <summary>툴팁용 현재 유효 핫키 조합 (재지정 반영).</summary>
     public string? HotkeyLabel(string hotkeyId)
     {
         if (hotkeyId == "thickness-pair")
         {
-            string? thinner = HotkeyLabel("thinner");
-            string? thicker = HotkeyLabel("thicker");
-            return thinner is null || thicker is null ? null : $"{thinner} / {thicker}";
+            return HotkeyLabelFormat.Compose([HotkeyLabel("thinner"), HotkeyLabel("thicker")]);
+        }
+        // 도형 그룹 버튼은 플라이아웃을 열지 않고도 다섯 도형 중 하나를 바로 부를 수 있다는 사실이
+        // 어디에도 없었다 — 하위 항목 툴팁은 플라이아웃을 연 뒤에야 보인다. 순환 순서
+        // (ToolbarStateMap.ShapeCycle)를 그대로 따라 읽으므로 표기와 클릭 로테이션이 어긋날 수 없다.
+        if (hotkeyId == "shape-cycle")
+        {
+            return HotkeyLabelFormat.Compose(
+                ToolbarStateMap.ShapeCycle.Select(tool =>
+                    ToolHotkeyIds.TryGetValue(tool, out string? id) ? HotkeyLabel(id) : null));
         }
         if (hotkeyId.StartsWith("quickcolor:", StringComparison.Ordinal)
             && int.TryParse(hotkeyId["quickcolor:".Length..], out int slot))
