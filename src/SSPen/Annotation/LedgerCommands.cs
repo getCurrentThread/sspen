@@ -31,10 +31,15 @@ public sealed class LedgerCommands(
     /// 가장 최근 조작 취소 (전역 시간순 원장). 플러시가 <b>먼저</b>다 — 없으면 확대 직후 실행취소가 확대가 아니라
     /// 그 이전 조작을 되돌리고, 뒤늦게 깨어난 유휴 타이머가 그 위에 변형 항목을 얹는다 (R7(c)).
     /// </summary>
-    public void Undo()
+    /// <returns>
+    /// 실제로 되돌렸으면 true. <b>버리지 말 것</b> — 원장이 비었거나 소유자를 못 찾은 경우
+    /// 이전에는 로그에만 남아, 사용자가 보기에는 단축키를 눌렀는데 아무 일도 안 일어나는 상태였다
+    /// (<c>IUndoOperation.Undo</c>의 "무증상 무동작 금지" 계약이 사용자에게는 닿지 않았다).
+    /// </returns>
+    public bool Undo()
     {
         flushPendingTransforms();
-        ledger.Undo();
+        return ledger.Undo();
     }
 
     /// <summary>
@@ -43,7 +48,8 @@ public sealed class LedgerCommands(
     /// 깨끗이 비우는 동작이라고 기대하는데 핀만 남으면 다시 하나씩 닫아야 했다.
     /// <b>핀 닫기는 실행취소 대상이 아니다</b> — 원장은 판서 문서만 다룬다.
     /// </summary>
-    public void ClearAll()
+    /// <returns>지운 판서 요소 수. 셸이 "무엇을 지웠는지" 알려 줄 때와 무동작을 판별할 때 쓴다.</returns>
+    public int ClearAll()
     {
         flushPendingTransforms();
         var cleared = documents()
@@ -53,7 +59,14 @@ public sealed class LedgerCommands(
         // R10: 장식은 선택집합을 따라가므로 해제하지 않으면 빈 화면에 핸들만 남는다.
         selection.Clear();
         closePins();
+        return cleared.Sum(entry => entry.Snapshot.Count);
     }
+
+    /// <summary>
+    /// 지금 지울 수 있는 판서 요소 수 (확인 대화상자 판정 입력). 상태를 바꾸지 않는다 —
+    /// 확인을 받기 <b>전에</b> 물어야 하므로 <see cref="ClearAll"/>의 반환값으로는 늦다.
+    /// </summary>
+    public int ClearableCount() => documents().Sum(document => document.Elements.Count);
 
     /// <summary>
     /// 선택 요소 전부 삭제 (SEL-13). 문서가 여럿이어도 원장 <b>1항목</b>이라

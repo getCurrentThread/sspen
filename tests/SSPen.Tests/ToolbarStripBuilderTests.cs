@@ -103,7 +103,7 @@ public class ToolbarStripBuilderTests
             [
                 "ClickThrough", "---",
                 "Select", "Shapes", "Pen", "Eraser", "Fading", "Preview", "---",
-                "Undo", "ClearAll", "---",
+                "Undo", "---", "ClearAll", "---",
                 "Board", "Capture", "Settings", "---",
                 "QuickColors",
             ],

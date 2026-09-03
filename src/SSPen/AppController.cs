@@ -164,7 +164,9 @@ public sealed class AppController : IShellActions, ISettingsHost
 
         _shellHotkeys = new ShellHotkeys(
             _dispatcher, _state, () => _settingsBinder.Settings,
-            _commands.Undo, _commands.ClearAll, StartCapture, ToggleToolbar, _commands.DeleteSelection);
+            // 실행취소·전체 지우기는 루트의 래퍼를 거친다 (원장 호출 + 확인 대화상자 + 결과 알림) —
+            // 핫키와 툴바 버튼이 같은 경로를 타야 마찰과 알림이 한쪽에서만 빠지지 않는다.
+            Undo, ClearAll, StartCapture, ToggleToolbar, _commands.DeleteSelection);
 
         _hotkeys = new HotkeyService();
         _hotkeys.SetBindings(_shellHotkeys.BuildHotkeyMap());
@@ -408,11 +410,50 @@ public sealed class AppController : IShellActions, ISettingsHost
         }
     }
 
-    /// <summary>Alt+Shift+6: 가장 최근 조작 취소 — 본문은 <see cref="LedgerCommands.Undo"/> (47단계).</summary>
-    public void Undo() => _commands.Undo();
+    /// <summary>
+    /// Alt+Shift+6: 가장 최근 조작 취소 — 본문은 <see cref="LedgerCommands.Undo"/> (47단계).
+    /// 되돌릴 것이 없으면 알린다: 이전에는 단축키를 눌러도 화면상 아무 반응이 없어
+    /// 실행취소가 고장 난 것인지 되돌릴 게 없는 것인지 구별할 수 없었다.
+    /// </summary>
+    public void Undo()
+    {
+        if (!_commands.Undo())
+        {
+            _toasts?.Show(new ToastRequest(ToastKind.Info, Strings.UndoNothing));
+        }
+    }
 
-    /// <summary>Alt+Shift+7: 모든 서피스 전체 지우기 + 핀 닫기 — 본문은 <see cref="LedgerCommands.ClearAll"/>.</summary>
-    public void ClearAll() => _commands.ClearAll();
+    /// <summary>
+    /// Alt+Shift+7: 모든 서피스 전체 지우기 + 핀 닫기 — 본문은 <see cref="LedgerCommands.ClearAll"/>.
+    /// 마찰 판정은 <see cref="DestructiveActionRules"/>가 소유하고 여기는 대화상자·알림 실행만 한다:
+    /// 판서는 실행취소 1회로 돌아오지만 함께 닫히는 핀은 원장 밖이라 되돌릴 수 없다.
+    /// </summary>
+    public void ClearAll()
+    {
+        var prompt = DestructiveActionRules.ClearAll(_commands.ClearableCount(), _pins?.Pins.Count ?? 0);
+        if (!prompt.HasAnything)
+        {
+            return; // 지울 것이 없다 — 확인도 알림도 없다.
+        }
+        if (prompt.NeedsConfirm)
+        {
+            var answer = MessageBox.Show(
+                Strings.ClearAllConfirm(prompt.PinCount),
+                Strings.ClearAllConfirmTitle,
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+        _commands.ClearAll();
+        // 지운 직후가 되돌리는 법을 알려 줄 유일한 시점이다 (핀은 그 대상이 아니라는 것은 확인 대화상자가 이미 말했다).
+        string? undoCombo = _shellHotkeys?.HotkeyLabel("undo");
+        _toasts?.Show(new ToastRequest(
+            ToastKind.Info,
+            undoCombo is null ? Strings.ClearAllDone : Strings.ClearAllDoneWithUndo(undoCombo)));
+    }
 
     /// <summary>Alt+Shift+D: 선택 요소 전부 삭제 (SEL-13) — 본문은 <see cref="LedgerCommands.DeleteSelection"/>. E2E 액터가 직접 부른다.</summary>
     public void DeleteSelection() => _commands.DeleteSelection();

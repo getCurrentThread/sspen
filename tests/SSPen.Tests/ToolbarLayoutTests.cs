@@ -44,7 +44,7 @@ public class ToolbarLayoutTests
             [
                 "ClickThrough", "---",
                 "Select", "Shapes", "Pen", "Eraser", "Fading", "Preview", "---",
-                "Undo", "ClearAll", "---",
+                "Undo", "---", "ClearAll", "---",
                 "Board", "Capture", "Settings", "---",
                 "QuickColors",
             ],
@@ -62,9 +62,11 @@ public class ToolbarLayoutTests
     }
 
     [Fact]
-    public void Menu_HasFourSeparators_NeverAdjacentOrAtEdges()
+    public void Menu_HasFiveSeparators_NeverAdjacentOrAtEdges()
     {
-        Assert.Equal(4, ToolbarLayout.Menu.OfType<ToolbarSeparatorEntry>().Count());
+        // 다섯 번째는 실행취소와 전체 지우기 사이다 — 파괴적 버튼을 이웃에서 떼어 놓기 위한 것이라
+        // 장식이 아니다 (여백 없는 30px 버튼 열에서 1px 차이로 오클릭이 난다).
+        Assert.Equal(5, ToolbarLayout.Menu.OfType<ToolbarSeparatorEntry>().Count());
         Assert.IsNotType<ToolbarSeparatorEntry>(ToolbarLayout.Menu[0]);
         Assert.IsNotType<ToolbarSeparatorEntry>(ToolbarLayout.Menu[^1]);
         Assert.DoesNotContain(

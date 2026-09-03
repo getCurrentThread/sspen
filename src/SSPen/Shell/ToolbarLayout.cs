@@ -116,6 +116,9 @@ public static class ToolbarLayout
         new ToolbarButtonEntry(
             ToolbarButtonId.Undo, Strings.Undo, Icons.ArrowUndo,
             Flyout: null, BadgeGroup: null, HotkeyId: "undo", Wheel: ToolbarWheel.None),
+        // 실행취소와 전체 지우기 사이의 구분선은 장식이 아니다: 30px 버튼이 여백 없이 맞붙어 있어
+        // 되돌리려다 한 칸 아래를 눌러 전부 지우는 오클릭이 1px 차이로 일어난다.
+        new ToolbarSeparatorEntry(),
         new ToolbarButtonEntry(
             ToolbarButtonId.ClearAll, Strings.ClearAll, Icons.Delete,
             Flyout: null, BadgeGroup: null, HotkeyId: "clear", Wheel: ToolbarWheel.None),

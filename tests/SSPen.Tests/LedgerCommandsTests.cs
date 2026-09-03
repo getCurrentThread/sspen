@@ -281,4 +281,53 @@ public class LedgerCommandsTests
         Assert.Same(r.Documents[0], r.OwnerOf(a));    // 실행취소가 소유권까지 되돌린다 (SEL-AC-10)
         Assert.Equal(ElementTransformState.Identity, a.TransformState);
     }
+
+    /// <summary>
+    /// 되돌릴 것이 없으면 실패를 <b>돌려준다</b>. 이 값을 버리던 시절에는 사용자가 보기에
+    /// 단축키를 눌러도 아무 일이 없어 고장과 무동작을 구별할 수 없었다.
+    /// </summary>
+    [Fact]
+    public void Undo_EmptyLedger_ReportsFailure()
+    {
+        var r = new Rig();
+
+        Assert.False(r.Commands.Undo());
+        Assert.Contains("flush", r.Trace); // 실패해도 플러시는 선두다 (R7(c) 순서는 결과와 무관하다).
+    }
+
+    [Fact]
+    public void Undo_WithAnOperation_ReportsSuccess()
+    {
+        var r = new Rig();
+        r.AddStroke(0, 10, 10);
+
+        Assert.True(r.Commands.Undo());
+    }
+
+    /// <summary>전체 지우기는 지운 요소 수를 돌려준다 — 셸이 무엇을 지웠는지 알릴 근거다.</summary>
+    [Fact]
+    public void ClearAll_ReturnsTheClearedElementCountAcrossDocuments()
+    {
+        var r = new Rig();
+        r.AddStroke(0, 10, 10);
+        r.AddStroke(0, 30, 10);
+        r.AddStroke(1, 10, 10);
+
+        Assert.Equal(3, r.Commands.ClearAll());
+    }
+
+    /// <summary>확인 대화상자는 지우기 <b>전에</b> 물어야 하므로 상태를 바꾸지 않는 조회가 따로 있다.</summary>
+    [Fact]
+    public void ClearableCount_DoesNotMutate_AndMatchesWhatClearAllWouldRemove()
+    {
+        var r = new Rig();
+        r.AddStroke(0, 10, 10);
+        r.AddStroke(1, 10, 10);
+
+        int expected = r.Commands.ClearableCount();
+        Assert.Equal(2, expected);
+        Assert.Equal(2, r.Commands.ClearableCount()); // 두 번 물어도 값이 같다 (부작용 없음)
+        Assert.Equal(expected, r.Commands.ClearAll());
+        Assert.Equal(0, r.Commands.ClearableCount());
+    }
 }
