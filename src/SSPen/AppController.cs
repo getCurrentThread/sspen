@@ -162,6 +162,9 @@ public sealed class AppController : IShellActions, ISettingsHost
         // 핀 z-앵커: 항상 마지막 서피스 바로 아래 (F5: 잉크는 핀 위).
         _pins = new PinManager(() => _surfaces.Count > 0 ? _surfaces[^1].Hwnd : 0, hooks: LowLevelHook.Native);
         _pins.PinsChanged += ApplyZBand;
+        // 클릭 통과에 걸리면 그 핀은 마우스를 받지 못한다 — 되찾는 제스처를 아는 것이 유일한 복구 경로다.
+        _pins.ClickThroughEngaged += () =>
+            _toasts?.Show(new ToastRequest(ToastKind.Info, Strings.PinClickThroughEngaged));
 
         _shellHotkeys = new ShellHotkeys(
             _dispatcher, _state, () => _settingsBinder.Settings,

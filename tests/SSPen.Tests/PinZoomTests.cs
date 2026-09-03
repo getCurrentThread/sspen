@@ -126,4 +126,42 @@ public class PinZoomTests
         Assert.Equal(200 * result.Scale, result.Width, 9);
         Assert.Equal(100 * result.Scale, result.Height, 9);
     }
+
+    /// <summary>원래 크기 복귀는 배율 1과 기준 크기를 돌려준다.</summary>
+    [Fact]
+    public void ResetToOriginal_ReturnsBaseSizeAtScaleOne()
+    {
+        var result = PinZoom.ResetToOriginal(currentScale: 3.0, left: 100, top: 50, baseWidth: 200, baseHeight: 100);
+
+        Assert.Equal(1.0, result.Scale);
+        Assert.Equal(200, result.Width);
+        Assert.Equal(100, result.Height);
+    }
+
+    /// <summary>
+    /// 중심을 고정한다 — 좌상단 고정이면 크게 확대해 둔 핀이 되돌아갈 때 화면 반대편으로 물러나
+    /// 사용자가 다시 찾아야 한다.
+    /// </summary>
+    [Fact]
+    public void ResetToOriginal_KeepsTheCenterInPlace()
+    {
+        double left = 100, top = 50, baseW = 200, baseH = 100, scale = 3.0;
+        double centerX = left + baseW * scale / 2;
+        double centerY = top + baseH * scale / 2;
+
+        var result = PinZoom.ResetToOriginal(scale, left, top, baseW, baseH);
+
+        Assert.Equal(centerX, result.Left + result.Width / 2, 9);
+        Assert.Equal(centerY, result.Top + result.Height / 2, 9);
+    }
+
+    /// <summary>이미 100%면 아무것도 움직이지 않는다.</summary>
+    [Fact]
+    public void ResetToOriginal_AlreadyOriginal_IsIdentity()
+    {
+        var result = PinZoom.ResetToOriginal(1.0, 100, 50, 200, 100);
+
+        Assert.Equal(100, result.Left, 9);
+        Assert.Equal(50, result.Top, 9);
+    }
 }

@@ -140,6 +140,14 @@ public static class Strings
     /// <summary>저장 성공 토스트의 둘째 줄: 파일 이름만 보여 준다 (전체 경로는 토스트 폭을 넘긴다).</summary>
     public static string CaptureSavedDetail(string fileName) => $"{CaptureSaved}: {fileName}";
 
+    // 핀 창 어포던스 (AC-14..18). 예전에는 모든 조작이 문서화되지 않은 제스처였고 화면에 단서가 없었다.
+    public const string PinClose = "닫기";
+    public const string PinClickThrough = "클릭 통과";
+    public const string PinZoomReset = "원래 크기";
+    public const string PinClickThroughBadge = "클릭 통과 중";
+    public const string PinClickThroughHint = "되돌리려면 핀 위에서 Ctrl+가운데 버튼";
+    public const string PinClickThroughEngaged = "이 핀은 클릭을 통과시킵니다. 되돌리려면 핀 위에서 Ctrl+가운데 버튼을 누르세요.";
+
     // 파괴적 조작 확인·결과 (AC-19)
     public const string ClearAllConfirmTitle = "전체 지우기";
     public const string ClearAllDone = "판서를 지웠습니다";

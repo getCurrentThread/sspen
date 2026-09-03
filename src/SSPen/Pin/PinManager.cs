@@ -31,10 +31,23 @@ public sealed class PinManager
     /// <summary>핀 생성/닫기 시 발생 — 셸이 z-밴드를 재적용한다.</summary>
     public event Action? PinsChanged;
 
+    /// <summary>
+    /// 어떤 핀의 클릭 통과가 켜졌다 — 셸이 되찾는 제스처를 알리는 계기다.
+    /// 상시 배지가 상태는 보여 주지만, 되돌리는 방법은 어딘가에서 한 번은 말해 줘야 한다.
+    /// </summary>
+    public event Action? ClickThroughEngaged;
+
     public PinWindow CreatePin(BitmapSource image, PhysicalRect region)
     {
         var pin = new PinWindow(image, region, _zAnchor);
         pin.PinClosed += OnPinClosed;
+        pin.ClickThroughChanged += on =>
+        {
+            if (on)
+            {
+                ClickThroughEngaged?.Invoke();
+            }
+        };
         _pins.Add(pin);
         pin.Show();
         WindowStyling.PlacePhysical(pin.Hwnd, region);

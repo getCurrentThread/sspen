@@ -29,6 +29,23 @@ public static class PinZoom
     }
 
     /// <summary>
+    /// 원래 크기(100%)로 되돌린 창 사각형. <b>중심을 고정</b>한다 — 좌상단을 고정하면 크게 확대해 둔 핀이
+    /// 되돌아갈 때 화면 반대편으로 훌쩍 물러나 사용자가 다시 찾아야 한다.
+    /// </summary>
+    public static PinZoomResult ResetToOriginal(
+        double currentScale, double left, double top, double baseWidth, double baseHeight)
+    {
+        double currentWidth = baseWidth * currentScale;
+        double currentHeight = baseHeight * currentScale;
+        return new PinZoomResult(
+            1.0,
+            left + (currentWidth - baseWidth) / 2.0,
+            top + (currentHeight - baseHeight) / 2.0,
+            baseWidth,
+            baseHeight);
+    }
+
+    /// <summary>
     /// 커서를 고정점으로 삼아 확대/축소한 창 사각형을 계산한다.
     /// </summary>
     /// <param name="currentScale">현재 배율.</param>

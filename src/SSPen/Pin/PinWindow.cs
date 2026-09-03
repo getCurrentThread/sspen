@@ -21,6 +21,15 @@ public sealed class PinWindow : Window, IClickThroughPin
     private double _scale = 1.0;
     private double _opacityBeforeClickThrough = 1.0;
     private bool _closing;
+    private readonly FrameworkElement _chrome;
+    private readonly FrameworkElement _clickThroughBadge;
+    private readonly TextBlock _zoomLabel = new()
+    {
+        Foreground = Brushes.White,
+        FontSize = 11,
+        VerticalAlignment = VerticalAlignment.Center,
+        Margin = new Thickness(6, 0, 4, 0),
+    };
 
     public PinWindow(BitmapSource image, PhysicalRect region, Func<nint> zAnchor)
     {
@@ -43,13 +52,125 @@ public sealed class PinWindow : Window, IClickThroughPin
         Width = _baseWidth;
         Height = _baseHeight;
 
+        // 크롬은 **이 창 안의 오버레이**다 — 별도 HWND가 아니다.
+        // PinClickThroughMonitor는 GetWindowRect(Hwnd)로 되찾기 히트테스트를 하므로, 팝업 창을 쓰면
+        // 눈에는 핀 위인데 복구 사각형 밖인 픽셀 띠가 생긴다. BorderThickness도 1로 유지한다 —
+        // 늘리면 이미지가 리플로우되어 PhysicalBounds가 _baseWidth/_baseHeight와 어긋난다.
+        _chrome = BuildChrome();
+        _clickThroughBadge = BuildClickThroughBadge();
+        var layers = new Grid();
+        layers.Children.Add(new Image { Source = image, Stretch = Stretch.Fill });
+        layers.Children.Add(_clickThroughBadge);
+        layers.Children.Add(_chrome);
         Content = new Border
         {
             BorderBrush = new SolidColorBrush(Shell.ToolbarTheme.AccentColor),
             BorderThickness = new Thickness(1),
-            Child = new Image { Source = image, Stretch = Stretch.Fill },
+            Child = layers,
+        };
+        MouseEnter += (_, _) => RefreshChrome();
+        MouseLeave += (_, _) => RefreshChrome();
+        RefreshChrome();
+    }
+
+    /// <summary>
+    /// 호버 도구모음: 배율 표시 + 원래 크기 / 클릭 통과 / 닫기.
+    ///
+    /// 각 버튼은 <b><c>MouseLeftButtonDown</c>에서</b> <c>e.Handled = true</c>로 이벤트를 끊는다.
+    /// <see cref="OnMouseLeftButtonDown"/>은 창 자신의 버블 핸들러이고 <c>handledEventsToo</c>로 등록돼
+    /// 있지 않으므로, 자식이 처리한 이벤트는 <c>DragMove()</c>와 더블클릭 닫기에 <b>도달하지 않는다</b>.
+    /// 이 파일에서 가장 깨지기 쉬운 지점이다 — Up에서 끊으면 이미 드래그가 시작된 뒤라 늦다.
+    /// </summary>
+    private FrameworkElement BuildChrome()
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(_zoomLabel);
+        row.Children.Add(ChromeButton(Shell.Strings.PinZoomReset, null, ResetZoom));
+        row.Children.Add(ChromeButton(
+            Shell.Strings.PinClickThrough, Shell.Strings.PinClickThroughHint, () => SetClickThrough(true)));
+        row.Children.Add(ChromeButton(Shell.Strings.PinClose, null, ClosePin));
+
+        return new Border
+        {
+            Background = ChromeBackground,
+            CornerRadius = new CornerRadius(0, 0, 0, 4),
+            Padding = new Thickness(2),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = row,
+            Visibility = Visibility.Collapsed,
         };
     }
+
+    private UIElement ChromeButton(string text, string? tooltip, Action action)
+    {
+        var border = new Border
+        {
+            Background = Brushes.Transparent,
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(6, 2, 6, 2),
+            Margin = new Thickness(1, 0, 1, 0),
+            Cursor = Cursors.Hand,
+            ToolTip = tooltip is null ? text : $"{text} — {tooltip}",
+            Child = new TextBlock { Text = text, Foreground = Brushes.White, FontSize = 11 },
+        };
+        border.MouseEnter += (_, _) => border.Background = ChromeHover;
+        border.MouseLeave += (_, _) => border.Background = Brushes.Transparent;
+        // Down에서 끊는 것이 계약이다 (BuildChrome 문서 참조).
+        border.MouseLeftButtonDown += (_, e) => e.Handled = true;
+        border.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            action();
+        };
+        return border;
+    }
+
+    /// <summary>
+    /// 통과 중 <b>상시</b> 표식. 호버 크롬으로는 알릴 수 없다 — 통과 상태에서는 창이 마우스를 받지 못한다.
+    /// 예전의 유일한 단서는 Opacity를 0.85로 낮추는 것이었는데, 이미 더 투명하게 해 둔 사용자에게는 아무 변화도 없었다.
+    /// </summary>
+    private FrameworkElement BuildClickThroughBadge() => new Border
+    {
+        Background = ChromeBackground,
+        CornerRadius = new CornerRadius(0, 0, 4, 0),
+        Padding = new Thickness(6, 2, 6, 2),
+        HorizontalAlignment = HorizontalAlignment.Left,
+        VerticalAlignment = VerticalAlignment.Top,
+        Visibility = Visibility.Collapsed,
+        Child = new TextBlock
+        {
+            Text = Shell.Strings.PinClickThroughBadge,
+            Foreground = Brushes.White,
+            FontSize = 11,
+        },
+    };
+
+    private void RefreshChrome()
+    {
+        var state = PinChromeRules.Resolve(IsMouseOver, IsClickThrough, _scale, Width, Height);
+        _chrome.Visibility = state.ShowChrome ? Visibility.Visible : Visibility.Collapsed;
+        _clickThroughBadge.Visibility = state.ShowClickThroughBadge ? Visibility.Visible : Visibility.Collapsed;
+        _zoomLabel.Text = state.ZoomPercent;
+    }
+
+    /// <summary>원래 크기(100%)로 되돌린다 — 배율이 얼마인지도, 되돌리는 법도 화면에 없던 기능이다.</summary>
+    private void ResetZoom()
+    {
+        var zoom = PinZoom.ResetToOriginal(_scale, Left, Top, _baseWidth, _baseHeight);
+        _scale = zoom.Scale;
+        Left = zoom.Left;
+        Top = zoom.Top;
+        Width = zoom.Width;
+        Height = zoom.Height;
+        RefreshChrome();
+    }
+
+    private static readonly Brush ChromeBackground =
+        Shell.ToolbarTheme.Freeze(new SolidColorBrush(Color.FromArgb(0xCC, 0x1F, 0x1F, 0x1F)));
+
+    private static readonly Brush ChromeHover =
+        Shell.ToolbarTheme.Freeze(new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)));
 
     public nint Hwnd { get; private set; }
 
@@ -95,7 +216,15 @@ public sealed class PinWindow : Window, IClickThroughPin
         {
             Opacity = _opacityBeforeClickThrough;
         }
+        RefreshChrome();
+        ClickThroughChanged?.Invoke(on);
     }
+
+    /// <summary>
+    /// 클릭 통과가 켜지거나 꺼졌다. 셸이 되찾는 제스처를 <b>토스트로</b> 알리는 계기다 —
+    /// 상시 배지가 상태를 보여 주더라도, 되찾는 방법(Ctrl+가운데 버튼)은 어딘가에서 한 번은 말해 줘야 한다.
+    /// </summary>
+    public event Action<bool>? ClickThroughChanged;
 
     /// <summary>물리 픽셀 기준 현재 창 사각형 (전역 훅 히트테스트용).</summary>
     public PhysicalRect PhysicalBounds()
@@ -136,6 +265,7 @@ public sealed class PinWindow : Window, IClickThroughPin
             Top = zoom.Top;
             Width = zoom.Width;
             Height = zoom.Height;
+            RefreshChrome();
         }
         e.Handled = true;
     }
