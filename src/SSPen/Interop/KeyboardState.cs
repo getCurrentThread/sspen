@@ -8,7 +8,8 @@ namespace SSPen.Interop;
 /// 그래서 전역 핫키(Alt+Shift+V)로 선택 도구를 켠 흐름에서는 Shift가 항상 <c>None</c>으로 읽혀
 /// <b>Shift+클릭 다중 선택·마퀴 누적·회전 스냅·도형 제약이 전부 조용히 죽는다</b>.
 /// 전역 훅에서도 같다 — <c>Pin/PinClickThroughMonitor</c>는 Ctrl을 <see cref="Control"/>로 읽는다
-/// (52단계에 자체 GetAsyncKeyState DllImport를 없애고 이 계층으로 합쳤다).
+/// (52단계에 자체 GetAsyncKeyState DllImport를 없애고 이 계층으로 합쳤다). 두 훅 모니터는 이 값을 <c>Func&lt;bool&gt;</c>로
+/// 주입받으므로(합성 루트·PinManager가 배선) 헤드리스 증인은 OS 키 상태를 읽지 않는다 (53단계).
 /// </summary>
 internal static class KeyboardState
 {

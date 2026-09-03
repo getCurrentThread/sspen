@@ -8,7 +8,9 @@ namespace SSPen.Tests;
 ///
 /// 통합 프로젝트의 <c>StaRunner.Run</c>(60초 타임아웃 + 디스패처 펌프 + <c>InvokeShutdown</c>)과는 의미가 다르다 —
 /// 여기에는 펌프가 없으므로 <c>DispatcherTimer</c>는 영영 틱하지 않는다 (그래서 휠 유휴는
-/// <see cref="FakeIdleScheduler"/>가 대신한다, R7). 이름을 다르게 둔 이유가 그것이다.
+/// <see cref="FakeIdleScheduler"/>가 대신한다, R7). 이름을 다르게 둔 이유가 그것이다. 큐에 쌓인 <c>BeginInvoke</c> 작업을
+/// 돌려야 하는 테스트만 본문 안에서 <see cref="DispatcherPump.Drain"/>을 한 번 부른다(53단계) — 그 프레임이 도는 동안에는
+/// 기한이 된 <c>DispatcherTimer</c>도 틱할 수 있다.
 ///
 /// 사용: 파일 머리에 <c>using static SSPen.Tests.StaThread;</c> 를 두고 <c>RunSta(() =&gt; …)</c>.
 /// <c>Geometry</c>/<c>StreamGeometry</c>/<c>StylusPointCollection</c>은 xUnit 기본 MTA 쓰레드에서도

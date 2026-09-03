@@ -168,9 +168,11 @@ public sealed class AppController : IShellActions, ISettingsHost
         // R3/R4: 맨 ESC/Delete/Backspace는 서피스가 받을 수 없으므로 조건부 저수준 훅이 담당한다.
         // 게이트는 상태와 선택집합 양쪽에서 바뀌므로 두 이벤트 모두 구독한다.
         // 훅 배관은 Interop/LowLevelHook.Native — 핀 복귀 훅과 같은 OS 이음매다 (52단계); 인자는 이름으로 넘긴다.
+        // 수식키 읽기는 KeyboardState.NonShiftModifier(Shift 제외 정책의 소유자)를 주입한다 (53단계).
         _selectionKeys = new SelectionKeyMonitor(
             _dispatcher, _state, _selection,
             blocked: () => _capture.IsActive || _settingsWindow is not null || _tray?.IsMenuOpen == true,
+            nonShiftModifierDown: () => KeyboardState.NonShiftModifier,
             clearSelection: _commands.ClearSelectionByEscape,
             deleteSelection: _commands.DeleteSelection,
             hooks: LowLevelHook.Native);

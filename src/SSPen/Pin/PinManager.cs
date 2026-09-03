@@ -17,7 +17,13 @@ public sealed class PinManager
     public PinManager(Func<nint> zAnchor, IHookInstaller hooks)
     {
         _zAnchor = zAnchor;
-        _monitor = new PinClickThroughMonitor(this, hooks);
+        // Ctrl 읽기는 KeyboardState(D3)를 주입한다 — 모니터의 헤드리스 증인이 OS를 읽지 않게 (53단계).
+        // List<PinWindow> → IReadOnlyList<IClickThroughPin>은 IReadOnlyList<out T> 공변성이다 (핀을 구조체 컬렉션에 담으면 깨진다).
+        _monitor = new PinClickThroughMonitor(
+            pins: () => _pins,
+            controlDown: () => KeyboardState.Control,
+            clickThroughChanged: NotifyClickThroughChanged,
+            hooks: hooks);
     }
 
     public IReadOnlyList<PinWindow> Pins => _pins;

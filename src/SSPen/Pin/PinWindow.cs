@@ -12,7 +12,7 @@ namespace SSPen.Pin;
 /// 휠=확대/축소, 드래그=이동, Ctrl+휠=투명도, Ctrl+가운데 버튼=클릭 통과 토글, Esc/더블클릭=닫기.
 /// 복수 핀 허용. 핀 귀속 판서는 Non-Goal 2 (잉크는 z-밴드에 따라 핀 위에 렌더링된다).
 /// </summary>
-public sealed class PinWindow : Window
+public sealed class PinWindow : Window, IClickThroughPin
 {
     private readonly double _baseWidth;
     private readonly double _baseHeight;
