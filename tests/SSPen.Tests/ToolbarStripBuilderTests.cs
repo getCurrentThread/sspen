@@ -181,9 +181,50 @@ public class ToolbarStripBuilderTests
         Assert.Same(MenuPanel(strip.Host).Children[previewIndex], strip.Flyouts.ThicknessFlyout.PlacementTarget);
     });
 
-    private static void Click(UIElement element) =>
+    /// <summary>
+    /// 클릭은 이제 누름 + 뗌 한 쌍이다 (PressStateRules): 버튼에서 누르고 버튼에서 떼야 발화한다.
+    /// 뗌 하나만으로 발화하던 예전 계약이 되살아나면 아래 두 증인이 빨간불이 된다.
+    /// </summary>
+    private static void Click(UIElement element)
+    {
+        Press(element);
+        Release(element);
+    }
+
+    private static void Press(UIElement element) =>
+        element.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+        {
+            RoutedEvent = UIElement.MouseLeftButtonDownEvent,
+        });
+
+    private static void Release(UIElement element) =>
         element.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
         {
             RoutedEvent = UIElement.MouseLeftButtonUpEvent,
         });
+
+    /// <summary>밖에서 시작한 클릭은 남의 것이다 — 뗌만으로는 아무 일도 일어나지 않는다.</summary>
+    [Fact]
+    public void Click_ReleaseWithoutPress_DoesNotFire() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+
+        Release(strip.Parts.Buttons[ToolbarButtonId.ClearAll].Root);
+
+        Assert.Empty(strip.Actions.Calls);
+    });
+
+    /// <summary>눌렀다가 버튼 밖으로 끌면 취소다 — 되돌리기 힘든 버튼에서 특히 중요하다.</summary>
+    [Fact]
+    public void Click_PressedThenDraggedAway_DoesNotFire() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        var button = strip.Parts.Buttons[ToolbarButtonId.ClearAll].Root;
+
+        Press(button);
+        button.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = UIElement.MouseLeaveEvent });
+        Release(button);
+
+        Assert.Empty(strip.Actions.Calls);
+    });
 }

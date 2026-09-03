@@ -29,8 +29,14 @@ public sealed class ToolbarParts
 
     // 사용자 요청 17차: 색을 담아 두지 않고 **칸 번호**만 담는다 — 설정에서 바로가기 색을
     // 바꾸면 빌드 시점에 박아 둔 색은 영원히 옛 색으로 남는다.
-    internal readonly List<(Border Swatch, int Slot)> QuickSwatches;
+    // Ring은 이중 톤 선택 링의 바깥(강조색) 테두리를 지는 래퍼다 — 안쪽 흰 링만으로는
+    // 흰색·노랑 칸에서 선택이 보이지 않는다 (ToolbarStateMap.QuickSwatchOuterRingThickness).
+    internal readonly List<(Border Swatch, Border Ring, int Slot)> QuickSwatches;
     private readonly StackPanel? _menuPanel;
+
+    // 버튼별 포인터 상태 (호버/눌림). 배경 선택은 PressStateRules가 하고 여기는 기억만 한다 —
+    // AppState.Changed로 오는 갱신이 눌림 표시를 지워 버리지 않게 하려면 상태가 어딘가 남아 있어야 한다.
+    private readonly Dictionary<ToolbarButtonId, (bool Hovered, bool Pressed)> _pointer = [];
 
     internal System.Windows.Shapes.Ellipse? PreviewDot;
     internal Border? CurrentColorSwatch;
@@ -38,7 +44,7 @@ public sealed class ToolbarParts
 
     internal ToolbarParts(
         Dictionary<ToolbarButtonId, ButtonParts> buttons,
-        List<(Border Swatch, int Slot)> quickSwatches,
+        List<(Border Swatch, Border Ring, int Slot)> quickSwatches,
         StackPanel? menuPanel)
     {
         Buttons = buttons;
@@ -65,9 +71,23 @@ public sealed class ToolbarParts
         }
         bool active = ToolbarStateMap.IsActive(state, id, MenuCollapsed);
         var icon = ToolbarStateMap.IconFor(state, id, MenuCollapsed, parts.Icon);
-        parts.Root.Background = active ? ToolbarTheme.AccentBrush : Brushes.Transparent;
+        var (hovered, pressed) = _pointer.TryGetValue(id, out var pointer) ? pointer : (false, false);
+        var visual = PressStateRules.Resolve(active, hovered, pressed);
+        parts.Root.Background = visual switch
+        {
+            ButtonVisualState.Active => ToolbarTheme.AccentBrush,
+            ButtonVisualState.Pressed => ToolbarTheme.ButtonPressedBrush,
+            ButtonVisualState.Hover => ToolbarTheme.ButtonHoverBrush,
+            _ => Brushes.Transparent,
+        };
+        // 호버 배경은 흰 스트립과 1.4:1이라 단독으로는 거의 보이지 않는다 (ShellPaletteTests) —
+        // 어포던스는 이 1px 외곽선이 진다. 두께는 언제나 1이고 색만 바뀐다: 0↔1로 토글하면
+        // 글리프가 한 픽셀 밀려 손을 얹을 때마다 흔들린다.
+        parts.Root.BorderBrush = visual is ButtonVisualState.Hover or ButtonVisualState.Pressed
+            ? ToolbarTheme.AccentBrush
+            : Brushes.Transparent;
         parts.Glyph.Text = active ? icon.Filled : icon.Regular;
-        parts.Glyph.FontFamily = active ? Icons.Filled : Icons.Regular;
+        parts.Glyph.FontFamily = ToolbarStateMap.GlyphFontIsFilled(icon, active) ? Icons.Filled : Icons.Regular;
         parts.Glyph.Foreground = active ? Brushes.White : ToolbarTheme.IconBrush;
         if (parts.FlyoutMark is not null)
         {
@@ -86,6 +106,13 @@ public sealed class ToolbarParts
         }
     }
 
+    /// <summary>포인터 상태를 기록하고 그 버튼만 다시 칠한다 (어댑터의 마우스 핸들러가 부른다).</summary>
+    internal void SetPointerState(AppState state, ToolbarButtonId id, bool hovered, bool pressed)
+    {
+        _pointer[id] = (hovered, pressed);
+        RefreshButton(state, id);
+    }
+
     public void RefreshActiveStates(AppState state)
     {
         foreach (var id in Buttons.Keys.ToList())
@@ -97,7 +124,7 @@ public sealed class ToolbarParts
         {
             CurrentColorSwatch.Background = ToolbarTheme.Freeze(new SolidColorBrush(state.CurrentColor));
         }
-        foreach (var (swatch, slot) in QuickSwatches)
+        foreach (var (swatch, ring, slot) in QuickSwatches)
         {
             if (slot >= state.QuickColors.Count)
             {
@@ -107,6 +134,7 @@ public sealed class ToolbarParts
             var color = state.QuickColors[slot];
             swatch.Background = ToolbarTheme.Freeze(new SolidColorBrush(color));
             swatch.BorderThickness = new Thickness(ToolbarStateMap.QuickSwatchBorderThickness(color, state.CurrentColor));
+            ring.BorderThickness = new Thickness(ToolbarStateMap.QuickSwatchOuterRingThickness(color, state.CurrentColor));
         }
     }
 

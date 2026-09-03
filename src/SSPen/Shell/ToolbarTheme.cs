@@ -7,20 +7,24 @@ namespace SSPen.Shell;
 
 /// <summary>
 /// 툴바 시각 테마 (god file 분할, ARCH-11 후속): 프로즌 브러시·구분선·플라이아웃 어포던스 삼각형·
-/// 로고 배지. 스펙 F6/F12 실측 재현 색상 (밝은 스트립 + 진한 아이콘, 활성 강조색 #FF00ADEF).
+/// 로고 배지. 색 <b>값</b>은 <see cref="ShellPalette"/>가 소유한다 (대비비를 헤드리스로 잠그기 위해) —
+/// 여기 남는 것은 그 색의 프로즌 브러시 인스턴스뿐이다.
 /// </summary>
 public static class ToolbarTheme
 {
-    public static readonly Color AccentColor = (Color)ColorConverter.ConvertFromString("#FF00ADEF");
+    /// <summary>활성 강조색. 로고 배지만 브랜드 색을 쓴다 (<see cref="ShellPalette.Brand"/>).</summary>
+    public static readonly Color AccentColor = ShellPalette.Accent;
 
     public static readonly Brush AccentBrush = Freeze(new SolidColorBrush(AccentColor));
-    public static readonly Brush StripBrush = Freeze(new SolidColorBrush(Colors.White));
-    public static readonly Brush StripBorderBrush = Freeze(new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFCFCFCF")));
-    public static readonly Brush ButtonHoverBrush = Freeze(new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFE0F4FD")));
-    public static readonly Brush IconBrush = Freeze(new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FF1F1F1F")));
-    public static readonly Brush SeparatorBrush = Freeze(new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFE4E4E4")));
-    public static readonly Brush SwatchBorderBrush = Freeze(new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFB8B8B8")));
-    public static readonly Brush TooltipComboBrush = Freeze(new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FF707070")));
+    public static readonly Brush BrandBrush = Freeze(new SolidColorBrush(ShellPalette.Brand));
+    public static readonly Brush StripBrush = Freeze(new SolidColorBrush(ShellPalette.Strip));
+    public static readonly Brush StripBorderBrush = Freeze(new SolidColorBrush(ShellPalette.StripBorder));
+    public static readonly Brush ButtonHoverBrush = Freeze(new SolidColorBrush(ShellPalette.ButtonHover));
+    public static readonly Brush ButtonPressedBrush = Freeze(new SolidColorBrush(ShellPalette.ButtonPressed));
+    public static readonly Brush IconBrush = Freeze(new SolidColorBrush(ShellPalette.Icon));
+    public static readonly Brush SeparatorBrush = Freeze(new SolidColorBrush(ShellPalette.Separator));
+    public static readonly Brush SwatchBorderBrush = Freeze(new SolidColorBrush(ShellPalette.SwatchBorder));
+    public static readonly Brush TooltipComboBrush = Freeze(new SolidColorBrush(ShellPalette.TooltipCombo));
 
     public static Brush Freeze(SolidColorBrush brush)
     {
@@ -62,7 +66,9 @@ public static class ToolbarTheme
             {
                 Width = 28,
                 Height = 28,
-                Fill = AccentBrush,
+                // 로고는 앱 아이콘과 같은 브랜드 색이다 — 강조색이 대비를 위해 어두워져도 따라가지 않는다
+                // (WCAG 1.4.3은 로고타입을 면제한다).
+                Fill = BrandBrush,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             });

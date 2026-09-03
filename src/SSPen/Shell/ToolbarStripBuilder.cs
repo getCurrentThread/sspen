@@ -30,7 +30,7 @@ public static class ToolbarStripBuilder
         Action onRotateBoard)
     {
         var buttons = new Dictionary<ToolbarButtonId, ButtonParts>();
-        var quickSwatches = new List<(Border Swatch, int Slot)>();
+        var quickSwatches = new List<(Border Swatch, Border Ring, int Slot)>();
         StackPanel? menuPanel = null;
         ToolbarParts? parts = null;
 
@@ -70,7 +70,7 @@ public static class ToolbarStripBuilder
             {
                 Text = entry.Icon.Regular,
                 FontFamily = Icons.Regular,
-                FontSize = 20,
+                FontSize = ShellMetrics.GlyphSize,
                 Foreground = ToolbarTheme.IconBrush,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -92,8 +92,8 @@ public static class ToolbarStripBuilder
                 // 색 사용 도구의 그룹별 색 배지 (Epic Pen의 펜 색 점 대응 — 사용자 조타: 도구별 개별 색).
                 badge = new System.Windows.Shapes.Ellipse
                 {
-                    Width = 8,
-                    Height = 8,
+                    Width = ShellMetrics.ColorBadgeSize,
+                    Height = ShellMetrics.ColorBadgeSize,
                     Fill = new SolidColorBrush(state.ColorOf(entry.BadgeGroup.Value)),
                     Stroke = Brushes.White,
                     StrokeThickness = 1,
@@ -107,12 +107,19 @@ public static class ToolbarStripBuilder
 
             var button = new Border
             {
-                Width = 30,
-                Height = 30,
+                Width = ShellMetrics.ButtonSize,
+                Height = ShellMetrics.ButtonSize,
                 Background = Brushes.Transparent,
+                // 두께는 언제나 1이고 색만 바뀐다 (ToolbarParts.RefreshButton) — 0↔1 토글은 글리프를 한 픽셀 밀어낸다.
+                BorderBrush = Brushes.Transparent,
+                BorderThickness = new Thickness(ShellMetrics.FocusOutline),
                 Child = content,
             };
             ToolbarTooltips.Attach(actions, button, entry.Tooltip, entry.HotkeyId, flyouts.RegisterTooltip);
+            bool pressedInside = false;
+            // 호버는 Enter/Leave로 직접 센다 — IsMouseOver는 마우스를 캡처한 동안과 합성 이벤트에서
+            // 우리가 아는 것과 다른 답을 준다.
+            bool hovered = false;
             button.MouseEnter += (_, _) =>
             {
                 if (!entry.HasFlyout)
@@ -120,13 +127,42 @@ public static class ToolbarStripBuilder
                     // 플라이아웃 없는 버튼 호버 시 열린 서브메뉴 즉시 닫기 (빠릿한 전환).
                     flyouts.CloseFlyoutsExcept(null);
                 }
-                if (!ToolbarStateMap.IsActive(state, entry.Id, menuPanel is { Visibility: Visibility.Collapsed }))
+                hovered = true;
+                parts!.SetPointerState(state, entry.Id, hovered: true, pressed: pressedInside);
+            };
+            button.MouseLeave += (_, _) =>
+            {
+                hovered = false;
+                parts!.SetPointerState(state, entry.Id, hovered: false, pressed: pressedInside);
+            };
+            // 눌림 래치 (PressStateRules): 이 버튼에서 눌렀고 이 버튼에서 뗐을 때만 발화한다.
+            // 예전에는 MouseLeftButtonUp 단독이라 밖에서 시작한 클릭이 발화하고, 눌렀다가 끌어서
+            // 취소할 방법이 없었다 — 전체 지우기처럼 되돌리기 힘든 버튼에서 특히 나쁘다.
+            button.MouseLeftButtonDown += (_, _) =>
+            {
+                // 이 버튼을 눌렀다는 것은 포인터가 그 위에 있다는 뜻이다 (합성 이벤트에서도 성립).
+                hovered = true;
+                pressedInside = true;
+                button.CaptureMouse();
+                parts!.SetPointerState(state, entry.Id, hovered: true, pressed: true);
+            };
+            button.MouseLeftButtonUp += (_, _) =>
+            {
+                bool fire = PressStateRules.ShouldFire(pressedInside, hovered);
+                pressedInside = false;
+                button.ReleaseMouseCapture();
+                parts!.SetPointerState(state, entry.Id, hovered, pressed: false);
+                if (fire)
                 {
-                    button.Background = ToolbarTheme.ButtonHoverBrush;
+                    onClick();
                 }
             };
-            button.MouseLeave += (_, _) => parts!.RefreshButton(state, entry.Id);
-            button.MouseLeftButtonUp += (_, _) => onClick();
+            // 캡처를 잃는 경로(다른 창의 활성화 등)에서도 눌림 표시가 래치되지 않게 푼다.
+            button.LostMouseCapture += (_, _) =>
+            {
+                pressedInside = false;
+                parts!.SetPointerState(state, entry.Id, hovered, pressed: false);
+            };
             buttons[entry.Id] = new ButtonParts(button, glyph, entry.Icon, flyoutMark, badge, entry.BadgeGroup);
             return button;
         }
@@ -178,16 +214,23 @@ public static class ToolbarStripBuilder
                 int slot = i;
                 var swatch = new Border
                 {
-                    Height = 15,
                     Background = ToolbarTheme.Freeze(new SolidColorBrush(state.QuickColors[slot])),
                     BorderBrush = Brushes.White,
                     BorderThickness = new Thickness(0), // 선택 시만 흰 링 강조 (플러시 모자이크 유지).
                 };
-                ToolbarTooltips.Attach(actions, swatch, Strings.QuickColors, $"quickcolor:{slot + 1}", flyouts.RegisterTooltip);
+                // 이중 톤 선택 링의 바깥쪽: 흰 링만으로는 흰색·노랑 칸에서 보이지 않는다 (ToolbarStateMap 참조).
+                var ring = new Border
+                {
+                    Height = ShellMetrics.QuickSwatchHeight,
+                    BorderBrush = ToolbarTheme.AccentBrush,
+                    BorderThickness = new Thickness(0),
+                    Child = swatch,
+                };
+                ToolbarTooltips.Attach(actions, ring, Strings.QuickColors, $"quickcolor:{slot + 1}", flyouts.RegisterTooltip);
                 // 클릭 시점에 색을 읽는다 — 설정에서 바뀌면 바뀜 색이 추서된다.
-                swatch.MouseLeftButtonUp += (_, _) => state.CurrentColor = state.QuickColors[slot];
-                quickSwatches.Add((swatch, slot));
-                grid.Children.Add(swatch);
+                ring.MouseLeftButtonUp += (_, _) => state.CurrentColor = state.QuickColors[slot];
+                quickSwatches.Add((swatch, ring, slot));
+                grid.Children.Add(ring);
             }
 
             grid.MouseWheel += (_, e) =>
@@ -202,7 +245,7 @@ public static class ToolbarStripBuilder
             // 현재 색 대형 스와치: 전폭 플러시, 클릭 시 확장 팔레트. 하단 라운드 모서리를 피해 아래 여백.
             var currentColorSwatch = new Border
             {
-                Height = 18,
+                Height = ShellMetrics.CurrentColorSwatchHeight,
                 Margin = new Thickness(0, 2, 0, 5),
                 Background = ToolbarTheme.Freeze(new SolidColorBrush(state.CurrentColor)),
                 BorderThickness = new Thickness(0),
@@ -313,9 +356,9 @@ public static class ToolbarStripBuilder
             Background = ToolbarTheme.StripBrush,
             BorderBrush = ToolbarTheme.StripBorderBrush,
             BorderThickness = new Thickness(2),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = new CornerRadius(ShellMetrics.CardRadius),
             Child = stack2,
-            Width = 34,
+            Width = ShellMetrics.StripWidth,
         };
 
         // 로고는 스트립 밖, 투명 배경 위에 띄운다 (사용자 조타: 원형 아이콘 뒤 배경 제거 — Epic Pen 닙 배치).
@@ -346,9 +389,9 @@ public static class ToolbarStripBuilder
     /// <summary>보드 버튼 우상단 활성 보드 스와치 배지 (없음이면 숨김).</summary>
     internal static Border MakeBoardBadge() => new()
     {
-        Width = 9,
-        Height = 9,
-        CornerRadius = new CornerRadius(2),
+        Width = ShellMetrics.BoardBadgeSize,
+        Height = ShellMetrics.BoardBadgeSize,
+        CornerRadius = new CornerRadius(ShellMetrics.BadgeRadius),
         Background = Brushes.White,
         BorderBrush = Brushes.White,
         BorderThickness = new Thickness(1),

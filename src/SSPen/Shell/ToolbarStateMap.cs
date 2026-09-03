@@ -107,6 +107,17 @@ public static class ToolbarStateMap
         _ => false,
     };
 
+    /// <summary>
+    /// 활성 글리프를 Filled 폰트로 그릴 것인가.
+    ///
+    /// 아이콘 표의 여섯 항목(텍스트·실행취소·전체 지우기·캡처·화살표·타원)은 Filled 코드포인트가 없어
+    /// <c>Pair(x, x)</c>로 같은 값을 두 번 적어 두었다. 그 코드포인트를 Filled <b>폰트</b>로 그리면
+    /// 그 폰트에 없는 글리프라 두부(.notdef)나 다른 그림이 나온다 — 활성일 때만 아이콘이 깨지는
+    /// 증상이다. 같은 쌍이면 Regular 폰트를 유지한다.
+    /// </summary>
+    public static bool GlyphFontIsFilled((string Regular, string Filled) icon, bool active) =>
+        active && !string.Equals(icon.Regular, icon.Filled, StringComparison.Ordinal);
+
     /// <summary>상태 연동 아이콘: 눈(접힘↔펼침), 펜 그룹(현재 선택 도구 반영).</summary>
     public static (string Regular, string Filled) IconFor(AppState state, ToolbarButtonId id, bool menuCollapsed, (string Regular, string Filled) fallback) => id switch
     {
@@ -176,6 +187,13 @@ public static class ToolbarStateMap
     /// 같은 색이 두 칸이면 둘 다 강조된다 — 보존이지 승인이 아니다.
     /// </summary>
     public static double QuickSwatchBorderThickness(Color slotColor, Color currentColor) => slotColor == currentColor ? 2 : 0;
+
+    /// <summary>
+    /// 선택 링 바깥쪽(강조색) 두께. 흰 링 하나만으로는 흰색·노랑·연회색 칸에서 사실상 보이지 않아,
+    /// 어느 칸이 선택됐는지 알 수 없었다. 안쪽 흰 링 + 바깥 강조색 링의 이중 톤이라 밝은 색·어두운 색
+    /// 어느 쪽에서도 한 겹은 대비된다.
+    /// </summary>
+    public static double QuickSwatchOuterRingThickness(Color slotColor, Color currentColor) => slotColor == currentColor ? 1 : 0;
 
     /// <summary>현재 색이 든 퀵컬러 칸 (첫 일치); 어느 칸에도 없으면 0 — 휠 순환의 출발점.</summary>
     public static int CurrentQuickColorSlot(IReadOnlyList<Color> quickColors, Color currentColor)
