@@ -8,7 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 guard system, the transform/selection subsystem invariants, coordinate-space rules, code conventions,
 testing conventions, and two hard-won agent tool-call gotchas (literal UTF-8 in tool inputs; the
 `deep-interview`/`ralplan` planning-phase mutation guard). Do not duplicate that content here — this file
-only adds a quick-start command reference.
+only adds a quick-start command reference, the packaging/runtime facts, and the few conventions that get
+broken most often.
 
 ## What this is
 
@@ -16,6 +17,13 @@ SS Pen (`SSPen`): a Korean-language Windows screen-annotation tool (Epic Pen–s
 `net10.0-windows`, zero NuGet dependencies in the app project, all OS interaction via hand-written Win32
 P/Invoke (`src/SSPen/Interop/`). No DI container, no MVVM, no XAML views beyond `App.xaml` — UI is
 C#-built `Window` subclasses, composition root is `src/SSPen/AppController.cs`.
+
+`src/SSPen/Updates/` is the app's only network code (`UpdateService` polls GitHub releases at
+`getCurrentThread/sspen`). It is also the most likely place for someone to reach for `async` — don't; the
+no-`async` rule holds there too.
+
+Prerequisites: Windows 10 1809+ x64, .NET SDK 10. Building the installer additionally needs Inno Setup 6
+(`winget install JRSoftware.InnoSetup`).
 
 ## Commands
 
@@ -26,10 +34,11 @@ dotnet build SSPen.sln -c Debug
 # run
 dotnet run --project src/SSPen
 
-# all tests (solution-wide, safe on any machine)
+# all tests (solution-wide) — NOT safe to run casually: it pulls in the integration and E2E
+# projects, which open real fullscreen topmost windows and take over the physical screen.
 dotnet test SSPen.sln
 
-# unit & simulation tests (headless-safe, fast)
+# unit & simulation tests (headless-safe, fast) — the default for everyday work (1204 cases, <1 s)
 dotnet test tests/SSPen.Tests/SSPen.Tests.csproj
 dotnet test tests/SSPen.Tests/SSPen.Tests.csproj --filter "FullyQualifiedName~HitTestTests"
 
@@ -54,7 +63,13 @@ Start-Process -FilePath $installer.FullName -ArgumentList '/VERYSILENT', '/SUPPR
 Start-Process -FilePath "$env:LOCALAPPDATA\Programs\SS Pen\SSPen.exe"
 ```
 
-CI (`.github/workflows/ci.yml`) runs on `windows-latest` for every push and PR: `dotnet restore` → `dotnet build -c Release` → unit/simulation tests → integration tests → self-contained publish validation → Inno Setup installer packaging. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which publishes the self-contained build, the installer and a portable zip to a GitHub release.
+CI (`.github/workflows/ci.yml`) runs on `windows-latest` for every push and PR to `main`/`master`:
+`dotnet restore` → `dotnet build -c Release` → unit/simulation tests → **E2E tests** → integration tests
+→ self-contained publish validation → Inno Setup installer packaging → upload of the
+`SSPen-Setup-Installer` artifact. The integration step carries `continue-on-error: true` (headless-runner
+tolerance), so a green CI run does **not** prove the integration suite passed — check that step's log.
+Pushing a `v*` tag triggers `.github/workflows/release.yml`, which publishes the self-contained build, the
+installer and a portable zip to a GitHub release.
 
 ## Publish & installer gotchas
 
@@ -74,15 +89,28 @@ Two facts about the installer that are not visible from the `.iss` source alone:
 - **Uninstall deletes user data.** `[UninstallDelete]` removes `%APPDATA%\SS Pen` — settings *and* logs.
   Uninstall/reinstall is therefore not a safe way to "clean up" an install.
 
-The installed `SSPen.exe` carries the source commit in its `ProductVersion` (`1.3.0+<sha>`); use that to
-confirm which build is actually installed.
+The installed `SSPen.exe` carries the source commit in its `ProductVersion` (`<Version>+<sha>`); use that
+to confirm which build is actually installed. The version number itself lives in two places that must be
+bumped together: `<Version>` in `src/SSPen/SSPen.csproj` and `MyAppVersion` in `installer/SSPen.iss`.
+
+## Where things live at runtime
+
+| Path | What |
+|---|---|
+| `%APPDATA%\SS Pen\settings.json` | settings; a corrupt file is quarantined as `.bad` and defaults are regenerated |
+| `%APPDATA%\SS Pen\logs\sspen-yyyyMMdd.log` | daily rolling log — first place to look when the app misbehaves |
+| `사진\SS Pen\` | default capture output folder (configurable) |
 
 ## Conventions worth repeating from AGENTS.md
 
 - Comments, XML docs, log messages, and commit subjects are **Korean**, citing spec IDs
   (`WI-nn`, `AC-nn`, `CRIT-n`, `ARCH-n`). Match this when editing existing files.
-- User-visible strings live only in `Shell/Strings.cs`.
+- User-visible strings live only in `Shell/Strings.cs` — with one known, deliberate exception: the Korean
+  `ErrorMessage` text in `Updates/UpdateCheckerCore.cs` and `Updates/UpdateService.cs` (recorded as
+  "deliberately not done" in AGENTS.md). Don't cite those as precedent for new hardcoded strings.
 - No `async`/`await` — concurrency is Dispatcher-based. Do not introduce `Task`-based code.
 - New logic should be split into pure, injectable core + thin UI adapter (see AGENTS.md
   "Testability pattern") so it lands in `tests/SSPen.Tests/` rather than needing the
   machine-bound integration suite.
+- Tests are xUnit: class `<Subject>Tests`, method `Method_Scenario_ExpectedOutcome`. Adversarial suites
+  use the `*RedTeamTests.cs` suffix; shared fakes live in `tests/SSPen.Tests/TestSupport/`.
