@@ -31,6 +31,13 @@ public sealed class SettingsWindow : Window
     private readonly Color[] _quickColors;
     private readonly List<Border> _quickSwatches = [];
 
+    // 단축키 재지정 보류분: 다른 모든 항목과 같이 확인을 눌러야 적용된다.
+    // 예전에는 캡처 즉시 SaveNow까지 해서 취소해도 단축키만 이미 저장돼 있었다.
+    private readonly Dictionary<string, HotkeyDef> _pendingHotkeys = [];
+
+    // 판서 화면을 모두 끄면 규칙이 첫 화면을 되살린다 — 그 사실을 알리는 인라인 라벨.
+    private readonly TextBlock _monitorNotice;
+
     public SettingsWindow(ISettingsHost host)
     {
         _host = host;
@@ -117,6 +124,15 @@ public sealed class SettingsWindow : Window
             _monitorCheckBoxes.Add((m.DeviceName, cb));
             monitorSection.Children.Add(cb);
         }
+        _monitorNotice = new TextBlock
+        {
+            Margin = new Thickness(4, 4, 4, 0),
+            Foreground = Brushes.OrangeRed,
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Visibility = Visibility.Collapsed,
+        };
+        monitorSection.Children.Add(_monitorNotice);
 
         var stack = new StackPanel { Margin = new Thickness(14) };
         stack.Children.Add(SectionHeader(Strings.SettingsGeneral));
@@ -171,7 +187,7 @@ public sealed class SettingsWindow : Window
         checkUpdateBottomBtn.Click += (_, _) => _host.CheckForUpdates();
 
         var okButton = new Button { Content = Strings.SettingsOk, Width = 80, Margin = new Thickness(4), IsDefault = true };
-        okButton.Click += (_, _) => { Apply(); Close(); };
+        okButton.Click += (_, _) => ApplyAndClose();
         var cancelButton = new Button { Content = Strings.SettingsCancel, Width = 80, Margin = new Thickness(4), IsCancel = true };
         cancelButton.Click += (_, _) => Close();
 
@@ -306,6 +322,19 @@ public sealed class SettingsWindow : Window
         popup.ShowDialog();
     }
 
+    /// <summary>
+    /// 아직 확인을 누르지 않은 단축키 재지정. 보류 값이 있으면 그것이, 없으면 호스트의 현재 유효 조합이 충돌 판정의 입력이다 —
+    /// 한 창에서 두 항목을 같은 조합으로 바꾸는 경우를 잡으려면 보류분도 표에 있어야 한다.
+    /// </summary>
+    private string? ConflictFor(string editingId, HotkeyDef candidate)
+    {
+        var table = _host.RemappableHotkeys
+            .Select(entry => (entry.Id, entry.Name,
+                Effective: _pendingHotkeys.TryGetValue(entry.Id, out var pending) ? pending : entry.Effective))
+            .ToList();
+        return HotkeyConflictRules.Find(table, editingId, candidate, Annotation.AppState.QuickColorCount);
+    }
+
     private static Thickness RowMargin => new(4, 4, 4, 4);
 
     private static TextBlock SectionHeader(string text) => new()
@@ -329,17 +358,29 @@ public sealed class SettingsWindow : Window
         };
         comboButton.Click += (_, _) =>
         {
-            // ARCH-8 순서(억제 → 모달 → 재등록 → 반드시 복원)는 HotkeyRemapFlow가 소유한다 (40단계). 창은 대화상자와 라벨만.
+            // ARCH-8 순서(억제 → 모달 → 반드시 복원)는 HotkeyRemapFlow가 소유한다 (40단계). 창은 대화상자와 라벨만.
             var captured = HotkeyRemapFlow.Run(_host, id, () =>
             {
                 var dialog = new HotkeyCaptureDialog(effective) { Owner = this, Topmost = true };
                 return dialog.ShowDialog() == true ? dialog.Captured : null;
             });
-            if (captured is { } def)
+            if (captured is not { } def)
             {
-                comboButton.Content = HotkeyFormatting.Format(def);
-                effective = def;
+                return;
             }
+            // 충돌은 이 창에서, 지금 알린다 — 예전에는 나중에 RegisterHotKey가 실패하며
+            // 조합을 만든 창 밖의 트레이 풍선으로 5초간 스쳐 갔다.
+            if (ConflictFor(id, def) is { } owner)
+            {
+                MessageBox.Show(
+                    Strings.HotkeyAlreadyUsed(owner), Strings.SettingsHotkeys,
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            // 다른 설정과 같은 규칙: 확인을 눌러야 적용된다. 여기서는 보류 목록과 라벨만 바꾼다.
+            _pendingHotkeys[id] = def;
+            comboButton.Content = HotkeyFormatting.Format(def);
+            effective = def;
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 2, 4, 2) };
         row.Children.Add(label);
@@ -379,7 +420,34 @@ public sealed class SettingsWindow : Window
             Monitors: [.. _monitorCheckBoxes.Select(item => (item.DeviceName, item.CheckBox.IsChecked == true))]);
 
         var updated = _host.Settings;
-        SettingsFormRules.ApplyTo(updated, values, Capture.CaptureFileNaming.DefaultSaveFolder());
+        var result = SettingsFormRules.ApplyTo(updated, values, Capture.CaptureFileNaming.DefaultSaveFolder());
+        // 보류 중인 재지정을 여기서 반영한다 — 즉시 재등록(AC-23)은 RemapHotkey 안에서 그대로 일어난다.
+        foreach (var (id, def) in _pendingHotkeys)
+        {
+            _host.RemapHotkey(id, def);
+        }
+        _pendingHotkeys.Clear();
         _host.ApplyGeneralSettings(updated);
+        if (result.MonitorSelectionCoerced && result.RestoredDeviceName is { } device)
+        {
+            // 교정을 알리되 창은 닫지 않는다: 사용자가 방금 무슨 일이 일어났는지 보고 다시 고를 수 있어야 한다.
+            _monitorNotice.Text = Strings.MonitorRestored(device);
+            _monitorNotice.Visibility = Visibility.Visible;
+            var restored = _monitorCheckBoxes.FirstOrDefault(item => item.DeviceName == device);
+            if (restored.CheckBox is not null)
+            {
+                restored.CheckBox.IsChecked = true;
+            }
+        }
+    }
+
+    /// <summary>확인 버튼: 적용 후 교정이 있었으면 창을 열어 둔다 (사용자가 결과를 봐야 한다).</summary>
+    private void ApplyAndClose()
+    {
+        Apply();
+        if (_monitorNotice.Visibility != Visibility.Visible)
+        {
+            Close();
+        }
     }
 }

@@ -74,14 +74,32 @@ public class SettingsFormRulesTests
         Assert.Equal(string.Empty, target.SaveFolder);
     }
 
+    /// <summary>
+    /// 첫 화면을 되살리되 <b>되살렸다고 말한다</b>. 조용히 되돌리던 시절에는 사용자가 자기 설정이
+    /// 무시됐다고 읽었고, 창을 다시 열기 전까지 이유를 알 방법이 없었다.
+    /// </summary>
     [Fact]
-    public void ApplyTo_AllMonitorsUnchecked_RestoresFirst()
+    public void ApplyTo_AllMonitorsUnchecked_RestoresFirstAndReportsIt()
     {
         var target = new AppSettings();
 
-        SettingsFormRules.ApplyTo(target, Values(monitors: [(@"\\.\DISPLAY1", false), (@"\\.\DISPLAY2", false), (@"\\.\DISPLAY3", false)]), DefaultFolder);
+        var result = SettingsFormRules.ApplyTo(target, Values(monitors: [(@"\\.\DISPLAY1", false), (@"\\.\DISPLAY2", false), (@"\\.\DISPLAY3", false)]), DefaultFolder);
 
         Assert.Equal([@"\\.\DISPLAY2", @"\\.\DISPLAY3"], target.DisabledMonitors);
+        Assert.True(result.MonitorSelectionCoerced);
+        Assert.Equal(@"\\.\DISPLAY1", result.RestoredDeviceName);
+    }
+
+    /// <summary>교정하지 않았으면 알릴 것도 없다.</summary>
+    [Fact]
+    public void ApplyTo_AtLeastOneMonitorChecked_ReportsNoCoercion()
+    {
+        var target = new AppSettings();
+
+        var result = SettingsFormRules.ApplyTo(target, Values(monitors: [(@"\\.\DISPLAY1", true), (@"\\.\DISPLAY2", false)]), DefaultFolder);
+
+        Assert.False(result.MonitorSelectionCoerced);
+        Assert.Null(result.RestoredDeviceName);
     }
 
     [Fact]
@@ -89,9 +107,10 @@ public class SettingsFormRulesTests
     {
         var target = new AppSettings { DisabledMonitors = [@"\\.\DISPLAY9"] };
 
-        SettingsFormRules.ApplyTo(target, Values(monitors: []), DefaultFolder);
+        var result = SettingsFormRules.ApplyTo(target, Values(monitors: []), DefaultFolder);
 
         Assert.Empty(target.DisabledMonitors);
+        Assert.False(result.MonitorSelectionCoerced);
     }
 
     [Fact]

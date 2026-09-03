@@ -17,6 +17,9 @@ public readonly record struct SettingsFormValues(
     string SaveFolder,
     IReadOnlyList<(string DeviceName, bool Enabled)> Monitors);
 
+/// <summary>적용 결과. 규칙이 사용자 입력을 <b>교정</b>했다면 무엇을 되살렸는지 알린다.</summary>
+public readonly record struct SettingsApplyResult(bool MonitorSelectionCoerced, string? RestoredDeviceName);
+
 /// <summary>
 /// 폼 값 → AppSettings 매핑의 순수 규칙 (41단계, WI-16/AC-26). ToolbarStateMap 선례대로 컨트롤→값은 창이, 값→설정은 여기가.
 ///
@@ -27,7 +30,7 @@ public readonly record struct SettingsFormValues(
 public static class SettingsFormRules
 {
     /// <param name="defaultSaveFolder">저장 폴더가 이 값과 같으면 설정에는 빈 문자열(= 기본 폴더 사용)로 적는다.</param>
-    public static void ApplyTo(AppSettings target, SettingsFormValues values, string defaultSaveFolder)
+    public static SettingsApplyResult ApplyTo(AppSettings target, SettingsFormValues values, string defaultSaveFolder)
     {
         target.RunAtLogin = values.RunAtLogin;
         target.CheckUpdateOnStart = values.CheckUpdateOnStart;
@@ -44,10 +47,15 @@ public static class SettingsFormRules
             .Select(m => m.DeviceName)
             .ToList();
         // 모든 모니터가 비활성화되는 것을 방지: 최소 1개는 켠다 (첫 항목 복원).
+        // 되살렸다는 사실을 **반환**한다 — 조용히 되돌리면 사용자는 자기 설정이 무시됐다고 읽고,
+        // 창을 다시 열어 보기 전까지는 왜 그런지 알 방법이 없다.
+        string? restored = null;
         if (values.Monitors.Count > 0 && disabled.Count == values.Monitors.Count)
         {
+            restored = disabled[0];
             disabled.RemoveAt(0);
         }
         target.DisabledMonitors = disabled;
+        return new SettingsApplyResult(restored is not null, restored);
     }
 }
