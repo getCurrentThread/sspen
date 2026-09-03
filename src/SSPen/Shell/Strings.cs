@@ -78,6 +78,12 @@ public static class Strings
     public const string SettingsRunAtLogin = "윈도우 로그인 시 시작";
     public const string SettingsCheckUpdate = "시작 시 업데이트 확인";
     public const string SettingsHotkeys = "단축키";
+
+    /// <summary>21행을 훑지 않고 이름이나 조합으로 거른다.</summary>
+    public const string SettingsSearchHotkeys = "이름 또는 조합으로 검색";
+
+    /// <summary>검색 결과가 없을 때 — 빈 목록만 남으면 창이 고장 난 것처럼 보인다.</summary>
+    public const string SettingsSearchNoMatch = "일치하는 단축키가 없습니다.";
     public const string SettingsSaveFolder = "스크린샷 저장 폴더";
     public const string SettingsWheelSize = "마우스 휠로 펜 크기를 조정합니다";
     public const string SettingsSyncToolStyles = "모든 도구가 같은 색과 굵기를 사용";
@@ -114,7 +120,6 @@ public static class Strings
     public const string SettingsExitApp = "프로그램 종료";
     public const string ExitConfirmMessage = "SS Pen을 종료하시겠습니까?";
     public const string SettingsCheckUpdateNow = "지금 확인";
-    public const string SettingsCheckUpdateBtn = "업데이트 확인";
     public const string SettingsCurrentVersion = "현재 버전";
 
     // 업데이트

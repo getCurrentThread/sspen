@@ -38,6 +38,18 @@ public sealed class SettingsWindow : Window
     // 판서 화면을 모두 끄면 규칙이 첫 화면을 되살린다 — 그 사실을 알리는 인라인 라벨.
     private readonly TextBlock _monitorNotice;
 
+    // 단축키 검색 (2단계): 행마다 (표시명, 조합 라벨을 읽는 함수, 행 자체)를 들고 있다가
+    // SettingsSectionPlan.MatchesHotkeyFilter의 답으로 가시성만 토글한다.
+    private readonly List<(string Name, Func<string> Combo, UIElement Row)> _hotkeyRows = [];
+    private readonly TextBlock _hotkeyNoMatch = new()
+    {
+        Text = Strings.SettingsSearchNoMatch,
+        Margin = new Thickness(4, 6, 4, 2),
+        Foreground = Brushes.Gray,
+        FontSize = 11,
+        Visibility = Visibility.Collapsed,
+    };
+
     public SettingsWindow(ISettingsHost host)
     {
         _host = host;
@@ -47,8 +59,12 @@ public sealed class SettingsWindow : Window
         Width = 510;
         // 사용자 요청 17차로 보드 기본색 2줄 + 바로가기 색상 섹션이 늘어 444로는 마지막 섹션이
         // 접혀 보이지 않는다 (스크롤해야 닿음). 실측으로 재산출한 높이.
-        Height = 560;
-        ResizeMode = ResizeMode.NoResize;
+        Height = SettingsSectionPlan.DefaultHeight;
+        // 손으로 맞춘 높이는 그 화면에서만 맞다 — 작은 노트북·고DPI에서는 아래 버튼 줄에 닿지 못했다.
+        // 최소 크기는 SettingsSectionPlan이 소유한다 (라벨 220 + 조합 160이 겹치지 않는 폭).
+        ResizeMode = ResizeMode.CanResize;
+        MinWidth = SettingsSectionPlan.MinWidth;
+        MinHeight = SettingsSectionPlan.MinHeight;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Topmost = true;
 
@@ -151,11 +167,7 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(monitorSection);
         stack.Children.Add(SectionHeader(Strings.SettingsQuickColors));
         stack.Children.Add(BuildQuickColorRow());
-        stack.Children.Add(SectionHeader(Strings.SettingsHotkeys));
-        foreach (var (id, name, effective) in host.RemappableHotkeys)
-        {
-            stack.Children.Add(HotkeyRow(id, name, effective));
-        }
+        stack.Children.Add(BuildHotkeySection(host));
 
         var exitButton = new Button
         {
@@ -178,14 +190,8 @@ public sealed class SettingsWindow : Window
             }
         };
 
-        var checkUpdateBottomBtn = new Button
-        {
-            Content = Strings.SettingsCheckUpdateBtn,
-            Width = 100,
-            Margin = new Thickness(4),
-        };
-        checkUpdateBottomBtn.Click += (_, _) => _host.CheckForUpdates();
-
+        // 하단 "업데이트 확인" 버튼은 뺐다: 버전 라벨 옆 인라인 버튼과 같은 동작이라,
+        // 나란히 놓인 확인/취소와 같은 무게로 보이면 그 줄이 무엇을 확정하는 줄인지 흐려진다.
         var okButton = new Button { Content = Strings.SettingsOk, Width = 80, Margin = new Thickness(4), IsDefault = true };
         okButton.Click += (_, _) => ApplyAndClose();
         var cancelButton = new Button { Content = Strings.SettingsCancel, Width = 80, Margin = new Thickness(4), IsCancel = true };
@@ -203,7 +209,6 @@ public sealed class SettingsWindow : Window
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
-        rightButtons.Children.Add(checkUpdateBottomBtn);
         rightButtons.Children.Add(okButton);
         rightButtons.Children.Add(cancelButton);
 
@@ -347,6 +352,61 @@ public sealed class SettingsWindow : Window
 
     private static TextBlock RowLabel(string text) => new() { Text = text, Margin = new Thickness(4, 8, 4, 0) };
 
+    /// <summary>
+    /// 단축키 섹션: 검색 상자 + 21행을 담은 <see cref="Expander"/>. 기본 접힘 여부와 검색 판정은
+    /// <see cref="SettingsSectionPlan"/>이 소유하고, 여기서는 <c>Visibility</c>만 바른다.
+    /// 접어 두는 이유는 길이다 — 21행은 나머지 전 섹션을 합친 것보다 길어서 펼쳐 두면
+    /// 자주 바꾸는 일반 항목이 화면 밖으로 밀린다.
+    /// </summary>
+    private UIElement BuildHotkeySection(ISettingsHost host)
+    {
+        var search = new TextBox { Margin = new Thickness(4, 2, 4, 6), Padding = new Thickness(2) };
+        var rows = new StackPanel();
+        foreach (var (id, name, effective) in host.RemappableHotkeys)
+        {
+            rows.Children.Add(HotkeyRow(id, name, effective));
+        }
+        rows.Children.Add(_hotkeyNoMatch);
+
+        search.TextChanged += (_, _) => ApplyHotkeyFilter(search.Text);
+
+        var body = new StackPanel();
+        // 헤더만 굵게 — 상속되면 21행이 전부 굵어진다 (StackPanel은 Control이 아니라 첨부 속성으로 되돌린다).
+        body.SetValue(System.Windows.Documents.TextElement.FontWeightProperty, FontWeights.Normal);
+        body.SetValue(System.Windows.Documents.TextElement.FontSizeProperty, 12.0);
+        body.Children.Add(new TextBlock
+        {
+            Text = Strings.SettingsSearchHotkeys,
+            Margin = new Thickness(4, 4, 4, 2),
+            Foreground = Brushes.Gray,
+            FontSize = 11,
+        });
+        body.Children.Add(search);
+        body.Children.Add(rows);
+
+        return new Expander
+        {
+            Header = Strings.SettingsHotkeys,
+            FontWeight = FontWeights.Bold,
+            FontSize = 14,
+            Margin = new Thickness(0, 12, 0, 6),
+            IsExpanded = SettingsSectionPlan.StartsExpanded(SettingsSection.Hotkeys),
+            Content = body,
+        };
+    }
+
+    private void ApplyHotkeyFilter(string query)
+    {
+        bool any = false;
+        foreach (var (name, combo, row) in _hotkeyRows)
+        {
+            bool visible = SettingsSectionPlan.MatchesHotkeyFilter(name, combo(), query);
+            row.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            any |= visible;
+        }
+        _hotkeyNoMatch.Visibility = any ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     private UIElement HotkeyRow(string id, string name, HotkeyDef effective)
     {
         var label = new TextBlock { Text = name, Width = 220, VerticalAlignment = VerticalAlignment.Center };
@@ -385,6 +445,8 @@ public sealed class SettingsWindow : Window
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 2, 4, 2) };
         row.Children.Add(label);
         row.Children.Add(comboButton);
+        // 조합은 재지정으로 바뀌므로 값이 아니라 읽는 함수를 등록한다 — 바꾼 직후 그 조합으로 검색해도 걸린다.
+        _hotkeyRows.Add((name, () => comboButton.Content as string ?? string.Empty, row));
         return row;
     }
 
