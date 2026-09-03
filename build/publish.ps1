@@ -28,6 +28,23 @@ if ($runtimeConfig.runtimeOptions.PSObject.Properties.Name -notcontains 'include
 Write-Host 'Publish integrity verified.'
 
 Write-Host '=== 3) AC-24 Deterministic Validation 2: DOTNET_ROOT Masking Startup Test (CRIT-3) ==='
+# 이 검증은 "게시본이 시스템 런타임 없이 뜨는가"를 프로세스가 살아 있는지로 판정한다.
+# 그런데 App.xaml.cs의 단일 인스턴스 뮤텍스(SSPen-SingleInstance)는 이미 실행 중인 인스턴스가
+# 있으면 새 프로세스를 **정상 종료(exit 0)** 시킨다 — 검증에는 자체 포함 실패와 구분되지 않는
+# 모습으로 보인다. 그래서 로컬 개발기에서 앱을 띄워 둔 채 배포하면 이 단계가 항상 실패했다.
+# 배포 규칙상 어차피 설치 전에 종료해야 하므로(CLAUDE.md), 여기서 먼저 종료한다.
+$running = @(Get-Process -Name 'SSPen' -ErrorAction SilentlyContinue)
+if ($running.Count -gt 0) {
+    Write-Host "Stopping $($running.Count) running SSPen instance(s) so the single-instance mutex is free"
+    $running | Stop-Process -Force -ErrorAction SilentlyContinue
+    foreach ($p in $running) { $p.WaitForExit(5000) | Out-Null }
+    # 뮤텍스는 마지막 핸들이 닫혀야 사라진다 — 종료 직후 곧바로 띄우면 아직 잡혀 있을 수 있다.
+    Start-Sleep -Milliseconds 500
+    if (@(Get-Process -Name 'SSPen' -ErrorAction SilentlyContinue).Count -gt 0) {
+        throw 'Could not stop the running SSPen instance(s); close SS Pen and re-run.'
+    }
+}
+
 $maskDir = Join-Path $env:TEMP ("sspen-empty-dotnet-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $maskDir | Out-Null
 try {
@@ -39,7 +56,12 @@ try {
     $proc = [System.Diagnostics.Process]::Start($psi)
     Start-Sleep -Seconds 6
     if ($proc.HasExited) {
-        throw "Masking run failed (exit $($proc.ExitCode))"
+        # exit 0은 자체 포함 실패가 아니라 '다른 인스턴스가 이미 있다'는 뜻일 가능성이 높다
+        # (위에서 종료했더라도 그 사이 누군가 다시 띄웠다면 여기로 온다).
+        $hint = if ($proc.ExitCode -eq 0) {
+            ' — exit 0 usually means another SSPen instance was running (single-instance mutex), not a self-contained failure'
+        } else { '' }
+        throw "Masking run failed (exit $($proc.ExitCode))$hint"
     }
     Write-Host "Masking run passed: PID $($proc.Id) running without system runtime"
     Stop-Process -Id $proc.Id -Force

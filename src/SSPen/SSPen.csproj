@@ -20,7 +20,9 @@
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <Platforms>AnyCPU</Platforms>
     <SatelliteResourceLanguages>ko-KR</SatelliteResourceLanguages>
-    <!-- 1.3.0: 선택 도구 개편 — 다중 선택을 하나의 그룹으로 조작(모서리 4핸들 + 회전 1핸들),
+    <!-- 1.3.1: 배포 스크립트 수정 — 자체 포함 검증(DOTNET_ROOT 마스킹) 전에 실행 중인 인스턴스를
+         종료한다. 단일 인스턴스 뮤텍스 때문에 앱을 띄워 둔 채 배포하면 항상 실패했다. 앱 동작 변경 없음.
+         1.3.0: 선택 도구 개편 — 다중 선택을 하나의 그룹으로 조작(모서리 4핸들 + 회전 1핸들),
          그룹 바깥 제자리 클릭·ESC로 해제하면 곧바로 클릭 통과, Delete/Backspace 일괄 삭제,
          요소를 정확히 겨냥하지 않아도 잡히는 관대 히트, 휠로 선택 크기 조절.
          와콤 펜 뒤집기(지우개) 인식은 진단 로그 단계.
@@ -29,7 +31,7 @@
          1.1.0: 필기내용 선택 도구, 앱 아이콘, 보드 슬라이드, 캐처 기본 핀 고정,
          커서 고정 확대, 휴지통이 핀까지 정리, 페이딩 0.1~5초, 사라진 창 입력 경주 크래시 수정.
          설치 프로그램(installer/SSPen.iss)의 MyAppVersion과 반드시 같이 올린다. -->
-    <Version>1.3.0</Version>
+    <Version>1.3.1</Version>
     <Product>SS Pen</Product>
     <Description>한국어 판서 + 캐처 도구</Description>
     <!-- Win32 버전 정보 필드. Description은 exe의 FileDescription으로 가지 않으므로
