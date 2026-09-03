@@ -3,7 +3,7 @@
 
 #define MyAppName "SS Pen"
 ; src/SSPen/SSPen.csproj 의 <Version> 과 반드시 같아야 한다.
-#define MyAppVersion "1.3.1"
+#define MyAppVersion "1.3.2"
 #define MyAppExeName "SSPen.exe"
 
 [Setup]
