@@ -49,6 +49,17 @@ public static class WindowStyling
     }
 
     /// <summary>
+    /// 창을 물리 픽셀 위치로 옮긴다 (크기는 건드리지 않는다 — <c>SizeToContent</c> 창용).
+    /// DIP인 <c>Window.Left/Top</c> 대입과 달리 배율이 섞일 여지가 없다.
+    /// </summary>
+    public static void MovePhysical(nint hwnd, int x, int y)
+    {
+        NativeMethods.SetWindowPos(
+            hwnd, 0, x, y, 0, 0,
+            NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+    }
+
+    /// <summary>
     /// 창이 지정 앵커(예: 툴바) 위로 절대 올라가지 못하게 고정한다.
     /// 클릭/표시/재배치로 OS가 창을 밴드 최상단(HWND_TOPMOST/HWND_TOP)으로 올리려는 순간
     /// WM_WINDOWPOSCHANGING에서 삽입 위치를 앵커 바로 아래로 돌린다.

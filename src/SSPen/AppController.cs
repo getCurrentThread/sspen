@@ -151,6 +151,7 @@ public sealed class AppController : IShellActions, ISettingsHost
         _toolbar.Left = left;
         _toolbar.Top = top;
         _toolbar.Show();
+        PlaceToolbar(primary, virtualScreen);
         _toolbar.LocationChanged += (_, _) =>
         {
             _settingsBinder.Settings.ToolbarLeft = _toolbar.Left;
@@ -541,6 +542,44 @@ public sealed class AppController : IShellActions, ISettingsHost
         ApplyZBand();
         // D7: 설정 창은 자기 ESC 의미론(취소 버튼·폴더 선택 대화상자)을 갖는다 — 훅을 즉시 내린다.
         _selectionKeys?.Refresh();
+    }
+
+    /// <summary>
+    /// 툴바 최종 배치 (AC-21/CRIT-17). 레이아웃이 끝난 뒤에 하는 이유가 둘 있다.
+    ///
+    /// 하나, <b>배율</b>: 예전에는 주 모니터의 물리 픽셀 사각형을 DIP인 <c>Left/Top</c>에 그대로 대입해
+    /// 150% 화면에서 첫 실행 툴바가 통째로 화면 밖에 놓였다. 여기서는 창의 실제 DPI로 환산해 물리 좌표로 옮긴다.
+    /// 둘, <b>높이</b>: <c>StripHeight</c> 상수는 손으로 유지하는 값이라 버튼이 하나 늘 때마다 중앙이 어긋났다.
+    /// 실측 <c>ActualHeight</c>를 쓰면 그 상수는 첫 프레임의 임시 위치로만 남는다.
+    ///
+    /// 저장된 위치가 있으면 옮기지 않고 <b>클램프만</b> 한다 — 정상 값은 그대로라 설정 마이그레이션이 필요 없다.
+    /// </summary>
+    private void PlaceToolbar(MonitorSurfaceInfo primary, PhysicalRect virtualScreen)
+    {
+        _dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            if (_toolbar is null || _toolbar.Hwnd == 0)
+            {
+                return;
+            }
+            double dpiX = System.Windows.Media.VisualTreeHelper.GetDpi(_toolbar).DpiScaleX;
+            double dpiY = System.Windows.Media.VisualTreeHelper.GetDpi(_toolbar).DpiScaleY;
+            var saved = ToolbarPlacement.Restored(
+                _settingsBinder.Settings.ToolbarLeft,
+                _settingsBinder.Settings.ToolbarTop,
+                CoordinateSpace.ToLogical(virtualScreen, dpiX));
+            if (saved is { } position)
+            {
+                _toolbar.Left = position.Left;
+                _toolbar.Top = position.Top;
+                return;
+            }
+            int width = (int)Math.Ceiling(_toolbar.ActualWidth * dpiX);
+            int height = (int)Math.Ceiling(_toolbar.ActualHeight * dpiY);
+            var (x, y) = ToolbarPlacement.PhysicalOnPrimary(
+                primary.WorkArea, width, height, (int)Math.Round(ToolbarPlacement.RightMargin * dpiX));
+            WindowStyling.MovePhysical(_toolbar.Hwnd, x, y);
+        });
     }
 
     private void ToggleToolbar()
