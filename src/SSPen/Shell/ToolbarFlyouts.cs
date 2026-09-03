@@ -124,13 +124,52 @@ public sealed class ToolbarFlyouts
         }
     }
 
+    /// <summary>열림 모션 길이 (ContentSurfaceWindow의 보드 슬라이드와 같은 관용구, 더 짧게).</summary>
+    private static readonly Duration OpenMotion = new(TimeSpan.FromMilliseconds(120));
+
+    /// <summary>버튼 쪽에서 미끄러져 나오는 거리 (Placement=Right이므로 왼쪽에서 온다).</summary>
+    private const double OpenSlide = 8;
+
     /// <summary>다른 플라이아웃을 즉시 닫고 지정 플라이아웃을 연다; 포인터 감시 시작.</summary>
     public void OpenFlyout(Popup flyout)
     {
+        bool wasOpen = flyout.IsOpen;
         CloseFlyoutsExcept(flyout);
         flyout.IsOpen = true;
+        // 이미 열려 있던 것을 다시 열지는 않는다 — 호버가 스칠 때마다 다시 미끄러지면 산만하다.
+        if (!wasOpen)
+        {
+            BeginOpenMotion(flyout);
+        }
         _flyoutAwayTicks = 0;
         _flyoutWatch.Start();
+    }
+
+    /// <summary>
+    /// 120ms 페이드 + 8px 슬라이드. 팝업은 별도 HWND라 즉시 나타나면 화면 어딘가에 갑자기
+    /// 생긴 것처럼 보이고, 어느 버튼에서 나왔는지가 위치로만 남는다. 모션이 그 출처를 말해 준다.
+    /// </summary>
+    private static void BeginOpenMotion(Popup flyout)
+    {
+        if (flyout.Child is not FrameworkElement child)
+        {
+            return;
+        }
+        var slide = new TranslateTransform();
+        child.RenderTransform = slide;
+        var ease = new System.Windows.Media.Animation.CubicEase
+        {
+            EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut,
+        };
+        child.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, OpenMotion)
+        {
+            FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop,
+        });
+        slide.BeginAnimation(TranslateTransform.XProperty, new System.Windows.Media.Animation.DoubleAnimation(-OpenSlide, 0, OpenMotion)
+        {
+            FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop,
+            EasingFunction = ease,
+        });
     }
 
     /// <summary>
@@ -152,7 +191,9 @@ public sealed class ToolbarFlyouts
                 }
             }
         }
-        var step = FlyoutWatchRules.Tick(anyOpen, over, _flyoutAwayTicks);
+        // Escape는 물리 키 상태로 읽는다 — 툴바 창은 WS_EX_NOACTIVATE라 KeyDown을 받을 수 없다
+        // (Interop/KeyboardState.Escape 주석 참조).
+        var step = FlyoutWatchRules.Tick(anyOpen, over, _flyoutAwayTicks, Interop.KeyboardState.Escape);
         _flyoutAwayTicks = step.AwayTicks;
         if (step.CloseAll)
         {

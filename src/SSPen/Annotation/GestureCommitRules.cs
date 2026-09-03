@@ -52,6 +52,25 @@ public static class TextCommitRules
     /// <summary>측정 결과의 축별 하한 (논리 픽셀). 0 크기 상자는 다시 고르지도 지우지도 못한다.</summary>
     public const double MinMeasuredExtent = 8;
 
+    /// <summary>
+    /// 편집 상자의 배경색.
+    ///
+    /// 예전 값은 <c>#22FFFFFF</c>(13% 흰색) 하나였다. 그 아래는 <b>사용자의 화면 아무거나</b>이므로,
+    /// 흰 글자를 밝은 바탕 위에 치면 자기가 무엇을 쓰고 있는지 보이지 않는다 — 확정하기 전까지
+    /// 확인할 방법이 없다는 뜻이다. 글자색이 밝으면 어두운 스크림을, 어두우면 밝은 스크림을 깐다.
+    ///
+    /// 밝기 판정에 WCAG 상대 휘도를 쓰지 않는 이유: 여기서 필요한 것은 두 값 중 하나를 고르는
+    /// 이분 판정뿐이고, 이 계층은 셸(<c>ShellPalette</c>)을 참조할 수 없다.
+    /// </summary>
+    public static System.Windows.Media.Color EditorBackdrop(System.Windows.Media.Color textColor) =>
+        IsLight(textColor)
+            ? System.Windows.Media.Color.FromArgb(0xB8, 0x1E, 0x1E, 0x1E)
+            : System.Windows.Media.Color.FromArgb(0xC8, 0xFF, 0xFF, 0xFF);
+
+    /// <summary>지각 밝기 근사 (Rec. 601) — 0.5를 경계로 밝음/어두움을 가른다.</summary>
+    public static bool IsLight(System.Windows.Media.Color color) =>
+        (((0.299 * color.R) + (0.587 * color.G) + (0.114 * color.B)) / 255.0) >= 0.5;
+
     /// <summary>입력이 실제 텍스트 요소를 만들 자격이 있는가 — 공백만 친 편집은 버린다.</summary>
     public static bool ProducesElement(string? text) => !string.IsNullOrWhiteSpace(text);
 

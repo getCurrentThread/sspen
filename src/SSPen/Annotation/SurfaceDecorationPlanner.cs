@@ -11,8 +11,11 @@ public sealed record MarqueePrimitive(Rect Rect) : DecorationPrimitive;
 /// <summary>선택 테두리 (요소별 OBB 4점 또는 그룹 프레임 4점).</summary>
 public sealed record OutlinePrimitive(Point[] Corners) : DecorationPrimitive;
 
-/// <summary>크기/회전 핸들 하나 — 월드 좌표 중심, 크기는 <c>TransformMath.HandleScreenSize</c>로 창이 그린다.</summary>
-public sealed record HandlePrimitive(Point Center) : DecorationPrimitive;
+/// <summary>
+/// 크기/회전 핸들 하나 — 월드 좌표 중심, 크기는 <c>TransformMath.HandleScreenSize</c>로 창이 그린다.
+/// <paramref name="Rotate"/>는 <b>모양만</b> 가른다(회전은 원, 크기는 사각형) — 위치·히트 판정은 동일하다.
+/// </summary>
+public sealed record HandlePrimitive(Point Center, bool Rotate = false) : DecorationPrimitive;
 
 /// <summary>회전 핸들 스템 (상단 변 중앙 → 클램프된 회전 핸들).</summary>
 public sealed record RotateStemPrimitive(Point From, Point To) : DecorationPrimitive;
@@ -80,7 +83,7 @@ public static class SurfaceDecorationPlanner
                 surfaceBounds,
                 TransformMath.HandleScreenSize / 2);
             plan.Add(new RotateStemPrimitive(stemStart, rotate));
-            plan.Add(new HandlePrimitive(rotate));
+            plan.Add(new HandlePrimitive(rotate, Rotate: true));
         }
         return plan;
     }
@@ -117,6 +120,6 @@ public static class SurfaceDecorationPlanner
         var rotate = TransformMath.ClampRotateHandle(
             SelectionGroup.RotateHandle(frame), surfaceBounds, TransformMath.HandleScreenSize / 2);
         plan.Add(new RotateStemPrimitive(SelectionGroup.TopCenter(frame), rotate));
-        plan.Add(new HandlePrimitive(rotate));
+        plan.Add(new HandlePrimitive(rotate, Rotate: true));
     }
 }

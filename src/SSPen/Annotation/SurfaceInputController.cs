@@ -658,7 +658,9 @@ public sealed class SurfaceInputController(
             FontFamily = new FontFamily(TextCommitRules.FontFamilyName),
             FontSize = _activeTextStyle.FontSize,
             Foreground = new SolidColorBrush(_activeTextStyle.Color),
-            Background = new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
+            // 배경은 글자색에 따라 고른다 (TextCommitRules.EditorBackdrop) — 예전의 13% 흰색 하나로는
+            // 밝은 바탕 위의 흰 글자가 확정 전까지 보이지 않았다.
+            Background = new SolidColorBrush(TextCommitRules.EditorBackdrop(_activeTextStyle.Color)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(0x88, 0x80, 0x80, 0x80)),
             BorderThickness = new Thickness(1),
             MinWidth = 24,

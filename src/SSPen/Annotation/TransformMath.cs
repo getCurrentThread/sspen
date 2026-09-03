@@ -70,8 +70,12 @@ public static class TransformMath
     /// <summary>회전 핸들이 로컬 상단 변에서 바깥으로 떨어지는 **화면** 거리 (배율과 무관하게 일정).</summary>
     public const double RotateHandleScreenOffset = 24;
 
-    /// <summary>크기 핸들 한 변의 **화면** 길이 (힌트 판정과 렌더가 공유).</summary>
-    public const double HandleScreenSize = 8;
+    /// <summary>
+    /// 크기 핸들 한 변의 **화면** 길이 (힌트 판정과 렌더가 공유).
+    /// 8 → 10: 8px는 잡는 손이 자주 빗나간다(마우스 정밀도 한계 근처이고, 태블릿 펜에서는 더 나쁘다).
+    /// 렌더와 히트가 같은 상수를 쓰므로 늘리면 <b>둘 다</b> 늘어난다 — "그려진 것 == 잡히는 것" 유지 (AGENTS L25).
+    /// </summary>
+    public const double HandleScreenSize = 10;
 
     /// <summary>모서리 4개 → 변 4개 순서 (힌트 우선순위 고정).</summary>
     public static readonly HandleKind[] SizeHandlesCornersFirst =

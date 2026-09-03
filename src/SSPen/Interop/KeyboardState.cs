@@ -24,6 +24,13 @@ internal static class KeyboardState
     internal static bool Control => IsDown(NativeMethods.VK_CONTROL);
 
     /// <summary>
+    /// Escape가 눌려 있는가 — 툴바 플라이아웃을 닫는 계기다. 툴바 창은 <c>WS_EX_NOACTIVATE</c>라
+    /// KeyDown을 받을 수 없으므로 포인터 감시 틱이 물리 키 상태를 읽는 것 외에 방법이 없다.
+    /// 남의 앱에서 누른 Escape도 읽히지만, 그 결과는 열려 있던 플라이아웃이 닫히는 것뿐이라 손해가 없다.
+    /// </summary>
+    internal static bool Escape => IsDown(NativeMethods.VK_ESCAPE);
+
+    /// <summary>
     /// Ctrl·Alt·Win 중 하나라도 눌려 있는가 — 전역 키 훅이 남의 앱 조합키를 삼키지 않게 하는 게이트.
     ///
     /// <b>Shift는 일부러 뺐다.</b> Shift는 남의 앱 조합키이기 이전에 선택 도구의 1급 수식키다

@@ -82,4 +82,30 @@ public class FlyoutWatchRulesTests
     /// <summary>오늘 값 고정: 150ms 타이머 × 2틱 ≈ 300ms (Epic Pen 감각). 바꾸려면 이 줄과 어댑터 주석을 함께 바꾼다.</summary>
     [Fact]
     public void AwayTicksToClose_IsTwo_Today() => Assert.Equal(2, FlyoutWatchRules.AwayTicksToClose);
+
+    /// <summary>
+    /// Escape는 포인터보다 먼저다: 마우스가 아직 플라이아웃 위에 있어도 닫힌다. 지금까지는
+    /// 포인터를 멀리 치우는 것 말고 닫을 방법이 없었다 (StaysOpen=true라 밖 클릭도 안 먹는다).
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Tick_EscapePressed_ClosesRegardlessOfThePointer(bool pointerOver)
+    {
+        var step = FlyoutWatchRules.Tick(anyOpen: true, pointerOver, awayTicks: 0, escapePressed: true);
+
+        Assert.True(step.CloseAll);
+        Assert.True(step.StopWatch);
+        Assert.Equal(0, step.AwayTicks);
+    }
+
+    /// <summary>열린 것이 없으면 Escape는 남의 것이다 — 감시만 멈춘다.</summary>
+    [Fact]
+    public void Tick_EscapeWithNothingOpen_DoesNothingButStop()
+    {
+        var step = FlyoutWatchRules.Tick(anyOpen: false, pointerOver: false, awayTicks: 1, escapePressed: true);
+
+        Assert.False(step.CloseAll);
+        Assert.True(step.StopWatch);
+    }
 }

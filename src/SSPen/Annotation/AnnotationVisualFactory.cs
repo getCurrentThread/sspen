@@ -193,9 +193,15 @@ public static class AnnotationVisualFactory
 
     // ---- 선택 장식 (SEL-10). 잉크가 아니라 UI이므로 별도 레이어에 그리고 캡처에서 제외된다 (f4). ----
 
-    private static readonly SolidColorBrush DecorationBrush = CreateFrozen(Color.FromRgb(0x00, 0xAD, 0xEF));
+    // 값은 셸의 강조색(ShellPalette.Accent, #0071A8)과 같아야 한다 — 같은 앱에서 "선택됨"을 뜻하는 색이
+    // 두 가지면 사용자가 둘을 다른 의미로 읽는다. 여기서 Shell을 참조하지 않는 이유는 계층 규약이다
+    // (Annotation/은 using SSPen.Shell 금지). 대신 SelectionDecorationColorTests가 두 값이 갈라지면 빨간불을 낸다.
+    private static readonly SolidColorBrush DecorationBrush = CreateFrozen(Color.FromRgb(0x00, 0x71, 0xA8));
     private static readonly SolidColorBrush HandleFillBrush = CreateFrozen(Colors.White);
-    private static readonly SolidColorBrush MarqueeFillBrush = CreateFrozen(Color.FromArgb(0x22, 0x00, 0xAD, 0xEF));
+    private static readonly SolidColorBrush MarqueeFillBrush = CreateFrozen(Color.FromArgb(0x22, 0x00, 0x71, 0xA8));
+
+    /// <summary>핸들 외곽선 두께: 1px 선은 검은 보드·복잡한 배경 위에서 사라진다.</summary>
+    private const double HandleStrokeThickness = 2;
 
     /// <summary>로컬 프레임 4점(OBB) 위의 점선 경계. 축 정렬 <see cref="Rect"/>가 아니라 꼭짓점을 받는다 (MI-1).</summary>
     public static Polygon BuildSelectionBorder(Point[] corners)
@@ -215,7 +221,7 @@ public static class AnnotationVisualFactory
         return polygon;
     }
 
-    /// <summary>크기/회전 핸들 하나. <paramref name="center"/>는 월드 좌표이며 크기는 배율과 무관하게 일정하다.</summary>
+    /// <summary>크기 핸들 하나 (사각형). <paramref name="center"/>는 월드 좌표이며 크기는 배율과 무관하게 일정하다.</summary>
     public static System.Windows.Shapes.Rectangle BuildHandle(Point center, double size)
     {
         var handle = new System.Windows.Shapes.Rectangle
@@ -223,7 +229,30 @@ public static class AnnotationVisualFactory
             Width = size,
             Height = size,
             Stroke = DecorationBrush,
-            StrokeThickness = 1,
+            StrokeThickness = HandleStrokeThickness,
+            Fill = HandleFillBrush,
+            IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(handle, center.X - size / 2);
+        Canvas.SetTop(handle, center.Y - size / 2);
+        return handle;
+    }
+
+    /// <summary>
+    /// 회전 핸들 (원). 크기 핸들과 <b>모양</b>으로 구분한다 — 예전에는 아홉 개가 전부 같은 사각형이라
+    /// 위치(상단 바깥)를 외우는 것 말고는 어느 것이 회전인지 알 방법이 없었고, 회전 핸들이 화면
+    /// 가장자리에서 클램프되면 그 위치 단서마저 사라진다.
+    /// 지름은 크기 핸들과 <b>같다</b> — 그려진 것이 잡히는 것보다 커지면 "그려진 것 == 잡히는 것"
+    /// 보증이 깨진다 (히트 reach는 양쪽 다 size/2다).
+    /// </summary>
+    public static Ellipse BuildRotateHandle(Point center, double size)
+    {
+        var handle = new Ellipse
+        {
+            Width = size,
+            Height = size,
+            Stroke = DecorationBrush,
+            StrokeThickness = HandleStrokeThickness,
             Fill = HandleFillBrush,
             IsHitTestVisible = false,
         };

@@ -316,8 +316,9 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
                 return;
 
             case BoardTransitionKind.Recolor:
-                // 화이트 ↔ 블랙은 둘 다 불투명하므로 교차 페이드할 것이 없다 — 즉시 교체.
-                _boardRect.Fill = BoardBrush(_state.Board);
+                // 흰 ↔ 검정 즉시 교체는 화면 전체가 한 프레임에 반전돼 눈을 때린다 (특히 어두운 방).
+                // 판정은 그대로 Recolor이고, 어댑터만 160ms 색 보간으로 건넌다.
+                BeginBoardRecolor(BoardColor(_state.Board));
                 return;
 
             case BoardTransitionKind.SlideDown:
@@ -335,6 +336,27 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
     }
 
     private static Brush BoardBrush(BoardMode mode) => mode == BoardMode.Black ? Brushes.Black : Brushes.White;
+
+    private static Color BoardColor(BoardMode mode) => mode == BoardMode.Black ? Colors.Black : Colors.White;
+
+    /// <summary>보드 색 교차 페이드 길이. 슬라이드(280ms)보다 짧다 — 자리 이동이 아니라 색만 바뀐다.</summary>
+    private static readonly Duration BoardRecolorDuration = new(TimeSpan.FromMilliseconds(160));
+
+    /// <summary>
+    /// 흰 ↔ 검정을 색 보간으로 건넌다. 두 번째 사각형을 겹치지 않는 이유: 보드는 잉크 아래의
+    /// 단일 배경 요소이고, 캔버스에 형제를 하나 더 넣으면 z 순서 계약(<c>_boardRect</c>가 맨 아래)이
+    /// 늘어난다. 애니메이션 대상 브러시는 매번 새로 만든다 — 정적 <c>Brushes.White</c>는 프로즌이다.
+    /// </summary>
+    private void BeginBoardRecolor(Color to)
+    {
+        var from = (_boardRect.Fill as SolidColorBrush)?.Color ?? to;
+        var brush = new SolidColorBrush(from);
+        _boardRect.Fill = brush;
+        brush.BeginAnimation(SolidColorBrush.ColorProperty, new System.Windows.Media.Animation.ColorAnimation(from, to, BoardRecolorDuration)
+        {
+            FillBehavior = System.Windows.Media.Animation.FillBehavior.HoldEnd,
+        });
+    }
 
     /// <summary>
     /// 이동 거리: 모니터 높이만큼 올리면 화면 밖으로 완전히 빠진다.
@@ -492,6 +514,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
             {
                 MarqueePrimitive m => AnnotationVisualFactory.BuildMarquee(m.Rect),
                 OutlinePrimitive o => AnnotationVisualFactory.BuildSelectionBorder(o.Corners),
+                HandlePrimitive { Rotate: true } h => AnnotationVisualFactory.BuildRotateHandle(h.Center, TransformMath.HandleScreenSize),
                 HandlePrimitive h => AnnotationVisualFactory.BuildHandle(h.Center, TransformMath.HandleScreenSize),
                 RotateStemPrimitive stem => AnnotationVisualFactory.BuildRotateStem(stem.From, stem.To),
                 _ => throw new InvalidOperationException(primitive.GetType().Name),
