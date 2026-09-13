@@ -30,6 +30,10 @@ public sealed class ToolbarWindow : Window
 
     // z-방어 훅. 필드로 붙잡지 않으면 GC가 거두어 방어가 조용히 사라진다.
     private System.Windows.Interop.HwndSourceHook? _topmostHook;
+    private System.Windows.Interop.HwndSourceHook? _zChangedHook;
+
+    /// <summary>툴바의 z-순서가 바뀌었다 (54단계 L2). 합성 루트가 밴드 검증을 깨우는 계기다 — 툴바 자신은 아래 창들을 모른다.</summary>
+    public event Action? ZOrderChanged;
 
     public ToolbarWindow(AppState state, IShellActions actions)
     {
@@ -108,16 +112,26 @@ public sealed class ToolbarWindow : Window
         // 사용자 보고 18차: 외부 앱이 툴바를 톱모스트 밴드 밖으로 밀어내면 서피스가 그 위를 덤어
         // 버튼이 전부 죽는다. 서피스 쪽 AnchorBelow 훅은 이 방향을 잡지 못하므로 툴바도 자기 방어를 갖는다.
         _topmostHook = WindowStyling.KeepTopmost(Hwnd);
+        _zChangedHook = WindowStyling.OnZOrderChanged(Hwnd, () => ZOrderChanged?.Invoke());
         _parts.RefreshActiveStates(_state);
     }
 
     protected override void OnClosed(EventArgs e)
     {
         _state.Changed -= _onStateChanged;
-        if (_topmostHook is not null && Hwnd != 0)
+        if (Hwnd != 0)
         {
-            System.Windows.Interop.HwndSource.FromHwnd(Hwnd)?.RemoveHook(_topmostHook);
-            _topmostHook = null;
+            var source = System.Windows.Interop.HwndSource.FromHwnd(Hwnd);
+            if (_topmostHook is not null)
+            {
+                source?.RemoveHook(_topmostHook);
+                _topmostHook = null;
+            }
+            if (_zChangedHook is not null)
+            {
+                source?.RemoveHook(_zChangedHook);
+                _zChangedHook = null;
+            }
         }
         Hwnd = 0;
         base.OnClosed(e);

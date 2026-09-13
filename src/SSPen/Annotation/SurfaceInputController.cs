@@ -675,6 +675,9 @@ public sealed class SurfaceInputController(
         host.SetNoActivate(false);
         host.ActivateWindow();
         _activeTextBox.Focus();
+        // 54단계 L0: 활성화는 OS의 z-상승을 동반한다(활성화된 적 있는 창은 IME 창의 소유자가 되어 훅 판정이 달라진다).
+        // 핸드셰이크 직후 밴드를 다시 적용해 서피스가 툴바 위에 남지 않게 한다.
+        host.RequestZBand();
         _activeTextBox.LostKeyboardFocus += (_, _) => CommitText();
     }
 
@@ -689,6 +692,7 @@ public sealed class SurfaceInputController(
         string text = box.Text;
         inkCanvas.Children.Remove(box);
         host.SetNoActivate(true);
+        host.RequestZBand();
 
         if (TextCommitRules.ProducesElement(text))
         {

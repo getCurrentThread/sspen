@@ -103,6 +103,14 @@ public sealed class ToastWindow : Window
         WindowStyling.SetClickThrough(Hwnd, true); // 기본은 통과 — 위 문서의 z-밴드 계약.
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        // 낡은 HWND가 밴드 목록에 남지 않게 (54단계 L5): Application.Shutdown은 OnExit보다 먼저 창을 파괴하므로
+        // 그 뒤 도는 ApplyZBand(핀 닫힘·설정창 닫힘 경유)가 죽은 핸들에 SetWindowPos를 걸어 거짓 실패 로그를 남긴다.
+        Hwnd = 0;
+        base.OnClosed(e);
+    }
+
     /// <summary>한 틱의 판정을 화면에 바른다. 배치는 호스트가 <see cref="WindowStyling.PlacePhysical"/>로 따로 한다.</summary>
     public void Render(ToastStep step)
     {

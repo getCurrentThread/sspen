@@ -135,19 +135,34 @@ internal class SurfaceHarness : ISurfaceHost
     /// <summary>ARCH-6 캡처 해제 호출 수.</summary>
     public int ReleaseCaptureCalls { get; private set; }
 
+    /// <summary>
+    /// 창 조작 호출 순서 (54단계 L0). 텍스트 도구 핸드셰이크가 "NOACTIVATE 해제 → 활성화 → 밴드 요청"과
+    /// "NOACTIVATE 복원 → 밴드 요청"의 순서를 지키는지가 검증 대상이다 — 순서가 뒤집히면 밴드 적용 뒤에 상승이 온다.
+    /// </summary>
+    public List<string> HostCalls { get; } = [];
+
+    /// <summary>z-밴드 재적용 요청 수 (54단계 L0).</summary>
+    public int ZBandRequests { get; private set; }
+
     /// <summary>R15 알림 횟수 — 스냅샷을 잡았는지 여부의 관측 가능한 그림자다.</summary>
     public int TransformNotifications { get; private set; }
 
     private AnnotationDocument? OwnerLookup(AnnotationElement element) =>
         Document.Elements.Contains(element) ? Document : null;
 
-    public void SetNoActivate(bool on) { }
+    public void SetNoActivate(bool on) => HostCalls.Add($"SetNoActivate({on})");
 
-    public void ActivateWindow() { }
+    public void ActivateWindow() => HostCalls.Add("ActivateWindow");
 
     public void CaptureMouse() { }
 
     public void ReleaseMouseCapture() => ReleaseCaptureCalls++;
 
     public DpiScale GetDpi() => new(1.0, 1.0);
+
+    public void RequestZBand()
+    {
+        ZBandRequests++;
+        HostCalls.Add("RequestZBand");
+    }
 }

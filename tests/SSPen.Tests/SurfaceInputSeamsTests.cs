@@ -37,7 +37,7 @@ public class SurfaceInputSeamsTests
     {
         var names = typeof(ISurfaceHost).GetMethods().Select(m => m.Name).OrderBy(n => n).ToArray();
 
-        // ARCH-2 NOACTIVATE 핸드셰이크 + ARCH-6 캡처 + DPI 조회 — 그 외 창 조작은 컨트롤러가 알 필요가 없다.
-        Assert.Equal(["ActivateWindow", "CaptureMouse", "GetDpi", "ReleaseMouseCapture", "SetNoActivate"], names);
+        // ARCH-2 NOACTIVATE 핸드셰이크 + ARCH-6 캡처 + DPI 조회 + z-밴드 요청(54단계 L0) — 그 외 창 조작은 컨트롤러가 알 필요가 없다.
+        Assert.Equal(["ActivateWindow", "CaptureMouse", "GetDpi", "ReleaseMouseCapture", "RequestZBand", "SetNoActivate"], names);
     }
 }

@@ -16,7 +16,7 @@ namespace SSPen.Annotation;
 /// 근사투명 히트테스트 배경(#01000000)을 깐다.
 /// ARCH-6: 마우스 캡처로 획은 원점 서피스에 남고 모니터 이음새에서 클리핑된다.
 /// 입력 상태 머신은 <see cref="SurfaceInputController"/>에 위임하고, 이 창은 <see cref="ISurfaceHost"/>로
-/// ARCH-2 NOACTIVATE 핸드셰이크와 ARCH-6 마우스 캡처만 제공한다.
+/// ARCH-2 NOACTIVATE 핸드셰이크와 ARCH-6 마우스 캡처, z-밴드 재적용 요청(<see cref="ZBandRequested"/>, 54단계 L0)만 제공한다.
 /// 창이 그리는 힌트 채널은 셋이다 — 마퀴(<c>SetMarquee</c>), 제스처 프레임(<c>SetGestureGroupFrame</c>),
 /// 표 배지(<c>SetTableBadge</c>) — 각자 수명과 레이어가 달라 하나로 묶지 않는다.
 /// </summary>
@@ -28,7 +28,8 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
     private readonly AppState _state;
     private readonly FadingInkController _fading;
     private readonly Func<nint> _zAnchor;
-    private System.Windows.Interop.HwndSourceHook? _zHook; // GC 고정
+    private System.Windows.Interop.HwndSourceHook? _zHook; // GC 고정 (요청 단계: AnchorBelow)
+    private System.Windows.Interop.HwndSourceHook? _zKeepBelowHook; // GC 고정 (결과 단계: KeepBelow, 54단계 L2)
     private readonly Grid _root;
     private readonly System.Windows.Shapes.Rectangle _boardRect;
     private readonly Canvas _inkCanvas;
@@ -173,6 +174,12 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
 
     public nint Hwnd { get; private set; }
 
+    /// <summary>
+    /// 입력 컨트롤러가 <see cref="ISurfaceHost.RequestZBand"/>로 밴드 재적용을 요청했다 (54단계 L0).
+    /// 창은 밴드 목록을 모르므로 합성 루트(<c>AppController.ApplyZBand</c>)가 잇는다.
+    /// </summary>
+    public event Action? ZBandRequested;
+
     // ---- E2E 및 테스트 전용 접근자 ----
     internal SurfaceInputController Input => _input;
     internal Canvas InkCanvas => _inkCanvas;
@@ -185,9 +192,11 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         Hwnd = WindowStyling.GetHwnd(this);
         WindowStyling.SetToolWindow(Hwnd, true);
         WindowStyling.SetNoActivate(Hwnd, true);
-        WindowStyling.PlacePhysical(Hwnd, _monitor.WorkArea);
         // 사용자 조타: 서피스는 어떤 경우에도 툴바 위로 올라가지 않는다 (도구 선택 후 툴바 상호작용 보장).
+        // 훅이 첫 배치(PlacePhysical의 HWND_TOPMOST)보다 앞이어야 늦게 만들어진 서피스(설정 동기화)도 처음부터 툴바 아래에 놓인다 (54단계 L5).
         _zHook = WindowStyling.AnchorBelow(Hwnd, _zAnchor);
+        _zKeepBelowHook = WindowStyling.KeepBelow(Hwnd, _zAnchor, $"서피스 {_monitor.DeviceName}");
+        WindowStyling.PlacePhysical(Hwnd, _monitor.WorkArea);
         ApplyState();
         // R2 배치 검증 (프리모템 2 탐지 신호): 시동 시점에 기대/실제 물리 사각형 일치를 기록한다.
         NativeMethods.GetWindowRect(Hwnd, out var actual);
@@ -200,10 +209,19 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
     protected override void OnClosed(EventArgs e)
     {
         Detach();
-        if (_zHook is not null && Hwnd != 0)
+        if (Hwnd != 0)
         {
-            System.Windows.Interop.HwndSource.FromHwnd(Hwnd)?.RemoveHook(_zHook);
-            _zHook = null;
+            var source = System.Windows.Interop.HwndSource.FromHwnd(Hwnd);
+            if (_zHook is not null)
+            {
+                source?.RemoveHook(_zHook);
+                _zHook = null;
+            }
+            if (_zKeepBelowHook is not null)
+            {
+                source?.RemoveHook(_zKeepBelowHook);
+                _zKeepBelowHook = null;
+            }
         }
         Hwnd = 0;
         base.OnClosed(e);
@@ -566,6 +584,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
                 pressure = points[^1].PressureFactor;
             }
         }
+        StylusProbe.BeginStroke();
         _input.OnMouseLeftButtonDown(e, pressure);
     }
 
@@ -584,13 +603,12 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
             return;
         }
 
-        if (e.StylusDevice != null)
+        if (!StylusFeedPolicy.Feeds(StylusFeedChannel.PromotedMouseMove, stylusBacked: e.StylusDevice != null, contact: true))
         {
-            var points = e.StylusDevice.GetStylusPoints(_inkCanvas);
-            foreach (var sp in points)
-            {
-                _input.PointerMove(new Point(sp.X, sp.Y), KeyboardState.Shift, leftPressed: true, sp.PressureFactor);
-            }
+            // 스타일러스가 붙은 승격 이동은 주입하지 않는다 — 같은 패킷 배치를 OnStylusMove가 이미 넣었다 (StylusFeedPolicy 문서).
+            // 분기를 통째로 지우면 안 된다: 아래 _input.OnMouseMove(e)로 흘러 정수 좌표 점이 한 번 더 들어간다.
+            // e.Handled도 설정하지 않는다: 제스처 수명(다운/업·캡처)은 승격된 마우스 이벤트에 기대고 있다.
+            StylusProbe.CountPromotedMoveSkipped();
             return;
         }
 
@@ -617,9 +635,12 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         {
             return;
         }
-        if (!e.InAir)
+        StylusProbe.Observe("스타일러스이동", e.StylusDevice, e.Inverted);
+        // 유일한 스타일러스 패킷 채널 (StylusFeedPolicy). 승격된 OnMouseMove는 같은 배치를 다시 넣지 않는다.
+        if (StylusFeedPolicy.Feeds(StylusFeedChannel.StylusMove, stylusBacked: true, contact: !e.InAir))
         {
             var points = e.GetStylusPoints(_inkCanvas);
+            StylusProbe.CountStylusBatch(points.Count);
             foreach (var sp in points)
             {
                 _input.PointerMove(new Point(sp.X, sp.Y), KeyboardState.Shift, leftPressed: true, sp.PressureFactor);
@@ -678,6 +699,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
             return;
         }
         _input.OnMouseLeftButtonUp(e);
+        StylusProbe.EndStroke();
     }
 
     protected override void OnMouseWheel(MouseWheelEventArgs e)
@@ -700,11 +722,25 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         _input.OnKeyDown(e);
     }
 
-    // ---- ISurfaceHost: ARCH-2 NOACTIVATE 핸드셰이크 + ARCH-6 마우스 캡처만 위임 ----
+    // ---- ISurfaceHost: ARCH-2 NOACTIVATE 핸드셰이크 + ARCH-6 마우스 캡처 + z-밴드 요청만 위임 ----
 
     void ISurfaceHost.SetNoActivate(bool on) => WindowStyling.SetNoActivate(Hwnd, on);
 
-    void ISurfaceHost.ActivateWindow() => Activate();
+    void ISurfaceHost.ActivateWindow()
+    {
+        // 서피스 활성화는 드문 사건이고 z-순서 결함의 앱 내부 계기다 — 로그에서 텍스트 편집 시점을 찾을 수 있게 남긴다 (54단계 L5).
+        Log.Info($"서피스 {_monitor.DeviceName} 활성화 (텍스트 편집 핸드셰이크)");
+        Activate();
+    }
+
+    void ISurfaceHost.RequestZBand()
+    {
+        if (_closed || Hwnd == 0)
+        {
+            return;
+        }
+        ZBandRequested?.Invoke();
+    }
 
     void ISurfaceHost.CaptureMouse() => CaptureMouse();
 

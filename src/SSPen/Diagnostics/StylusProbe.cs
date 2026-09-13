@@ -13,13 +13,27 @@ namespace SSPen.Diagnostics;
 /// <b>실제 패킷이 앱까지 온다</b>는 것은 별개이고, 합성 포인터 주입은 WISP 파이프라인에 도달하지
 /// 못해 검증에 쓸 수 없었다. 그래서 실물 펜 1획이 남기는 로그로 채널을 확정한다.
 ///
-/// 로그는 <b>채널·뒤집힘 조합마다 최초 1회</b>만 남는다 — 펜 이동은 초당 수십~수백 건이라
+/// 로그는 <b>채널·장치·뒤집힘 조합마다 최초 1회</b>만 남는다 — 펜 이동은 초당 수십~수백 건이라
 /// 무조건 기록하면 로그가 그것만으로 가득 찬다.
+///
+/// 54단계(자유선 부풀음 회귀) 뒤 추가: 획 하나당 <b>채널별 패킷 수</b>를 세어 펜 업 때 요약한다.
+/// 두 채널이 같은 패킷을 주입하던 결함은 채널별 최초 1회 로그로는 보이지 않았다 — 같은 획에서 스타일러스 채널과
+/// 승격 채널이 <b>둘 다</b> 주입했다는 사실은 개수 비교로만 드러난다. 요약은 처음 몇 획과 그 뒤 드문드문만 남긴다.
 /// </summary>
 internal static class StylusProbe
 {
     private static readonly HashSet<string> Seen = [];
     private static bool _tabletsLogged;
+
+    // 획 단위 채널 계수 (UI 스레드 전용).
+    private static int _strokeStylusPackets;
+    private static int _strokeStylusMoves;
+    private static int _strokePromotedMovesSkipped;
+    private static int _strokesSummarized;
+
+    /// <summary>처음 이만큼의 획은 매번, 그 뒤로는 <see cref="SummaryEvery"/>획마다 요약한다.</summary>
+    internal const int SummaryAlwaysFirst = 5;
+    internal const int SummaryEvery = 50;
 
     /// <summary>시동 시 1회: 태블릿과 커서 목록. 'Eraser' 항목의 <c>Inverted=True</c>가 R8의 판별 신호다.</summary>
     internal static void LogTablets()
@@ -53,18 +67,62 @@ internal static class StylusProbe
 
     /// <summary>
     /// 입력 채널 1건 관측. <paramref name="source"/>는 어느 경로로 들어왔는지의 식별자다
-    /// (승격된 마우스 / 스타일러스 라우팅 이벤트). 조합마다 최초 1회만 기록한다.
+    /// (승격된 마우스 / 스타일러스 라우팅 이벤트). 채널·장치 id·뒤집힘 조합마다 최초 1회만 기록한다.
     /// </summary>
     internal static void Observe(string source, StylusDevice? device, bool? invertedOverride = null)
     {
         bool? inverted = invertedOverride ?? device?.Inverted;
-        string key = $"{source}|{device is null}|{inverted}";
+        string key = $"{source}|{device?.Id}|{inverted}";
         if (!Seen.Add(key))
         {
             return;
         }
         Log.Info(device is null
             ? $"[R8] {source}: 스타일러스 없음 (실제 마우스이거나 승격 정보 미포함)"
-            : $"[R8] {source}: 커서 '{device.Name}' 뒤집힘={inverted} 범위내={device.InRange}");
+            : $"[R8] {source}: 커서 '{device.Name}' id={device.Id} 태블릿='{device.TabletDevice?.Name}' 뒤집힘={inverted} 범위내={device.InRange}");
+    }
+
+    /// <summary>
+    /// 펜/마우스 다운. 계수를 비운다 — 요약은 펜 업에서만 나는데, 캡처 핫키·클릭 통과 전환으로 획이 업 없이 끝나면
+    /// 전 획의 계수가 다음 획 요약에 섞이므로 시작에서도 비워야 획 단위가 보장된다.
+    /// </summary>
+    internal static void BeginStroke()
+    {
+        _strokeStylusPackets = 0;
+        _strokeStylusMoves = 0;
+        _strokePromotedMovesSkipped = 0;
+    }
+
+    /// <summary>스타일러스 채널이 <c>PointerMove</c>에 주입한 패킷 배치 1건 (크기 <paramref name="packets"/>).</summary>
+    internal static void CountStylusBatch(int packets)
+    {
+        _strokeStylusMoves++;
+        _strokeStylusPackets += packets;
+    }
+
+    /// <summary>승격 마우스 채널이 (정책대로) 주입을 건너뛴 이동 이벤트 1건.</summary>
+    internal static void CountPromotedMoveSkipped() => _strokePromotedMovesSkipped++;
+
+    /// <summary>
+    /// 펜 업(승격된 왼쪽 버튼 업). 이 획에 스타일러스 패킷이 있었으면 채널 요약을 남기고 계수를 비운다.
+    /// 마우스 전용 획(패킷 0)은 아무것도 남기지 않는다.
+    /// </summary>
+    internal static void EndStroke()
+    {
+        int packets = _strokeStylusPackets;
+        int moves = _strokeStylusMoves;
+        int skipped = _strokePromotedMovesSkipped;
+        _strokeStylusPackets = 0;
+        _strokeStylusMoves = 0;
+        _strokePromotedMovesSkipped = 0;
+        if (packets == 0 && skipped == 0)
+        {
+            return;
+        }
+        _strokesSummarized++;
+        if (_strokesSummarized <= SummaryAlwaysFirst || _strokesSummarized % SummaryEvery == 0)
+        {
+            Log.Info($"[R8] 획 #{_strokesSummarized} 채널 요약: 스타일러스 이동 {moves}건/패킷 {packets}개, 승격 마우스 이동 {skipped}건 건너뜀");
+        }
     }
 }

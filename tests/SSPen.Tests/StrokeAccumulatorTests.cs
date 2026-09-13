@@ -137,4 +137,23 @@ public class StrokeAccumulatorTests
         Assert.Equal(StrokeGeometry.MaxPressure, acc.Pressures[0]);
         Assert.Equal(StrokeGeometry.MinPressure, acc.Pressures[^1]);
     }
+
+    /// <summary>
+    /// 54단계 특성화 (R8 회귀의 기제): 같은 패킷 배치가 두 번 들어오면 누적기는 <b>거르지 못한다</b>.
+    /// 거리 필터는 마지막 채택점 기준 1.5px뿐이라 배치 폭이 그보다 크면 두 번째 사본의 첫 점이 채택되어 P1..Pn,P1..Pn 역주행이 남는다 —
+    /// 그래서 방어는 누적기가 아니라 주입 채널(StylusFeedPolicy: 스타일러스 채널 하나)에 있다. 누적기에 중복 배치 감지를 넣으려는
+    /// 시도가 이 테스트를 바꾸게 되면, 그 전에 채널 정책이 이미 같은 일을 하고 있음을 확인하라.
+    /// </summary>
+    [Fact]
+    public void TryAppend_SameBatchOfferedTwice_KeepsTheRetrace()
+    {
+        var acc = new StrokeAccumulator(new Point(0, 0), Pen);
+        Point[] batch = [new(4, 0), new(8, 0), new(12, 0)];
+
+        foreach (var p in batch) acc.TryAppend(p);
+        foreach (var p in batch) acc.TryAppend(p); // 승격된 MouseMove가 같은 배치를 다시 넣던 경로
+
+        Point[] expected = [new(0, 0), new(4, 0), new(8, 0), new(12, 0), new(4, 0), new(8, 0), new(12, 0)];
+        Assert.Equal(expected, acc.Points);
+    }
 }

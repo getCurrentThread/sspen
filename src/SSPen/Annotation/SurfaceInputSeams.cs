@@ -8,8 +8,8 @@ namespace SSPen.Annotation;
 
 /// <summary>
 /// <see cref="ContentSurfaceWindow"/>가 자신에게 위임해야 하는 최소 창 조작 집합.
-/// ARCH-2 텍스트 도구 NOACTIVATE 핸드셰이크와 ARCH-6 마우스 캡처만 창에 위임하고,
-/// 그 외 입력 상태 머신은 <see cref="SurfaceInputController"/>가 창 참조 없이 소유한다.
+/// ARCH-2 텍스트 도구 NOACTIVATE 핸드셰이크와 ARCH-6 마우스 캡처, 그리고 핸드셰이크 뒤의 z-밴드 재적용 요청(54단계 L0)만
+/// 창에 위임하고, 그 외 입력 상태 머신은 <see cref="SurfaceInputController"/>가 창 참조 없이 소유한다.
 /// </summary>
 public interface ISurfaceHost
 {
@@ -18,6 +18,13 @@ public interface ISurfaceHost
     void CaptureMouse();
     void ReleaseMouseCapture();
     DpiScale GetDpi();
+
+    /// <summary>
+    /// z-밴드 재적용을 합성 루트에 요청한다 (54단계 L0). <see cref="ActivateWindow"/>는 OS의 활성화 상승을 동반해
+    /// 서피스가 툴바 위로 올라갈 수 있는 유일한 앱 내부 계기다 — 핸드셰이크 직후와 커밋 직후에 부른다.
+    /// 창은 이벤트로 올리고, <c>AppController</c>가 <c>ApplyZBand</c>로 잇는다.
+    /// </summary>
+    void RequestZBand();
 }
 
 /// <summary>

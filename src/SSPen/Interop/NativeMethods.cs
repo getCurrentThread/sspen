@@ -32,6 +32,22 @@ internal static partial class NativeMethods
     internal const uint SWP_NOACTIVATE = 0x0010;
     internal const uint SWP_NOZORDER = 0x0004;
 
+    // z-순서 리드백 (54단계: AnchorBelow 소유 사슬 판정 + KeepBelow/검증 워크).
+    // GW_OWNER: 소유자. GW_HWNDPREV: z-순서상 바로 위 창. GW_HWNDNEXT: 바로 아래 창.
+    internal const uint GW_HWNDNEXT = 2;
+    internal const uint GW_HWNDPREV = 3;
+    internal const uint GW_OWNER = 4;
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    internal static partial nint GetWindow(nint hWnd, uint uCmd);
+
+    [LibraryImport("user32.dll")]
+    internal static partial nint GetDesktopWindow();
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool IsWindow(nint hWnd);
+
     // z-밴드 고정 훅 (툴바 항상 서피스 위, 서피스 항상 핀 위 — R10 상시 보증)
     internal const int WM_WINDOWPOSCHANGING = 0x0046;
     internal const int WM_WINDOWPOSCHANGED = 0x0047;
@@ -103,6 +119,21 @@ internal static partial class NativeMethods
 
     [LibraryImport("user32.dll")]
     internal static partial nint CallNextHookEx(nint hhk, int nCode, nint wParam, nint lParam);
+
+    // ---- WinEvent 훅 (54단계 L3: z-밴드 사후 검증). SetWinEventHook/UnhookWinEvent의 호출자는 WinEventWatch.Native 하나다.
+    //      실측(빌드 26200): 최상위 z-순서 변화는 EVENT_OBJECT_REORDER가 hwnd=데스크톱, idObject=OBJID_CLIENT(-4)로 온다.
+    internal const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
+    internal const uint EVENT_OBJECT_REORDER = 0x8004;
+    internal const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint SetWinEventHook(
+        uint eventMin, uint eventMax, nint hmodWinEventProc, WinEventProc pfnWinEventProc,
+        uint idProcess, uint idThread, uint dwFlags);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool UnhookWinEvent(nint hWinEventHook);
 
     /// <summary>
     /// 비동기 키 상태 (D3). WPF <c>Keyboard.Modifiers</c>는 <b>스레드 로컬 입력 상태</b>라

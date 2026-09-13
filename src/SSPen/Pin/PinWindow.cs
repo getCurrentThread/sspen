@@ -17,7 +17,8 @@ public sealed class PinWindow : Window, IClickThroughPin
     private readonly double _baseWidth;
     private readonly double _baseHeight;
     private readonly Func<nint> _zAnchor;
-    private System.Windows.Interop.HwndSourceHook? _zHook; // GC 고정
+    private System.Windows.Interop.HwndSourceHook? _zHook; // GC 고정 (요청 단계: AnchorBelow)
+    private System.Windows.Interop.HwndSourceHook? _zKeepBelowHook; // GC 고정 (결과 단계: KeepBelow, 54단계 L2)
     private double _scale = 1.0;
     private double _opacityBeforeClickThrough = 1.0;
     private bool _closing;
@@ -185,15 +186,26 @@ public sealed class PinWindow : Window, IClickThroughPin
         WindowStyling.SetToolWindow(Hwnd, true);
         // 핀은 서피스 아래 밴드에 고정 (F5: 핀 위 판서 보장 — 클릭/드래그로 올라가도 서피스 아래 유지).
         _zHook = WindowStyling.AnchorBelow(Hwnd, _zAnchor);
+        _zKeepBelowHook = WindowStyling.KeepBelow(Hwnd, _zAnchor, "핀");
     }
 
     protected override void OnClosed(EventArgs e)
     {
-        if (_zHook is not null && Hwnd != 0)
+        if (Hwnd != 0)
         {
-            System.Windows.Interop.HwndSource.FromHwnd(Hwnd)?.RemoveHook(_zHook);
-            _zHook = null;
+            var source = System.Windows.Interop.HwndSource.FromHwnd(Hwnd);
+            if (_zHook is not null)
+            {
+                source?.RemoveHook(_zHook);
+                _zHook = null;
+            }
+            if (_zKeepBelowHook is not null)
+            {
+                source?.RemoveHook(_zKeepBelowHook);
+                _zKeepBelowHook = null;
+            }
         }
+        Hwnd = 0; // 낡은 HWND가 밴드 목록에 남지 않게 (54단계 L5; 툴바·서피스와 같은 규약).
         base.OnClosed(e);
     }
 
