@@ -36,6 +36,8 @@ public class SettingsServiceTests : IDisposable
     {
         var settings = NewService().Load();
         Assert.False(settings.RunAtLogin);
+        // 시작 시 업데이트 확인은 신규 설치에서도 켜진 채 시작한다 — 꺼진 기본값은 "업데이트가 안 온다"로 오인됐다.
+        Assert.True(settings.CheckUpdateOnStart);
         Assert.True(settings.BoardAllMonitors);
         Assert.Equal(FadingDurations.Default, settings.FadingSeconds);
         // 도구별 개별 스타일 기본값 (사용자 조타): 펜(자유선·페이딩) 빨강 / 형광펜 노랑 / 도형 초록, 동기화 꺼짐.

@@ -332,8 +332,21 @@ public sealed class AppController : IShellActions, ISettingsHost
     /// <summary>표시 판정은 <see cref="UpdateCheckPresentation"/>이 소유한다 (35단계) — 여기는 결과별 UI 호출뿐이다.</summary>
     private void CheckForUpdates(bool isManual)
     {
+        var current = UpdateService.CurrentVersion;
+        Log.Info($"업데이트 확인 시작 (현재 {current}, {(isManual ? "수동" : "자동")})");
         _updateService.CheckForUpdates(result =>
         {
+            // 결과는 화면 판정과 무관하게 항상 남긴다 — 자동+최신은 Silent라 이 줄이 유일한 흔적이다.
+            var summary = UpdateCheckPresentation.Describe(result, current);
+            if (result.Success)
+            {
+                Log.Info(summary);
+            }
+            else
+            {
+                Log.Warn(summary);
+            }
+
             switch (UpdateCheckPresentation.Decide(result, isManual))
             {
                 case UpdateCheckOutcome.ShowDialog:
@@ -343,29 +356,41 @@ public sealed class AppController : IShellActions, ISettingsHost
                     break;
 
                 case UpdateCheckOutcome.ShowErrorDialog:
-                    MessageBox.Show(
-                        result.ErrorMessage ?? Strings.UpdateFailedTitle,
-                        Strings.AppName,
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
-                    break;
-
-                case UpdateCheckOutcome.LogError:
-                    Log.Warn($"자동 업데이트 확인 실패: {result.ErrorMessage}");
+                    ShowUpdateMessage(result.ErrorMessage ?? Strings.UpdateFailedTitle, MessageBoxImage.Warning);
                     break;
 
                 case UpdateCheckOutcome.ShowUpToDate:
-                    MessageBox.Show(
-                        Strings.UpdateLatestAlready,
-                        Strings.AppName,
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
+                    ShowUpdateMessage(Strings.UpdateLatestAlready, MessageBoxImage.Information);
                     break;
 
+                case UpdateCheckOutcome.LogError: // 위에서 이미 로그를 남겼다.
                 case UpdateCheckOutcome.Silent:
                     break;
             }
         });
+    }
+
+    /// <summary>
+    /// 수동 확인 안내창. 앱 창은 전부 Topmost라 owner 없는 MessageBox는 그 밑으로 숨어 설정창의 "지금 확인"이 먹통처럼
+    /// 보인다 — 설정창(없으면 보이는 툴바)을 owner로 물려 같은 최상단 층에 올린다 (UpdateDialog의 실패 상자와 같은 방식).
+    /// 숨겨진 툴바는 owner로 못 쓴다.
+    /// </summary>
+    private void ShowUpdateMessage(string text, MessageBoxImage image)
+    {
+        Window? owner = _settingsWindow;
+        if (owner is null && _toolbar is { IsVisible: true })
+        {
+            owner = _toolbar;
+        }
+
+        if (owner is null)
+        {
+            MessageBox.Show(text, Strings.AppName, MessageBoxButton.OK, image);
+        }
+        else
+        {
+            MessageBox.Show(owner, text, Strings.AppName, MessageBoxButton.OK, image);
+        }
     }
 
     public void ApplyGeneralSettings(AppSettings updated)

@@ -21,8 +21,8 @@ public sealed class AppSettings
     /// <summary>윈도우 로그인 시 시작 (AC-26: 설정에서 켤 수 있다). 기본은 꺼짐 — 설치 마법사 태스크(SSPen.iss)와 같은 기본값이다.</summary>
     public bool RunAtLogin { get; set; } = false;
 
-    /// <summary>시작 시 업데이트 확인 — 비활성 스텁 (Non-Goal 11: 업데이터 없음).</summary>
-    public bool CheckUpdateOnStart { get; set; }
+    /// <summary>시작 시 업데이트 확인. 켜져 있으면 셸이 준비된 3초 뒤 한 번 확인한다 (AppController.Start). 기본은 켜짐.</summary>
+    public bool CheckUpdateOnStart { get; set; } = true;
 
     /// <summary>마우스 휠로 펜 크기 조정.</summary>
     public bool WheelAdjustsPenSize { get; set; } = true;

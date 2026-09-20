@@ -38,4 +38,22 @@ public static class UpdateCheckPresentation
         }
         return isManual ? UpdateCheckOutcome.ShowUpToDate : UpdateCheckOutcome.Silent;
     }
+
+    /// <summary>
+    /// 확인 결과를 로그 한 줄로 서술한다. 자동 확인이 '최신'이면 화면에 아무것도 뜨지 않으므로(<see cref="UpdateCheckOutcome.Silent"/>),
+    /// 이 한 줄이 "돌았는데 최신이었다"와 "아예 안 돌았다"를 가르는 유일한 흔적이다. 판정과 같은 순수 코어에 둬서 헤드리스로 검증한다.
+    /// </summary>
+    public static string Describe(UpdateCheckResult result, Version currentVersion)
+    {
+        if (!result.Success)
+        {
+            return $"업데이트 확인: 현재 {currentVersion} → 실패 ({result.ErrorMessage ?? "원인 미상"})";
+        }
+
+        var remote = result.ReleaseInfo?.TagName ?? "알 수 없음";
+        var verdict = !result.HasUpdate
+            ? "최신"
+            : result.ReleaseInfo is null ? "새 버전 있음 (릴리스 정보 없음)" : "새 버전 있음";
+        return $"업데이트 확인: 현재 {currentVersion} / 원격 {remote} → {verdict}";
+    }
 }
