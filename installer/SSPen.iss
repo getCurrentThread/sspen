@@ -3,7 +3,7 @@
 
 #define MyAppName "SS Pen"
 ; src/SSPen/SSPen.csproj 의 <Version> 과 반드시 같아야 한다.
-#define MyAppVersion "1.3.5"
+#define MyAppVersion "1.3.6"
 #define MyAppExeName "SSPen.exe"
 
 [Setup]
@@ -11,7 +11,9 @@ AppId={{6E9A2C41-8B7D-4A53-9F2E-D10C5A7B3F64}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=SS Pen (개인용)
-DefaultDirName={autopf}\{#MyAppName}
+; 설치 폴더만 공백 없는 SSPen (제품명 {#MyAppName}은 Run 값 이름·%APPDATA% 폴더·시작 메뉴 그룹과 앱 코드가 맞물려 그대로 둔다).
+; 신규 설치에만 적용된다 — 기존 설치는 AppId가 기억한 위치에서 제자리 업그레이드된다.
+DefaultDirName={autopf}\SSPen
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 ; 개인용 앱: 관리자 권한 불필요 (사용자 영역 설치).

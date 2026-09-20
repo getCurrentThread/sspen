@@ -291,21 +291,13 @@ public sealed class AppController : IShellActions, ISettingsHost
     }
 
     /// <summary>
-    /// 툴바 설정 메뉴의 "프로그램 종료" (55단계). 확인 대화상자는 여기서 소유한다 — <see cref="ExitApp"/>은
-    /// 트레이 종료와 업데이트 재시작(<c>UpdateService</c> 콜백)이 쓰는 무확인 경로라 확인을 붙일 수 없다.
+    /// 툴바 설정 메뉴의 "프로그램 종료" (55단계). 확인 없이 바로 종료한다 — <see cref="ExitApp"/>과 동작은 같고,
+    /// 종료 경로(툴바 메뉴)를 로그에 구분해 남기려고 분리해 둔다.
     /// </summary>
     public void RequestExit()
     {
-        var answer = MessageBox.Show(
-            Strings.ExitConfirmMessage,
-            Strings.AppName,
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-        if (answer == MessageBoxResult.Yes)
-        {
-            Log.Info("종료 요청 (툴바 설정 메뉴)");
-            Application.Current.Shutdown();
-        }
+        Log.Info("종료 요청 (툴바 설정 메뉴)");
+        Application.Current.Shutdown();
     }
 
     // ---- ISettingsHost (WI-16) ----

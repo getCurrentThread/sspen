@@ -60,7 +60,7 @@ Stop-Process -Name SSPen -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 1
 $installer = Get-ChildItem publish/installer/SSPen-Setup-*.exe | Select-Object -Last 1
 Start-Process -FilePath $installer.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
-Start-Process -FilePath "$env:LOCALAPPDATA\Programs\SS Pen\SSPen.exe"
+Start-Process -FilePath "$env:LOCALAPPDATA\Programs\SSPen\SSPen.exe"
 ```
 
 CI (`.github/workflows/ci.yml`) runs on `windows-latest` for every push and PR to `main`/`master`:
@@ -74,7 +74,7 @@ installer and a portable zip to a GitHub release.
 ## Publish & installer gotchas
 
 **규칙**: 배포(혹은 빌드/패키징)를 수행하고 난 뒤에는 항상 현재 컴퓨터에 무음(silent) 모드로 설치를 완료하고 앱을 다시 실행해야 한다.
-반드시 `Stop-Process -Name SSPen -Force`로 기존 인스턴스를 종료하고, `Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait`로 설치 완료를 대기한 후, `$env:LOCALAPPDATA\Programs\SS Pen\SSPen.exe`를 실행하여 새 버전을 즉시 띄운다.
+반드시 `Stop-Process -Name SSPen -Force`로 기존 인스턴스를 종료하고, `Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait`로 설치 완료를 대기한 후, `$env:LOCALAPPDATA\Programs\SSPen\SSPen.exe`를 실행하여 새 버전을 즉시 띄운다.
 
 `build/publish.ps1` is the only supported path: it publishes, then *proves* self-containment twice
 (publish-folder assertions plus a launch with `DOTNET_ROOT` masked to an empty dir), then compiles
@@ -83,9 +83,11 @@ installer and a portable zip to a GitHub release.
 Two facts about the installer that are not visible from the `.iss` source alone:
 
 - **`AppId` reuse wins over `DefaultDirName`.** The AppId is shared with earlier installs that used a
-  different product name, so Inno upgrades in place at the *recorded* location. On a machine with such an
-  install, the app lands in `%LOCALAPPDATA%\Programs\SSAFY Pen\` even though the script says `SS Pen`.
-  Verify the real path from the `InstallLocation` value under `HKCU:\...\Uninstall\*`, not from the script.
+  different product name or folder, so Inno upgrades in place at the *recorded* location. `DefaultDirName`
+  (`{autopf}\SSPen`, space-free) only decides where a *fresh* install lands. On a machine that already has
+  an install — e.g. one recorded as `%LOCALAPPDATA%\Programs\SSAFY Pen\` or `...\SS Pen\` — the app stays
+  there until uninstalled and reinstalled. Verify the real path from the `InstallLocation` value under
+  `HKCU:\...\Uninstall\*`, not from the script; the command above assumes a fresh `...\Programs\SSPen\`.
 - **Uninstall deletes user data.** `[UninstallDelete]` removes `%APPDATA%\SS Pen` — settings *and* logs.
   Uninstall/reinstall is therefore not a safe way to "clean up" an install.
 
