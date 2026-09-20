@@ -18,8 +18,8 @@ public sealed class AppSettings
     /// <summary>빈 문자열 = 기본값 (사진\SS Pen).</summary>
     public string SaveFolder { get; set; } = string.Empty;
 
-    /// <summary>윈도우 로그인 시 시작 (AC-26: 설정에서 끌 수 있다).</summary>
-    public bool RunAtLogin { get; set; } = true;
+    /// <summary>윈도우 로그인 시 시작 (AC-26: 설정에서 켤 수 있다). 기본은 꺼짐 — 설치 마법사 태스크(SSPen.iss)와 같은 기본값이다.</summary>
+    public bool RunAtLogin { get; set; } = false;
 
     /// <summary>시작 시 업데이트 확인 — 비활성 스텁 (Non-Goal 11: 업데이터 없음).</summary>
     public bool CheckUpdateOnStart { get; set; }

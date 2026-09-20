@@ -10,7 +10,7 @@ using SSPen.Annotation;
 namespace SSPen.Shell;
 
 /// <summary>
-/// 플라이아웃(Popup) 호스팅 (ARCH-11 확정, god file 분할 후속): 도형/펜/굵기/페이딩/보드/팔레트
+/// 플라이아웃(Popup) 호스팅 (ARCH-11 확정, god file 분할 후속): 도형/펜/굵기/페이딩/보드/팔레트/설정 메뉴
 /// 플라이아웃과 포인터 감시 타이머를 소유한다. 소유자(ToolbarWindow)가 이 인스턴스와 함께
 /// 타이머 수명을 갖는다 — Dispose 없이 창 종료 시 GC로 정리된다 (기존 동작 유지).
 /// </summary>
@@ -25,6 +25,7 @@ public sealed class ToolbarFlyouts
     public readonly Popup BoardFlyout;
     public readonly Popup FadingFlyout;
     public readonly Popup PenFlyout;
+    public readonly Popup SettingsFlyout;
 
     // 툴팁도 플라이아웃처럼 **자체 HWND를 가진 팝업**이라 소유 창을 숨겼다고 함께 사라지지 않는다.
     // 캐프처 세션은 카메라 버튼 클릭(=마우스가 그 버튼 위, 툴팁이 열려 있을 수 있는 상태)으로
@@ -58,12 +59,13 @@ public sealed class ToolbarFlyouts
         BoardFlyout = NewFlyout();
         FadingFlyout = NewFlyout();
         PenFlyout = NewFlyout();
+        SettingsFlyout = NewFlyout();
 
         _flyoutWatch = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(150) };
         _flyoutWatch.Tick += (_, _) => FlyoutWatchTick();
     }
 
-    public Popup[] AllFlyouts => [ShapesFlyout, ThicknessFlyout, PaletteFlyout, BoardFlyout, FadingFlyout, PenFlyout];
+    public Popup[] AllFlyouts => [ShapesFlyout, ThicknessFlyout, PaletteFlyout, BoardFlyout, FadingFlyout, PenFlyout, SettingsFlyout];
 
     /// <summary>
     /// 생성된 툴팁을 수명 관리 대상으로 등록한다 — <see cref="ToolbarTooltips.Attach"/>의 필수 등록 델리게이트로 넘긴다
@@ -80,7 +82,7 @@ public sealed class ToolbarFlyouts
         }
     }
 
-    /// <summary>플라이아웃 자식 트리(도형/펜/굵기/페이딩/보드/팔레트)를 빌드한다. Build() 조립 순서상 버튼 이후 호출.</summary>
+    /// <summary>플라이아웃 자식 트리(도형/펜/굵기/페이딩/보드/팔레트/설정 메뉴)를 빌드한다. Build() 조립 순서상 버튼 이후 호출.</summary>
     public void BuildAllFlyouts()
     {
         BuildShapesFlyout();
@@ -89,6 +91,7 @@ public sealed class ToolbarFlyouts
         BuildBoardFlyout();
         BuildFadingFlyout();
         BuildPenFlyout();
+        BuildSettingsFlyout();
     }
 
     // StaysOpen=true 필수 (사용자 조타: 빠릿한 호버 전환): false면 Popup이 마우스를
@@ -206,10 +209,13 @@ public sealed class ToolbarFlyouts
         }
     }
 
-    public void ToggleThicknessFlyout()
+    /// <summary>클릭으로 여닫는 플라이아웃 (굵기 미리보기·설정 메뉴): 열려 있으면 모두 닫고, 아니면 이것만 연다.</summary>
+    public void ToggleFlyout(Popup flyout)
     {
-        if (ThicknessFlyout.IsOpen) { CloseFlyoutsExcept(null); } else { OpenFlyout(ThicknessFlyout); }
+        if (flyout.IsOpen) { CloseFlyoutsExcept(null); } else { OpenFlyout(flyout); }
     }
+
+    public void ToggleThicknessFlyout() => ToggleFlyout(ThicknessFlyout);
 
     private void BuildShapesFlyout()
     {
@@ -230,6 +236,20 @@ public sealed class ToolbarFlyouts
         panel.Children.Add(FlyoutItem(Strings.Highlighter, Icons.Highlight, () => SelectTool(ToolKind.Highlighter), "highlighter"));
         panel.Children.Add(FlyoutItem(Strings.ShapeText, Icons.TextT, () => SelectTool(ToolKind.Text), "text"));
         PenFlyout.Child = FlyoutBorder(panel);
+    }
+
+    /// <summary>
+    /// 설정 메뉴 (55단계): 설정 / 도구 막대 닫기 / 프로그램 종료. 다른 플라이아웃과 달리 <b>세로</b> 목록이다 —
+    /// 항목이 도구가 아니라 셸 동작이라 아이콘 위·라벨 아래 타일보다 아이콘 옆 라벨 행이 읽기 쉽다.
+    /// "도구 막대 닫기"의 툴팁 둘째 줄에는 툴바 토글 핫키(Alt+Shift+0)가 붙는다 — 숨긴 뒤 돌아올 길을 메뉴가 알려 준다.
+    /// </summary>
+    private void BuildSettingsFlyout()
+    {
+        var panel = new StackPanel { Orientation = Orientation.Vertical };
+        panel.Children.Add(MenuRow(Strings.Settings, Icons.Settings, _actions.OpenSettings));
+        panel.Children.Add(MenuRow(Strings.MenuHideToolbar, Icons.Dismiss, _actions.HideToolbar, "toolbar"));
+        panel.Children.Add(MenuRow(Strings.SettingsExitApp, Icons.Power, _actions.RequestExit));
+        SettingsFlyout.Child = FlyoutBorder(panel);
     }
 
     private void SelectTool(ToolKind tool)
@@ -470,6 +490,39 @@ public sealed class ToolbarFlyouts
         {
             onClick();
             CloseFlyoutsExcept(null);
+        };
+        return item;
+    }
+
+    /// <summary>세로 메뉴의 한 행 (아이콘 + 라벨). 이벤트·수명 배선은 <see cref="FlyoutItem"/>과 같은 관용구다.</summary>
+    private Border MenuRow(string label, (string Regular, string Filled) icon, Action onClick, string? hotkeyId = null)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 4, 10, 4) };
+        row.Children.Add(new TextBlock
+        {
+            Text = icon.Regular,
+            FontFamily = Icons.Regular,
+            FontSize = 16,
+            Foreground = ToolbarTheme.IconBrush,
+            VerticalAlignment = VerticalAlignment.Center,
+            Width = 22,
+        });
+        row.Children.Add(new TextBlock
+        {
+            Text = label,
+            Foreground = ToolbarTheme.IconBrush,
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        var item = new Border { Background = Brushes.Transparent, Child = row, Padding = new Thickness(2) };
+        ToolbarTooltips.Attach(_actions, item, label, hotkeyId, RegisterTooltip);
+        item.MouseEnter += (_, _) => item.Background = ToolbarTheme.ButtonHoverBrush;
+        item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
+        item.MouseLeftButtonUp += (_, _) =>
+        {
+            // 먼저 닫는다: 설정 창·종료 확인 대화상자가 뜬 뒤에도 메뉴가 남아 있으면 그 위에 떠 있게 된다.
+            CloseFlyoutsExcept(null);
+            onClick();
         };
         return item;
     }

@@ -79,27 +79,30 @@ public class ToolbarLayoutTests
     [MemberData(nameof(AllButtonIds))]
     public void Button_Attributes_MatchTable(ToolbarButtonId id)
     {
-        (string Tooltip, (string Regular, string Filled) Icon, ToolbarFlyoutKind? Flyout, ToolStyleGroup? Badge, string? HotkeyId, ToolbarWheel Wheel) expected = id switch
+        const ToolbarFlyoutTrigger hover = ToolbarFlyoutTrigger.Hover;
+        (string Tooltip, (string Regular, string Filled) Icon, ToolbarFlyoutKind? Flyout, ToolStyleGroup? Badge, string? HotkeyId, ToolbarWheel Wheel, ToolbarFlyoutTrigger Trigger) expected = id switch
         {
-            ToolbarButtonId.Visibility => (Strings.Visibility, Icons.Eye, null, null, null, ToolbarWheel.None),
-            ToolbarButtonId.ClickThrough => (Strings.ClickThrough, Icons.Cursor, null, null, "clickthrough", ToolbarWheel.None),
-            ToolbarButtonId.Select => (Strings.Select, Icons.Select, null, null, "select", ToolbarWheel.None),
-            ToolbarButtonId.Shapes => (Strings.Shapes, Icons.Shapes, ToolbarFlyoutKind.Shapes, ToolStyleGroup.Shape, "shape-cycle", ToolbarWheel.ShapeCycle),
-            ToolbarButtonId.Pen => (Strings.Pen, Icons.Pen, ToolbarFlyoutKind.Pen, ToolStyleGroup.Pen, "pen", ToolbarWheel.PenCycle),
-            ToolbarButtonId.Eraser => (Strings.Eraser, Icons.Eraser, null, null, "eraser", ToolbarWheel.None),
-            ToolbarButtonId.Fading => (Strings.HotkeyFadingInk, Icons.Timer, ToolbarFlyoutKind.Fading, null, "fading", ToolbarWheel.FadingDuration),
-            ToolbarButtonId.Undo => (Strings.Undo, Icons.ArrowUndo, null, null, "undo", ToolbarWheel.None),
-            ToolbarButtonId.ClearAll => (Strings.ClearAll, Icons.Delete, null, null, "clear", ToolbarWheel.None),
-            ToolbarButtonId.Board => (Strings.Board, Icons.Whiteboard, ToolbarFlyoutKind.Board, null, "whiteboard", ToolbarWheel.None),
-            ToolbarButtonId.Capture => (Strings.Capture, Icons.Camera, null, null, "capture", ToolbarWheel.None),
-            ToolbarButtonId.Settings => (Strings.Settings, Icons.Settings, null, null, null, ToolbarWheel.None),
+            ToolbarButtonId.Visibility => (Strings.Visibility, Icons.Eye, null, null, null, ToolbarWheel.None, hover),
+            ToolbarButtonId.ClickThrough => (Strings.ClickThrough, Icons.Cursor, null, null, "clickthrough", ToolbarWheel.None, hover),
+            ToolbarButtonId.Select => (Strings.Select, Icons.Select, null, null, "select", ToolbarWheel.None, hover),
+            ToolbarButtonId.Shapes => (Strings.Shapes, Icons.Shapes, ToolbarFlyoutKind.Shapes, ToolStyleGroup.Shape, "shape-cycle", ToolbarWheel.ShapeCycle, hover),
+            ToolbarButtonId.Pen => (Strings.Pen, Icons.Pen, ToolbarFlyoutKind.Pen, ToolStyleGroup.Pen, "pen", ToolbarWheel.PenCycle, hover),
+            ToolbarButtonId.Eraser => (Strings.Eraser, Icons.Eraser, null, null, "eraser", ToolbarWheel.None, hover),
+            ToolbarButtonId.Fading => (Strings.HotkeyFadingInk, Icons.Timer, ToolbarFlyoutKind.Fading, null, "fading", ToolbarWheel.FadingDuration, hover),
+            ToolbarButtonId.Undo => (Strings.Undo, Icons.ArrowUndo, null, null, "undo", ToolbarWheel.None, hover),
+            ToolbarButtonId.ClearAll => (Strings.ClearAll, Icons.Delete, null, null, "clear", ToolbarWheel.None, hover),
+            ToolbarButtonId.Board => (Strings.Board, Icons.Whiteboard, ToolbarFlyoutKind.Board, null, "whiteboard", ToolbarWheel.None, hover),
+            ToolbarButtonId.Capture => (Strings.Capture, Icons.Camera, null, null, "capture", ToolbarWheel.None, hover),
+            // 55단계: 설정 버튼은 클릭으로만 여는 메뉴를 든다 (프로그램 종료를 품어 호버 전개 금지).
+            ToolbarButtonId.Settings => (Strings.Settings, Icons.Settings, ToolbarFlyoutKind.Settings, null, null, ToolbarWheel.None, ToolbarFlyoutTrigger.Click),
             _ => throw new Xunit.Sdk.XunitException($"새 버튼 {id}의 기대 행을 이 표에 적으세요."),
         };
 
         var b = Button(id);
 
-        Assert.Equal(expected, (b.Tooltip, b.Icon, b.Flyout, b.BadgeGroup, b.HotkeyId, b.Wheel));
+        Assert.Equal(expected, (b.Tooltip, b.Icon, b.Flyout, b.BadgeGroup, b.HotkeyId, b.Wheel, b.FlyoutTrigger));
         Assert.Equal(expected.Flyout is not null, b.HasFlyout);
+        Assert.Equal(expected.Flyout is not null && expected.Trigger == hover, b.OpensOnHover);
     }
 
     [Fact]
@@ -111,7 +114,7 @@ public class ToolbarLayoutTests
         }
 
         Assert.Equal(
-            new HashSet<ToolbarButtonId> { ToolbarButtonId.Shapes, ToolbarButtonId.Pen, ToolbarButtonId.Fading, ToolbarButtonId.Board },
+            new HashSet<ToolbarButtonId> { ToolbarButtonId.Shapes, ToolbarButtonId.Pen, ToolbarButtonId.Fading, ToolbarButtonId.Board, ToolbarButtonId.Settings },
             AllButtons().Where(b => b.HasFlyout).Select(b => b.Id).ToHashSet());
     }
 

@@ -169,27 +169,6 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(BuildQuickColorRow());
         stack.Children.Add(BuildHotkeySection(host));
 
-        var exitButton = new Button
-        {
-            Content = Strings.SettingsExitApp,
-            Width = 100,
-            Margin = new Thickness(4),
-        };
-        exitButton.Click += (_, _) =>
-        {
-            var res = MessageBox.Show(
-                this,
-                Strings.ExitConfirmMessage,
-                Strings.AppName,
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-            if (res == MessageBoxResult.Yes)
-            {
-                Close();
-                _host.ExitApp();
-            }
-        };
-
         // 하단 "업데이트 확인" 버튼은 뺐다: 버전 라벨 옆 인라인 버튼과 같은 동작이라,
         // 나란히 놓인 확인/취소와 같은 무게로 보이면 그 줄이 무엇을 확정하는 줄인지 흐려진다.
         var okButton = new Button { Content = Strings.SettingsOk, Width = 80, Margin = new Thickness(4), IsDefault = true };
@@ -197,13 +176,7 @@ public sealed class SettingsWindow : Window
         var cancelButton = new Button { Content = Strings.SettingsCancel, Width = 80, Margin = new Thickness(4), IsCancel = true };
         cancelButton.Click += (_, _) => Close();
 
-        var leftButtons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Left,
-        };
-        leftButtons.Children.Add(exitButton);
-
+        // 프로그램 종료 버튼은 툴바 설정 메뉴로 옮겼다 (55단계) — 여기서는 확인/취소만 남는다.
         var rightButtons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -213,7 +186,6 @@ public sealed class SettingsWindow : Window
         rightButtons.Children.Add(cancelButton);
 
         var bottomGrid = new Grid { Margin = new Thickness(10) };
-        bottomGrid.Children.Add(leftButtons);
         bottomGrid.Children.Add(rightButtons);
 
         var root = new DockPanel();

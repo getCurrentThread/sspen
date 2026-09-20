@@ -40,6 +40,10 @@ public static class Icons
     public static readonly (string Regular, string Filled) Settings = Pair(0xf6aa, 0xf6b3);
     public static readonly (string Regular, string Filled) Timer = Pair(0xf827, 0xf840);        // 페이딩 잉크: timer-24
 
+    // 설정 메뉴 항목 (55단계) — 선택 상태가 없으므로 동일 쌍. 코드포인트는 동봉 TTF의 post 테이블에서 실측했다.
+    public static readonly (string Regular, string Filled) Dismiss = Pair(0xf36a, 0xf36a);      // 도구 막대 닫기: dismiss-24
+    public static readonly (string Regular, string Filled) Power = Pair(0xf60f, 0xf60f);        // 프로그램 종료: power-24
+
     // 도형 플라이아웃 보조 아이콘
     public static readonly (string Regular, string Filled) Line = Pair(0xe766, 0xe774);         // 선: line-24
     public static readonly (string Regular, string Filled) ArrowUpRight = Pair(0xf1a3, 0xf1a3); // 화살표: arrow-up-right-24

@@ -3,7 +3,7 @@ using SSPen.Annotation;
 namespace SSPen.Shell;
 
 /// <summary>
-/// 버튼 항목이 여는 네 Popup(Shapes/Pen/Fading/Board)과 1:1 — <see cref="ToolbarFlyouts"/>의 여섯 Popup 중
+/// 버튼 항목이 여는 다섯 Popup(Shapes/Pen/Fading/Board/Settings)과 1:1 — <see cref="ToolbarFlyouts"/>의 일곱 Popup 중
 /// ThicknessFlyout(미리보기 버튼 고유)·PaletteFlyout(현재 색 스와치 고유)은 버튼 어휘에 없다.
 /// 실제 Popup 연결은 ToolbarStripBuilder.Build의 PopupFor 스위치가 잇는다 (51단계).
 /// </summary>
@@ -13,6 +13,17 @@ public enum ToolbarFlyoutKind
     Pen,
     Fading,
     Board,
+    Settings,
+}
+
+/// <summary>
+/// 플라이아웃이 열리는 계기. 도형/펜/페이딩/보드는 호버 전개(Epic Pen 감각)지만, 설정 메뉴는 "프로그램 종료"를 품고
+/// 있어 포인터가 스치기만 해도 뜨면 안 되므로 클릭으로만 연다 (55단계).
+/// </summary>
+public enum ToolbarFlyoutTrigger
+{
+    Hover,
+    Click,
 }
 
 /// <summary>버튼 위 휠 동작. None = 핸들러 없음(창의 전체 도구 순환으로 버블링). 실현은 ToolbarStripBuilder.Build의 Realize (51단계).</summary>
@@ -50,10 +61,14 @@ public sealed record ToolbarButtonEntry(
     ToolbarFlyoutKind? Flyout,
     ToolStyleGroup? BadgeGroup,
     string? HotkeyId,
-    ToolbarWheel Wheel) : ToolbarLayoutEntry
+    ToolbarWheel Wheel,
+    ToolbarFlyoutTrigger FlyoutTrigger = ToolbarFlyoutTrigger.Hover) : ToolbarLayoutEntry
 {
     /// <summary>플라이아웃 어포던스 삼각형·호버 시 다른 플라이아웃 닫기 판정 — 링크가 있으면 참 (따로 표현 불가).</summary>
     public bool HasFlyout => Flyout is not null;
+
+    /// <summary>호버로 플라이아웃을 여는가 — 클릭 트리거 항목은 열기 동작을 ToolbarStripBuilder.Build의 ActionFor가 든다 (55단계).</summary>
+    public bool OpensOnHover => HasFlyout && FlyoutTrigger == ToolbarFlyoutTrigger.Hover;
 }
 
 /// <summary>
@@ -135,9 +150,11 @@ public static class ToolbarLayout
         new ToolbarButtonEntry(
             ToolbarButtonId.Capture, Strings.Capture, Icons.Camera,
             Flyout: null, BadgeGroup: null, HotkeyId: "capture", Wheel: ToolbarWheel.None),
+        // 설정 버튼 (55단계): 클릭하면 설정/도구 막대 닫기/프로그램 종료 메뉴가 뜬다 — 호버로는 열지 않는다.
         new ToolbarButtonEntry(
             ToolbarButtonId.Settings, Strings.Settings, Icons.Settings,
-            Flyout: null, BadgeGroup: null, HotkeyId: null, Wheel: ToolbarWheel.None),
+            Flyout: ToolbarFlyoutKind.Settings, BadgeGroup: null, HotkeyId: null, Wheel: ToolbarWheel.None,
+            FlyoutTrigger: ToolbarFlyoutTrigger.Click),
         new ToolbarSeparatorEntry(),
 
         // 그룹 5: 퀵컬러 6칸 (2열 x 3행) + 현재 색 대형 스와치 + 빠른 색상 확장.

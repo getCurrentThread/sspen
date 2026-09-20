@@ -87,6 +87,10 @@ public class ToolbarTooltipsTests
 
         public void OpenSettings() { }
 
+        public void HideToolbar() { }
+
+        public void RequestExit() { }
+
         public string? HotkeyLabel(string hotkeyId)
         {
             LabelCalls++;

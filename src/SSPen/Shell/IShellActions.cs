@@ -11,6 +11,12 @@ public interface IShellActions
 
     void OpenSettings();
 
+    /// <summary>툴바를 숨긴다 (복귀는 트레이 "툴바 보이기" 또는 Alt+Shift+0).</summary>
+    void HideToolbar();
+
+    /// <summary>확인 대화상자를 거쳐 프로그램을 종료한다 (<see cref="ISettingsHost.ExitApp"/>은 무확인 경로 — 트레이·업데이트 재시작).</summary>
+    void RequestExit();
+
     /// <summary>핫키 id의 현재 유효 조합 표시 문자열 (재지정 반영). 없으면 null.</summary>
     string? HotkeyLabel(string hotkeyId);
 

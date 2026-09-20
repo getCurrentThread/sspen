@@ -35,7 +35,7 @@ public class SettingsServiceTests : IDisposable
     public void Load_MissingFile_ReturnsDefaults()
     {
         var settings = NewService().Load();
-        Assert.True(settings.RunAtLogin);
+        Assert.False(settings.RunAtLogin);
         Assert.True(settings.BoardAllMonitors);
         Assert.Equal(FadingDurations.Default, settings.FadingSeconds);
         // 도구별 개별 스타일 기본값 (사용자 조타): 펜(자유선·페이딩) 빨강 / 형광펜 노랑 / 도형 초록, 동기화 꺼짐.
@@ -57,7 +57,7 @@ public class SettingsServiceTests : IDisposable
             ToolbarLeft = 1888,
             ToolbarTop = 300,
             SaveFolder = @"D:\캡처",
-            RunAtLogin = false,
+            RunAtLogin = true,
             CheckUpdateOnStart = true,
             WheelAdjustsPenSize = false,
             BoardAllMonitors = false,
@@ -77,7 +77,7 @@ public class SettingsServiceTests : IDisposable
         Assert.Equal(1888, loaded.ToolbarLeft);
         Assert.Equal(300, loaded.ToolbarTop);
         Assert.Equal(@"D:\캡처", loaded.SaveFolder);
-        Assert.False(loaded.RunAtLogin);
+        Assert.True(loaded.RunAtLogin);
         Assert.True(loaded.CheckUpdateOnStart);
         Assert.False(loaded.WheelAdjustsPenSize);
         Assert.False(loaded.BoardAllMonitors);
@@ -115,7 +115,7 @@ public class SettingsServiceTests : IDisposable
         File.WriteAllText(service.SettingsPath, "{ 이것은 JSON이 아니다 ::::");
 
         var loaded = service.Load();
-        Assert.True(loaded.RunAtLogin); // 기본값
+        Assert.False(loaded.RunAtLogin); // 기본값
         Assert.True(File.Exists(service.SettingsPath + ".bad"));
         Assert.False(File.Exists(service.SettingsPath));
 
@@ -139,6 +139,6 @@ public class SettingsServiceTests : IDisposable
 
         var loaded = service.Load();
         Assert.Equal(0.5, loaded.FadingSeconds);
-        Assert.True(loaded.RunAtLogin); // 나머지는 기본값 유지
+        Assert.False(loaded.RunAtLogin); // 나머지는 기본값 유지
     }
 }

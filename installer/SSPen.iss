@@ -3,7 +3,7 @@
 
 #define MyAppName "SS Pen"
 ; src/SSPen/SSPen.csproj 의 <Version> 과 반드시 같아야 한다.
-#define MyAppVersion "1.3.3"
+#define MyAppVersion "1.3.4"
 #define MyAppExeName "SSPen.exe"
 
 [Setup]
@@ -32,8 +32,9 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
 [Tasks]
-; AC-26: 로그인 시 자동 시작 — 설치 시 기본 켜짐, 앱 설정에서도 끌 수 있다.
-Name: "runatlogin"; Description: "윈도우 로그인 시 시작"
+; AC-26: 로그인 시 자동 시작 — 설치 시 기본 꺼짐(unchecked), 마법사와 앱 설정에서 켤 수 있다.
+; 앱의 AppSettings.RunAtLogin 기본값(false)과 맞춘다 — 어긋나면 첫 실행이 설치가 쓴 Run 값을 지운다.
+Name: "runatlogin"; Description: "윈도우 로그인 시 시작"; Flags: unchecked
 
 [Files]
 Source: "..\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

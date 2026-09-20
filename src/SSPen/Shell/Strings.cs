@@ -26,6 +26,9 @@ public static class Strings
     public const string Capture = "캡처";
     public const string Settings = "설정";
 
+    /// <summary>설정 메뉴 항목: 툴바를 숨긴다. 저장소 전반은 "툴바"를 쓰지만 이 항목은 사용자 지정 문구를 따른다.</summary>
+    public const string MenuHideToolbar = "도구 막대 닫기";
+
     // 도형 플라이아웃
     public const string ShapeLine = "선";
     public const string ShapeArrow = "화살표";

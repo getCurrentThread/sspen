@@ -49,7 +49,8 @@ public static class ToolbarStripBuilder
             ToolbarButtonId.ClearAll => actions.ClearAll,
             ToolbarButtonId.Board => onRotateBoard,
             ToolbarButtonId.Capture => actions.StartCapture,
-            ToolbarButtonId.Settings => actions.OpenSettings,
+            // 설정 버튼은 창을 바로 열지 않고 메뉴를 토글한다 (55단계) — 설정 창은 메뉴의 첫 항목이 연다.
+            ToolbarButtonId.Settings => () => flyouts.ToggleFlyout(flyouts.SettingsFlyout),
             _ => throw new ArgumentOutOfRangeException(nameof(id), id, "클릭 동작이 배선되지 않은 버튼 (X7/R9)"),
         };
 
@@ -60,6 +61,7 @@ public static class ToolbarStripBuilder
             ToolbarFlyoutKind.Pen => flyouts.PenFlyout,
             ToolbarFlyoutKind.Fading => flyouts.FadingFlyout,
             ToolbarFlyoutKind.Board => flyouts.BoardFlyout,
+            ToolbarFlyoutKind.Settings => flyouts.SettingsFlyout,
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Popup이 배선되지 않은 플라이아웃 종류 (X7/R9)"),
         };
 
@@ -126,6 +128,12 @@ public static class ToolbarStripBuilder
                 {
                     // 플라이아웃 없는 버튼 호버 시 열린 서브메뉴 즉시 닫기 (빠릿한 전환).
                     flyouts.CloseFlyoutsExcept(null);
+                }
+                else if (!entry.OpensOnHover)
+                {
+                    // 클릭으로 여는 버튼(설정 메뉴)은 호버가 열지 않는다 — 다른 플라이아웃만 닫고 자기 것은 남긴다.
+                    // 열린 메뉴 위로 포인터가 되돌아와도 닫히지 않게 하는 줄이다 (55단계).
+                    flyouts.CloseFlyoutsExcept(PopupFor(entry.Flyout!.Value));
                 }
                 hovered = true;
                 parts!.SetPointerState(state, entry.Id, hovered: true, pressed: pressedInside);
@@ -328,7 +336,10 @@ public static class ToolbarStripBuilder
                     {
                         var popup = PopupFor(kind);
                         popup.PlacementTarget = button;
-                        flyouts.HoverOpen(button, popup);
+                        if (b.OpensOnHover)
+                        {
+                            flyouts.HoverOpen(button, popup);
+                        }
                     }
                     return button;
                 }

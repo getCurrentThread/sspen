@@ -37,6 +37,10 @@ public class ToolbarStripBuilderTests
 
         public void OpenSettings() => Calls.Add("settings");
 
+        public void HideToolbar() => Calls.Add("hide-toolbar");
+
+        public void RequestExit() => Calls.Add("request-exit");
+
         public string? HotkeyLabel(string hotkeyId) => null;
 
         public void SetFadingDuration(double seconds)
@@ -170,15 +174,109 @@ public class ToolbarStripBuilderTests
             ToolbarFlyoutKind.Pen => strip.Flyouts.PenFlyout,
             ToolbarFlyoutKind.Fading => strip.Flyouts.FadingFlyout,
             ToolbarFlyoutKind.Board => strip.Flyouts.BoardFlyout,
+            ToolbarFlyoutKind.Settings => strip.Flyouts.SettingsFlyout,
             _ => throw new Xunit.Sdk.XunitException($"새 플라이아웃 종류 {kind}를 이 증인에 적으세요."),
         };
 
         var flyoutButtons = ToolbarLayout.Menu.OfType<ToolbarButtonEntry>().Where(b => b.Flyout is not null).ToList();
-        Assert.Equal(4, flyoutButtons.Count);
+        Assert.Equal(5, flyoutButtons.Count);
         Assert.All(flyoutButtons, b => Assert.Same(strip.Parts.Buttons[b.Id].Root, PopupOf(b.Flyout!.Value).PlacementTarget));
 
         int previewIndex = ToolbarLayout.Menu.ToList().FindIndex(e => e is ToolbarPreviewEntry);
         Assert.Same(MenuPanel(strip.Host).Children[previewIndex], strip.Flyouts.ThicknessFlyout.PlacementTarget);
+    });
+
+    /// <summary>
+    /// 팝업이 "열림을 요청받았는가". 헤드리스 STA에는 <c>Window</c>가 없어 <c>Popup.IsLoaded</c>가 거짓이고, WPF는 그동안
+    /// <c>IsOpen</c>을 거짓으로 강제한다(도형·보드 등 기존 플라이아웃도 같다) — 그래서 강제 전의 로컬 값을 읽는다.
+    /// 코드가 쓴 값이지 화면 상태가 아니다. 그리고 이 때문에 <c>IsOpen</c>을 읽는 <c>ToggleFlyout</c>의 닫기 방향은 여기서 볼 수 없다.
+    /// </summary>
+    private static bool IsOpenRequested(Popup popup) => popup.ReadLocalValue(Popup.IsOpenProperty) is true;
+
+    /// <summary>설정 메뉴 카드 안의 행들 — FlyoutBorder(Grid → 카드 Border) → 세로 StackPanel.</summary>
+    private static List<Border> SettingsMenuRows(Strip strip)
+    {
+        var card = Assert.IsType<Border>(Assert.IsType<Grid>(strip.Flyouts.SettingsFlyout.Child).Children[0]);
+        return Assert.IsType<StackPanel>(card.Child).Children.Cast<Border>().ToList();
+    }
+
+    private static string RowLabel(Border row) =>
+        Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(row.Child).Children[1]).Text;
+
+    /// <summary>55단계: 설정 버튼은 창을 바로 열지 않고 메뉴를 연다 — 설정 창은 메뉴의 첫 항목이 연다.</summary>
+    [Fact]
+    public void Build_SettingsButtonClick_OpensTheMenuWithoutOpeningSettingsDirectly() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+
+        Click(strip.Parts.Buttons[ToolbarButtonId.Settings].Root);
+
+        Assert.True(IsOpenRequested(strip.Flyouts.SettingsFlyout));
+        Assert.Empty(strip.Actions.Calls);
+    });
+
+    /// <summary>
+    /// 55단계: 호버로 열리는 플라이아웃(도형·펜·보드)과 달리 설정 메뉴는 클릭으로만 열린다 —
+    /// 프로그램 종료를 품은 메뉴가 포인터가 스치기만 해도 뜨면 안 된다.
+    /// </summary>
+    [Fact]
+    public void Build_SettingsButtonHover_DoesNotOpenTheMenu_ButBoardHoverStillOpensItsFlyout() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        void Hover(ToolbarButtonId id) =>
+            strip.Parts.Buttons[id].Root.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = UIElement.MouseEnterEvent });
+
+        Hover(ToolbarButtonId.Settings);
+        Assert.False(IsOpenRequested(strip.Flyouts.SettingsFlyout));
+
+        Hover(ToolbarButtonId.Board); // 대조군: 호버 전개는 그대로다
+        Assert.True(IsOpenRequested(strip.Flyouts.BoardFlyout));
+    });
+
+    /// <summary>열린 설정 메뉴 위로 포인터가 되돌아와도 닫히지 않고, 다른 플라이아웃 버튼으로 옮기면 닫힌다.</summary>
+    [Fact]
+    public void Build_SettingsMenuOpen_SurvivesItsOwnButtonHover_ButClosesWhenAnotherFlyoutOpens() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        void Hover(ToolbarButtonId id) =>
+            strip.Parts.Buttons[id].Root.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = UIElement.MouseEnterEvent });
+
+        Click(strip.Parts.Buttons[ToolbarButtonId.Settings].Root);
+        Hover(ToolbarButtonId.Settings);
+        Assert.True(IsOpenRequested(strip.Flyouts.SettingsFlyout));
+
+        Hover(ToolbarButtonId.Board);
+        Assert.False(IsOpenRequested(strip.Flyouts.SettingsFlyout));
+        Assert.True(IsOpenRequested(strip.Flyouts.BoardFlyout));
+    });
+
+    [Fact]
+    public void Build_SettingsMenu_HasSettingsHideToolbarExit_InThatOrder() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+
+        Assert.Equal(
+            [Strings.Settings, Strings.MenuHideToolbar, Strings.SettingsExitApp],
+            SettingsMenuRows(strip).Select(RowLabel));
+    });
+
+    [Fact]
+    public void Build_SettingsMenuRows_DispatchToShellActions_AndCloseTheMenu() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        var rows = SettingsMenuRows(strip);
+
+        foreach (var row in rows)
+        {
+            Click(strip.Parts.Buttons[ToolbarButtonId.Settings].Root);
+            Assert.True(IsOpenRequested(strip.Flyouts.SettingsFlyout));
+
+            Release(row);
+
+            Assert.False(IsOpenRequested(strip.Flyouts.SettingsFlyout));
+        }
+
+        Assert.Equal(["settings", "hide-toolbar", "request-exit"], strip.Actions.Calls);
     });
 
     /// <summary>

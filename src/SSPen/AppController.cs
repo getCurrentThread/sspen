@@ -286,8 +286,26 @@ public sealed class AppController : IShellActions, ISettingsHost
 
     public void ExitApp()
     {
-        Log.Info("종료 요청 (트레이/설정)");
+        Log.Info("종료 요청 (트레이/업데이트)");
         Application.Current.Shutdown();
+    }
+
+    /// <summary>
+    /// 툴바 설정 메뉴의 "프로그램 종료" (55단계). 확인 대화상자는 여기서 소유한다 — <see cref="ExitApp"/>은
+    /// 트레이 종료와 업데이트 재시작(<c>UpdateService</c> 콜백)이 쓰는 무확인 경로라 확인을 붙일 수 없다.
+    /// </summary>
+    public void RequestExit()
+    {
+        var answer = MessageBox.Show(
+            Strings.ExitConfirmMessage,
+            Strings.AppName,
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer == MessageBoxResult.Yes)
+        {
+            Log.Info("종료 요청 (툴바 설정 메뉴)");
+            Application.Current.Shutdown();
+        }
     }
 
     // ---- ISettingsHost (WI-16) ----
@@ -661,6 +679,19 @@ public sealed class AppController : IShellActions, ISettingsHost
             return;
         }
         SetToolbarVisible(true);
+    }
+
+    /// <summary>
+    /// 툴바 설정 메뉴 "도구 막대 닫기" (55단계). 토글이 아니라 <b>숨기기</b>다 — 메뉴는 툴바 위에서만 열리므로
+    /// 이미 숨겨진 상태에서 호출될 일이 없다. 복귀는 트레이 "툴바 보이기"(<see cref="ShowToolbar"/>) 또는 Alt+Shift+0.
+    /// </summary>
+    public void HideToolbar()
+    {
+        if (_toolbar is null || _capture.IsActive)
+        {
+            return; // 캡처 세션 중에는 복원 플래그와 어긋나므로 무시 (ToggleToolbar와 같은 가드).
+        }
+        SetToolbarVisible(false);
     }
 
     private void SetToolbarVisible(bool visible)

@@ -18,7 +18,7 @@ public class SettingsFormRulesTests
     private static SettingsFormValues Values(
         IReadOnlyList<(string, bool)>? monitors = null, string saveFolder = @"C:\\Custom", IReadOnlyList<Color>? quick = null) =>
         new(
-            RunAtLogin: false, CheckUpdateOnStart: true, WheelAdjustsPenSize: false, SyncToolStyles: true,
+            RunAtLogin: true, CheckUpdateOnStart: true, WheelAdjustsPenSize: false, SyncToolStyles: true,
             BoardAllMonitors: false, DefaultBoardIsBlack: true, QuickColors: quick ?? ColorPalette.DefaultQuickColors,
             HighlightCursor: true, SaveFolder: saveFolder,
             Monitors: monitors ?? [(@"\\.\DISPLAY1", true), (@"\\.\DISPLAY2", false)]);
@@ -30,7 +30,7 @@ public class SettingsFormRulesTests
 
         SettingsFormRules.ApplyTo(target, Values(), DefaultFolder);
 
-        Assert.False(target.RunAtLogin);
+        Assert.True(target.RunAtLogin);
         Assert.True(target.CheckUpdateOnStart);
         Assert.False(target.WheelAdjustsPenSize);
         Assert.True(target.SyncToolStyles);

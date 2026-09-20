@@ -20,7 +20,9 @@
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <Platforms>AnyCPU</Platforms>
     <SatelliteResourceLanguages>ko-KR</SatelliteResourceLanguages>
-    <!-- 1.3.3: 와콤 자유선 부풀음·회전 잔상 수정(스타일러스 패킷이 승격 마우스 채널로 한 번 더 주입되던 것을
+    <!-- 1.3.4: 툴바 설정 버튼을 클릭하면 설정·도구 막대 닫기·프로그램 종료 메뉴가 뜬다(설정 창의 종료 버튼은
+         메뉴로 이동). 윈도우 로그인 시 시작의 기본값을 앱·설치 마법사 모두 꺼짐으로.
+         1.3.3: 와콤 자유선 부풀음·회전 잔상 수정(스타일러스 패킷이 승격 마우스 채널로 한 번 더 주입되던 것을
          단일 채널로), 툴바가 서피스에 가리는 결함 3중 방어(활성화된 서피스의 IME 소유 창 상승 판정, 결과 단계
          재삽입, WinEvent 사후 검증), 텍스트 도구 핸드셰이크 직후 밴드 재적용.
          1.3.2: 통합 테스트 수정 — 선택 장식 픽셀 검증이 화면 배경에 좌우되던 것을 개수 차이 판정으로
@@ -36,7 +38,7 @@
          1.1.0: 필기내용 선택 도구, 앱 아이콘, 보드 슬라이드, 캐처 기본 핀 고정,
          커서 고정 확대, 휴지통이 핀까지 정리, 페이딩 0.1~5초, 사라진 창 입력 경주 크래시 수정.
          설치 프로그램(installer/SSPen.iss)의 MyAppVersion과 반드시 같이 올린다. -->
-    <Version>1.3.3</Version>
+    <Version>1.3.4</Version>
     <Product>SS Pen</Product>
     <Description>한국어 판서 + 캐처 도구</Description>
     <!-- Win32 버전 정보 필드. Description은 exe의 FileDescription으로 가지 않으므로
