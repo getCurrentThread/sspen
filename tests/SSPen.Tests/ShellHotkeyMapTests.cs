@@ -156,6 +156,38 @@ public class ShellHotkeyMapTests
         Assert.Equal("Alt+Shift+L / A / U / E", sut.HotkeyLabel("shape-cycle"));
     }
 
+    /// <summary>
+    /// 67단계(A9-3): 퀵컬러 바인딩 여섯 개의 조합이 <see cref="QuickColorHotkeys.For"/>와 같고, 표시명은 예전 리터럴 형식
+    /// ("퀵컬러 n (Ctrl+Shift+n)") 그대로다. 트레이 충돌 경고가 이 표시명을 쓰므로 글자까지 잠근다.
+    /// </summary>
+    [Fact]
+    public void BuildHotkeyMap_QuickColorBindings_EqualQuickColorHotkeysFor_EachSlot()
+    {
+        var quickColors = CreateSut().BuildHotkeyMap().Skip(RemappableCount).ToList();
+
+        Assert.Equal(AppState.QuickColorCount, quickColors.Count);
+        for (int slot = 0; slot < quickColors.Count; slot++)
+        {
+            var expected = QuickColorHotkeys.For(slot);
+            Assert.Equal(expected.Modifiers, quickColors[slot].Modifiers);
+            Assert.Equal(expected.VirtualKey, quickColors[slot].VirtualKey);
+            Assert.Equal($"{Strings.QuickColorName} {slot + 1} (Ctrl+Shift+{slot + 1})", quickColors[slot].Name);
+        }
+    }
+
+    /// <summary>67단계(A9-3): 툴바 칸의 툴팁 id("quickcolor:n")를 되읽은 라벨이 소유자의 라벨과 같고, 예전 리터럴과도 같다.</summary>
+    [Fact]
+    public void HotkeyLabel_QuickColorTooltipId_EqualsLabel()
+    {
+        var sut = CreateSut();
+
+        for (int slot = 0; slot < AppState.QuickColorCount; slot++)
+        {
+            Assert.Equal(QuickColorHotkeys.Label(slot), sut.HotkeyLabel(QuickColorHotkeys.TooltipId(slot)));
+            Assert.Equal($"Ctrl+Shift+{slot + 1}", sut.HotkeyLabel(QuickColorHotkeys.TooltipId(slot)));
+        }
+    }
+
     /// <summary>도형 그룹 라벨의 재료가 실재하는 id여야 한다 — 이름이 어긋나면 조합이 조용히 빠진다.</summary>
     [Fact]
     public void ToolHotkeyIds_EveryEntry_ExistsInTheTable()

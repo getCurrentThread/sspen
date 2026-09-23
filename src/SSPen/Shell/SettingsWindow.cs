@@ -33,7 +33,8 @@ public sealed class SettingsWindow : Window
 
     // 단축키 재지정 보류분: 다른 모든 항목과 같이 확인을 눌러야 적용된다.
     // 예전에는 캡처 즉시 SaveNow까지 해서 취소해도 단축키만 이미 저장돼 있었다.
-    private readonly Dictionary<string, HotkeyDef> _pendingHotkeys = [];
+    // 보류 상태·충돌 표 합성·대화상자 초기값은 HotkeyDraft 한 곳이 소유한다 (67단계, A6-2).
+    private readonly HotkeyDraft _draft = new();
 
     // 판서 화면을 모두 끄면 규칙이 첫 화면을 되살린다 — 그 사실을 알리는 인라인 라벨.
     private readonly TextBlock _monitorNotice;
@@ -225,7 +226,7 @@ public sealed class SettingsWindow : Window
                 BorderBrush = Brushes.Gray,
                 BorderThickness = new Thickness(1),
                 Cursor = System.Windows.Input.Cursors.Hand,
-                ToolTip = $"Ctrl+Shift+{slot + 1}",
+                ToolTip = QuickColorHotkeys.Label(slot), // 조합의 소유자는 QuickColorHotkeys (67단계, A9-3)
             };
             swatch.MouseLeftButtonUp += (_, _) => PickQuickColor(slot);
             _quickSwatches.Add(swatch);
@@ -300,17 +301,11 @@ public sealed class SettingsWindow : Window
     }
 
     /// <summary>
-    /// 아직 확인을 누르지 않은 단축키 재지정. 보류 값이 있으면 그것이, 없으면 호스트의 현재 유효 조합이 충돌 판정의 입력이다 —
-    /// 한 창에서 두 항목을 같은 조합으로 바꾸는 경우를 잡으려면 보류분도 표에 있어야 한다.
+    /// 호스트의 지금 유효 조합. 행을 만들 때의 값에 머물지 않는 이유: 확인 후 창이 열린 채 남는 경로(판서 화면 교정 알림)에서
+    /// 방금 적용한 행을 다시 열면 적용된 조합을 보여야 한다 — 예전 closure 재대입이 그 값이었다 (67단계, A6-2).
     /// </summary>
-    private string? ConflictFor(string editingId, HotkeyDef candidate)
-    {
-        var table = _host.RemappableHotkeys
-            .Select(entry => (entry.Id, entry.Name,
-                Effective: _pendingHotkeys.TryGetValue(entry.Id, out var pending) ? pending : entry.Effective))
-            .ToList();
-        return HotkeyConflictRules.Find(table, editingId, candidate, Annotation.AppState.QuickColorCount);
-    }
+    private HotkeyDef? LiveEffective(string id) =>
+        _host.RemappableHotkeys.FirstOrDefault(entry => entry.Id == id).Effective;
 
     private static Thickness RowMargin => new(4, 4, 4, 4);
 
@@ -393,7 +388,8 @@ public sealed class SettingsWindow : Window
             // ARCH-8 순서(억제 → 모달 → 반드시 복원)는 HotkeyRemapFlow가 소유한다 (40단계). 창은 대화상자와 라벨만.
             var captured = HotkeyRemapFlow.Run(_host, () =>
             {
-                var dialog = new HotkeyCaptureDialog(effective) { Owner = this, Topmost = true };
+                // 보류 값이 있으면 그것을, 없으면 호스트의 지금 유효 조합을 보여 준다 (예전 closure 재대입 effective = def와 같은 값).
+                var dialog = new HotkeyCaptureDialog(_draft.EffectiveFor(id, LiveEffective(id) ?? effective)) { Owner = this, Topmost = true };
                 return dialog.ShowDialog() == true ? dialog.Captured : null;
             });
             if (captured is not { } def)
@@ -401,8 +397,9 @@ public sealed class SettingsWindow : Window
                 return;
             }
             // 충돌은 이 창에서, 지금 알린다 — 예전에는 나중에 RegisterHotKey가 실패하며
-            // 조합을 만든 창 밖의 트레이 풍선으로 5초간 스쳐 갔다.
-            if (ConflictFor(id, def) is { } owner)
+            // 조합을 만든 창 밖의 트레이 풍선으로 5초간 스쳐 갔다. 보류분도 표에 덮어 본다 —
+            // 한 창에서 두 항목을 같은 조합으로 바꾸는 경우를 잡으려면 보류분도 표에 있어야 한다.
+            if (_draft.Conflict(_host.RemappableHotkeys, id, def, AppState.QuickColorCount) is { } owner)
             {
                 MessageBox.Show(
                     Strings.HotkeyAlreadyUsed(owner), Strings.SettingsHotkeys,
@@ -410,9 +407,8 @@ public sealed class SettingsWindow : Window
                 return;
             }
             // 다른 설정과 같은 규칙: 확인을 눌러야 적용된다. 여기서는 보류 목록과 라벨만 바꾼다.
-            _pendingHotkeys[id] = def;
+            _draft.Stage(id, def);
             comboButton.Content = HotkeyFormatting.Format(def);
-            effective = def;
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 2, 4, 2) };
         row.Children.Add(label);
@@ -456,11 +452,11 @@ public sealed class SettingsWindow : Window
         var updated = _host.Settings;
         var result = SettingsFormRules.ApplyTo(updated, values, Capture.CaptureFileNaming.DefaultSaveFolder());
         // 보류 중인 재지정을 여기서 반영한다 — 즉시 재등록(AC-23)은 RemapHotkey 안에서 그대로 일어난다.
-        foreach (var (id, def) in _pendingHotkeys)
+        // 스테이징 순서·건수 그대로 한 건씩 부른다 (일괄 적용은 78단계 A6-3).
+        foreach (var (id, def) in _draft.Drain())
         {
             _host.RemapHotkey(id, def);
         }
-        _pendingHotkeys.Clear();
         _host.ApplyGeneralSettings(updated);
         if (result.MonitorSelectionCoerced && result.RestoredDeviceName is { } device)
         {

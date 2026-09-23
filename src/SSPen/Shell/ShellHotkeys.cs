@@ -96,13 +96,15 @@ public sealed class ShellHotkeys
 
         // 바로가기 색상 6칸: 조합은 고정(Ctrl+Shift+1..6), **색은 설정에서 바뀌다** (사용자 요청 17차).
         // 끔을 때 색을 읽는 이유: 등록 시점에 값을 박아 두면 설정을 바꿔도 핫키는 옛 색을 칠한다.
+        // 조합·표시명·라벨은 QuickColorHotkeys 한 곳에서만 나온다 (67단계, A9-3).
         for (int i = 0; i < AppState.QuickColorCount; i++)
         {
             int index = i;
+            var def = QuickColorHotkeys.For(index);
             map.Add(new HotkeyBinding(
-                $"{Strings.QuickColorName} {index + 1} (Ctrl+Shift+{index + 1})",
-                NativeMethods.MOD_CONTROL | NativeMethods.MOD_SHIFT,
-                (uint)(VirtualKeys.D1 + index),
+                $"{QuickColorHotkeys.Name(index)} ({QuickColorHotkeys.Label(index)})",
+                def.Modifiers,
+                def.VirtualKey,
                 () => ui.Invoke(() => _state.CurrentColor = _state.QuickColors[index])));
         }
         return map;
@@ -142,10 +144,10 @@ public sealed class ShellHotkeys
                 ToolbarStateMap.ShapeCycle.Select(tool =>
                     ToolHotkeyIds.TryGetValue(tool, out string? id) ? HotkeyLabel(id) : null));
         }
-        if (hotkeyId.StartsWith("quickcolor:", StringComparison.Ordinal)
-            && int.TryParse(hotkeyId["quickcolor:".Length..], out int slot))
+        // 툴팁 id 프로토콜 "quickcolor:n"은 생성(ToolbarStripBuilder)과 파싱이 같은 소유자를 거친다 (67단계, A9-3).
+        if (QuickColorHotkeys.TryParseTooltipId(hotkeyId, out int slot))
         {
-            return $"Ctrl+Shift+{slot}";
+            return QuickColorHotkeys.Label(slot);
         }
         var entry = HotkeyTable().FirstOrDefault(e => e.Id == hotkeyId);
         return entry is null ? null : HotkeyFormatting.Format(Effective(entry));

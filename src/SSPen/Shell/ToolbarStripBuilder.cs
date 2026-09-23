@@ -236,7 +236,7 @@ public static class ToolbarStripBuilder
                     BorderThickness = new Thickness(0),
                     Child = swatch,
                 };
-                ToolbarTooltips.Attach(actions, ring, Strings.QuickColors, $"quickcolor:{slot + 1}", flyouts.RegisterTooltip);
+                ToolbarTooltips.Attach(actions, ring, Strings.QuickColors, QuickColorHotkeys.TooltipId(slot), flyouts.RegisterTooltip);
                 // 클릭 시점에 색을 읽는다 — 설정에서 바뀌면 바뀜 색이 추서된다.
                 ring.MouseLeftButtonUp += (_, _) => state.CurrentColor = state.QuickColors[slot];
                 quickSwatches.Add((swatch, ring, slot));

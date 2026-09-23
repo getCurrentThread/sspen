@@ -102,6 +102,7 @@ public static class Strings
 
     // 바로가기 색상 편집 (사용자 요청 17차).
     public const string SettingsQuickColors = "바로가기 색상";
+    // QuickColorHotkeys와 같은 조합(첫 칸 라벨 ~ 마지막 칸 번호)이다 — QuickColorHotkeysTests가 잠근다 (67단계, A9-3).
     public const string SettingsQuickColorsHint = "칸을 눌러 색을 바꿉니다 (Ctrl+Shift+1~6).";
     public const string SettingsQuickColorsReset = "기본값으로";
 

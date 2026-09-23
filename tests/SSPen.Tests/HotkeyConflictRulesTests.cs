@@ -71,6 +71,18 @@ public class HotkeyConflictRulesTests
         Assert.Null(conflict);
     }
 
+    /// <summary>67단계(A9-3): 예약 조합은 등록 측과 같은 소유자(<see cref="QuickColorHotkeys"/>)에서 읽는다 — 여섯 칸 모두, 표시명까지.</summary>
+    [Fact]
+    public void Find_EveryQuickColorDef_IsReserved()
+    {
+        for (int slot = 0; slot < 6; slot++)
+        {
+            var conflict = HotkeyConflictRules.Find(Table(), editingId: "undo", QuickColorHotkeys.For(slot), quickColorSlots: 6);
+
+            Assert.Equal(QuickColorHotkeys.Name(slot), conflict);
+        }
+    }
+
     [Fact]
     public void Find_UnusedCombination_IsFree()
     {

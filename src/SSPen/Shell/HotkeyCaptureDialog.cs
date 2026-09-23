@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using SSPen.Interop;
 using SSPen.Settings;
 
 namespace SSPen.Shell;
@@ -62,78 +61,21 @@ public sealed class HotkeyCaptureDialog : Window
     /// <summary>확정된 조합 (확인 시에만 유효).</summary>
     public HotkeyDef? Captured => _captured;
 
+    /// <summary>판정은 <see cref="HotkeyCaptureRules.Decide"/>가 한다 (67단계, A6-5). 여기서는 답에 따라 기본 처리·라벨·<c>e.Handled</c>만 바꾼다 —
+    /// 대화상자 조작 키만 기본 처리로 흘리고, 나머지(무시·확정)는 입력을 삼킨다.</summary>
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift
-            or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin or Key.None)
-        {
-            e.Handled = true;
-            return; // 수식키 단독은 조합이 아니다.
-        }
-        if (key is Key.Escape or Key.Enter or Key.Tab)
+        var verdict = HotkeyCaptureRules.Decide(e.Key, e.SystemKey, Keyboard.Modifiers);
+        if (verdict.Action == HotkeyCaptureAction.PassThrough)
         {
             base.OnPreviewKeyDown(e);
             return; // 대화상자 조작 키는 그대로 둔다.
         }
-
-        uint mods = 0;
-        var modifiers = Keyboard.Modifiers;
-        if (modifiers.HasFlag(ModifierKeys.Alt))
+        if (verdict.Captured is { } captured)
         {
-            mods |= NativeMethods.MOD_ALT;
+            _captured = captured;
+            _comboText.Text = HotkeyFormatting.Format(captured);
         }
-        if (modifiers.HasFlag(ModifierKeys.Control))
-        {
-            mods |= NativeMethods.MOD_CONTROL;
-        }
-        if (modifiers.HasFlag(ModifierKeys.Shift))
-        {
-            mods |= NativeMethods.MOD_SHIFT;
-        }
-        if (mods == 0)
-        {
-            e.Handled = true;
-            return; // 전역 핫키는 최소 1개의 수식키가 필요하다.
-        }
-
-        _captured = new HotkeyDef(mods, (uint)KeyInterop.VirtualKeyFromKey(key));
-        _comboText.Text = HotkeyFormatting.Format(_captured);
         e.Handled = true;
     }
-}
-
-/// <summary>핫키 조합 표기 (키캡 이름 — Epic Pen 한국어 UI와 동일하게 키 이름은 그대로 표기).</summary>
-public static class HotkeyFormatting
-{
-    public static string Format(HotkeyDef def)
-    {
-        var parts = new List<string>(4);
-        if ((def.Modifiers & NativeMethods.MOD_CONTROL) != 0)
-        {
-            parts.Add("Ctrl");
-        }
-        if ((def.Modifiers & NativeMethods.MOD_ALT) != 0)
-        {
-            parts.Add("Alt");
-        }
-        if ((def.Modifiers & NativeMethods.MOD_SHIFT) != 0)
-        {
-            parts.Add("Shift");
-        }
-        parts.Add(KeyName(def.VirtualKey));
-        return string.Join("+", parts);
-    }
-
-    private static string KeyName(uint vk) => vk switch
-    {
-        >= 0x30 and <= 0x39 => ((char)vk).ToString(),
-        >= 0x41 and <= 0x5A => ((char)vk).ToString(),
-        VirtualKeys.OemOpenBracket => "[",
-        VirtualKeys.OemCloseBracket => "]",
-        >= 0x70 and <= 0x87 => $"F{vk - 0x6F}",
-        0x20 => "Space",
-        0x2C => "PrtScn",
-        _ => $"0x{vk:X2}",
-    };
 }
