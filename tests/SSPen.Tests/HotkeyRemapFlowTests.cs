@@ -139,25 +139,64 @@ public class HotkeyRemapFlowTests
     }
 
     /// <summary>
-    /// <see cref="HotkeyDraft.Drain"/>이 먼저 비워도 잃는 것이 없다는 증인 (79단계, A6-3 — 67단계 리뷰의 미결 사항).
-    /// 저장이 던져도(디스크 IOException) 그 전에 모든 건이 설정 사전에 써져 있다 — 예전 건별 경로에서는 첫 건만 남고 나머지는
-    /// 비워진 드래프트와 함께 사라졌다. 예외는 그대로 전파된다.
+    /// 회귀(97단계, FINAL-REVIEW-REMAP-REBIND): 저장이 던져도(디스크 IOException) 모든 건이 설정 사전에 써져 있고, 재등록은
+    /// 그 최종 표로 <b>한 번 일어난 뒤</b> 예외가 전파된다. 79단계 구현은 저장 예외 때 재등록을 건너뛰었는데,
+    /// <see cref="HotkeyDraft.Drain"/>이 이미 보류분을 비웠으므로 확인을 다시 눌러도 재등록이 없었다 — 설정과 창의 표에는
+    /// 새 조합이, 실제 등록에는 옛 조합이 남았다. 기준 커밋(3c48786)의 건별 경로도 저장 예외 때 첫 건만 쓰고 재등록을
+    /// 건너뛰었지만, 보류 목록을 루프 <b>뒤</b>에 비웠으므로 다시 확인하면 전부 다시 쓰고 저장·재등록했다. 그 재시도가 없어진
+    /// 자리를 finally 재등록이 메운다.
     /// </summary>
     [Fact]
-    public void ApplyBatch_SaveThrows_EveryEntryAlreadyWritten_AndPropagates()
+    public void ApplyBatch_SaveThrows_EveryEntryWrittenAndRebindsOnce_AndPropagates()
     {
         var hotkeys = new Dictionary<string, HotkeyDef>();
+        var calls = new List<string>();
 
         Assert.Throws<IOException>(() => HotkeyRemapFlow.ApplyBatch(
             [("pen", EraserDefault), ("eraser", PenDefault)],
             hotkeys,
-            save: () => throw new IOException("저장 실패 시험"),
-            rebind: () => { }));
+            save: () =>
+            {
+                calls.Add($"save:{hotkeys.Count}");
+                throw new IOException("저장 실패 시험");
+            },
+            rebind: () => calls.Add($"rebind:{hotkeys.Count}")));
 
+        Assert.Equal(["save:2", "rebind:2"], calls);
         Assert.Equal(
             [("eraser", PenDefault), ("pen", EraserDefault)],
             hotkeys.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => (pair.Key, pair.Value)));
     }
+
+    /// <summary>
+    /// 회귀(97단계, FINAL-REVIEW-REMAP-REBIND): 사용자에게 보이는 증상의 증인 — 펜을 새 조합으로 바꾸고 확인했는데 저장이 던지면,
+    /// 보류분은 이미 비었고(다시 확인해도 재적용할 것이 없다) 실제 등록은 설정 사전과 같은 새 조합이어야 한다.
+    /// 79단계 구현에서는 옛 조합(Alt+Shift+3)이 계속 등록돼 있고 새 조합(Alt+Shift+K)은 어디에도 등록되지 않았다.
+    /// 실제 조합 표(<see cref="ShellHotkeys.BuildHotkeyMap"/>)와 등록 정책(<see cref="HotkeyService"/> + <see cref="FakeHotkeyRegistrar"/>)을 그대로 쓴다.
+    /// </summary>
+    [Fact]
+    public void ApplyBatch_SaveThrowsAfterDrain_LiveRegistrationMatchesSettings() => RunSta(() =>
+    {
+        var settings = new AppSettings();
+        var shell = CreateShellHotkeys(settings);
+        var registrar = new FakeHotkeyRegistrar();
+        using var service = new HotkeyService(registrar);
+        service.SetBindings(shell.BuildHotkeyMap());
+        var draft = new HotkeyDraft();
+        Assert.Null(draft.Conflict(shell.RemappableHotkeys, "pen", Temp, AppState.QuickColorCount));
+        draft.Stage("pen", Temp);
+
+        Assert.Throws<IOException>(() => HotkeyRemapFlow.ApplyBatch(
+            draft.Drain(),
+            settings.Hotkeys,
+            save: () => throw new IOException("저장 실패 시험"),
+            rebind: () => service.SetBindings(shell.BuildHotkeyMap())));
+
+        Assert.True(draft.IsEmpty); // 다시 확인해도 재적용할 보류분이 없다 — 그래서 재등록은 이번 한 번뿐이다.
+        Assert.Equal(Temp, settings.Hotkeys["pen"]);
+        Assert.Contains((Temp.Modifiers, Temp.VirtualKey), registrar.Live.Values);
+        Assert.DoesNotContain((PenDefault.Modifiers, PenDefault.VirtualKey), registrar.Live.Values);
+    });
 
     private static ShellHotkeys CreateShellHotkeys(AppSettings settings) =>
         new(

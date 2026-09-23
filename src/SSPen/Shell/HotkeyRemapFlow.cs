@@ -45,8 +45,10 @@ public static class HotkeyRemapFlow
     /// 예외: 쓰기는 저장·재등록보다 먼저 전부 끝나므로, <paramref name="save"/>가 던져도(디스크 IOException) 모든 건이 이미 설정 사전에 있다.
     /// 그래서 <see cref="HotkeyDraft.Drain"/>이 먼저 비워도 잃는 것이 없다 — 다음 저장(설정 창 확인·종료)이 그 값을 디스크에 쓰고,
     /// 창의 충돌 표와 캡처 대화상자 초기값도 설정을 읽는 <see cref="ISettingsHost.RemappableHotkeys"/>로 새 값을 본다(행 버튼은 이미 그 값이다).
-    /// 되돌려 쌓으면 다음 확인이 같은 값을 다시 쓸 뿐이다. 저장이 던지면 재등록은 건너뛰고
-    /// 예외는 그대로 전파된다(예전 건별 경로와 같은 순서) — 새 조합은 다음 재지정 적용이나 재시작 때 등록된다.
+    /// 재등록은 <c>finally</c>다(97단계, FINAL-REVIEW-REMAP-REBIND): 저장이 던져도 등록을 이미 최종인 사전에 맞춘 뒤 예외를 그대로 전파한다.
+    /// 79단계 구현은 저장 예외 때 재등록을 건너뛰었는데, 보류분은 이미 비었으므로 다시 확인해도 재등록이 없어 설정·창의 표는 새 조합,
+    /// 실제 등록은 옛 조합으로 갈라졌다. 기준 커밋(3c48786)의 건별 경로도 저장 예외 때 첫 건만 쓰고 재등록을 건너뛰었지만,
+    /// 보류 목록을 루프 뒤에 비웠으므로 다시 확인하면 전부 다시 쓰고 저장·재등록했다 — 먼저 비우는 지금은 그 재시도가 없다.
     /// </para>
     /// </summary>
     /// <param name="batch">스테이징 순서의 보류분 (<see cref="HotkeyDraft.Drain"/>의 결과).</param>
@@ -68,7 +70,13 @@ public static class HotkeyRemapFlow
             hotkeys[id] = def;
             Log.Info($"핫키 재지정: {id} → {HotkeyFormatting.Format(def)}");
         }
-        save();
-        rebind(); // 최종 표로 한 번만 (AC-23)
+        try
+        {
+            save();
+        }
+        finally
+        {
+            rebind(); // 최종 표로 한 번만 (AC-23) — 저장이 던져도 등록을 사전에 맞춘다 (97단계)
+        }
     }
 }
