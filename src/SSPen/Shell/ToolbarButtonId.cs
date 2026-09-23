@@ -17,7 +17,6 @@ public enum ToolbarButtonId
     Pen,
     Eraser,
     Fading,
-    Preview,
     Undo,
     ClearAll,
     Board,

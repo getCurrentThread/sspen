@@ -137,43 +137,4 @@ public class FadeSchedulerTests
             [typeof(AnnotationElement), typeof(DateTime), typeof(bool)],
             only.GetParameters().Select(p => p.ParameterType).ToArray());
     }
-
-    [Fact]
-    public void StepByWheel_ZeroDelta_ReturnsSameDuration()
-    {
-        Assert.Equal(2.0, FadingDurations.StepByWheel(2.0, 0));
-    }
-
-    [Fact]
-    public void StepByWheel_ScrollUp_IncreasesDuration()
-    {
-        // 0.1 -> 0.5 -> 1.0 -> 2.0 -> 3.0 -> 5.0
-        double val = 0.1;
-        foreach (var expected in FadingDurations.Steps.Skip(1))
-        {
-            val = FadingDurations.StepByWheel(val, 120);
-            Assert.Equal(expected, val);
-        }
-
-        // 최대치(5.0)에서 더 올려도 5.0에 클램프
-        val = FadingDurations.StepByWheel(val, 120);
-        Assert.Equal(FadingDurations.Max, val);
-    }
-
-    [Fact]
-    public void StepByWheel_ScrollDown_DecreasesDuration()
-    {
-        // 5.0 -> 3.0 -> 2.0 -> 1.0 -> 0.5 -> 0.1
-        double val = FadingDurations.Max;
-        var reversed = FadingDurations.Steps.Reverse().Skip(1);
-        foreach (var expected in reversed)
-        {
-            val = FadingDurations.StepByWheel(val, -120);
-            Assert.Equal(expected, val);
-        }
-
-        // 최소치(0.1)에서 더 내려도 0.1에 클램프
-        val = FadingDurations.StepByWheel(val, -120);
-        Assert.Equal(FadingDurations.Min, val);
-    }
 }

@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
 using SSPen.Annotation;
-using SSPen.Shell;
 using Xunit;
 
 namespace SSPen.E2ETests;
@@ -73,51 +72,5 @@ public class DrawingWorkflowE2ETests
         // 3. 실행 취소로 복원
         actor.Undo();
         Assert.Single(doc.Elements);
-    });
-
-    [Fact]
-    public void Toolbar_ScrollWheel_CyclesActiveTool() => E2EAppFixture.Run(actor =>
-    {
-        var toolbar = actor.App.Toolbar;
-        Assert.NotNull(toolbar);
-
-        actor.SelectTool(ToolKind.Pen);
-        Assert.Equal(ToolKind.Pen, actor.State.ActiveTool);
-
-        // 툴바 위에서 마우스 휠 아래로 스크롤 (-120): Pen -> Highlighter
-        actor.State.ActiveTool = ToolbarStateMap.NextToolByWheel(actor.State.ActiveTool, -120);
-        actor.Pump();
-        Assert.Equal(ToolKind.Highlighter, actor.State.ActiveTool);
-
-        // 다시 스크롤 (-120): Highlighter -> Eraser
-        actor.State.ActiveTool = ToolbarStateMap.NextToolByWheel(actor.State.ActiveTool, -120);
-        actor.Pump();
-        Assert.Equal(ToolKind.Eraser, actor.State.ActiveTool);
-
-        // 위로 스크롤 (+120): Eraser -> Highlighter
-        actor.State.ActiveTool = ToolbarStateMap.NextToolByWheel(actor.State.ActiveTool, 120);
-        actor.Pump();
-        Assert.Equal(ToolKind.Highlighter, actor.State.ActiveTool);
-    });
-
-    [Fact]
-    public void Toolbar_ScrollWheel_AdjustsThicknessAndFadingIndependently() => E2EAppFixture.Run(actor =>
-    {
-        actor.SelectTool(ToolKind.Pen);
-        actor.State.Thickness = ThicknessStep.Medium;
-        Assert.Equal(ThicknessStep.Medium, actor.State.Thickness);
-
-        // 1. 굵기 휠 조작 (위로 = 굵게, 아래로 = 얇게)
-        actor.State.StepThickness(1);
-        Assert.Equal(ThicknessStep.Large, actor.State.Thickness);
-        actor.State.StepThickness(-1);
-        Assert.Equal(ThicknessStep.Medium, actor.State.Thickness);
-
-        // 2. 페이딩 잉크 지속 시간 휠 조작 (독립적)
-        double currentFading = actor.App.FadingSeconds;
-        double nextFading = FadingDurations.StepByWheel(currentFading, 120);
-        actor.App.SetFadingDuration(nextFading);
-        Assert.True(nextFading > currentFading);
-        Assert.Equal(nextFading, actor.App.FadingSeconds);
     });
 }

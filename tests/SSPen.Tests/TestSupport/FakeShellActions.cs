@@ -9,7 +9,11 @@ namespace SSPen.Tests;
 /// </summary>
 internal sealed class FakeShellActions : IShellActions
 {
-    /// <summary>호출 순서 기록 (ToolbarStripBuilderTests 출신 이름: undo, clear-all, capture, settings, hide-toolbar, request-exit, fading:…, status).</summary>
+    /// <summary>
+    /// 호출 순서 기록 (ToolbarStripBuilderTests 출신 이름: undo, clear-all, capture, settings, hide-toolbar, request-exit, fading:…, status).
+    /// ToolbarStripBuilderTests.BuildStrip은 창 콜백도 같은 목록에 적는다 (59단계): toggle-menu, rotate-shapes, rotate-pen, select:…,
+    /// toggle-fading, rotate-board.
+    /// </summary>
     public List<string> Calls { get; } = [];
 
     /// <summary>HotkeyLabel이 돌려줄 핫키 id → 표시 문자열 사전 (ToolbarTooltipsTests 출신). 없는 id는 null이다.</summary>

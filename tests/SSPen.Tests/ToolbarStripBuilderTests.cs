@@ -25,6 +25,10 @@ public class ToolbarStripBuilderTests
 {
     private sealed record Strip(UIElement Host, ToolbarParts Parts, FakeShellActions Actions, AppState State, ToolbarFlyouts Flyouts);
 
+    /// <summary>
+    /// 창 콜백 여섯 개는 무동작 람다가 아니라 <see cref="FakeShellActions.Calls"/>에 기록한다 (59단계, A5-1) — 그래야 ActionFor의
+    /// 뒤바뀐 팔(Select→지우개, 도형↔펜 교차 등)이 <see cref="Build_EveryButtonClick_DispatchesItsAction"/>에서 빨간불이 된다.
+    /// </summary>
     private static Strip BuildStrip()
     {
         _ = System.IO.Packaging.PackUriHelper.UriSchemePack; // pack:// 스킴 등록 — Application/Window 없는 STA에서 Icons.Regular가 살아난다
@@ -33,12 +37,12 @@ public class ToolbarStripBuilderTests
         var flyouts = new ToolbarFlyouts(state, actions, () => false);
         var (host, _, parts) = ToolbarStripBuilder.Build(
             state, actions, flyouts,
-            onToggleMenuCollapsed: () => { },
-            onRotateShapes: () => { },
-            onRotatePenGroup: () => { },
-            onSelectTool: _ => { },
-            onToggleFading: () => { },
-            onRotateBoard: () => { });
+            onToggleMenuCollapsed: () => actions.Calls.Add("toggle-menu"),
+            onRotateShapes: () => actions.Calls.Add("rotate-shapes"),
+            onRotatePenGroup: () => actions.Calls.Add("rotate-pen"),
+            onSelectTool: tool => actions.Calls.Add($"select:{tool}"),
+            onToggleFading: () => actions.Calls.Add("toggle-fading"),
+            onRotateBoard: () => actions.Calls.Add("rotate-board"));
         return new Strip(host, parts, actions, state, flyouts);
     }
 
@@ -52,12 +56,83 @@ public class ToolbarStripBuilderTests
     }
 
     [Fact]
-    public void Build_ButtonsCoverEveryToolbarButtonIdExceptPreview() => RunSta(() =>
+    public void Build_ButtonsCoverEveryToolbarButtonId() => RunSta(() =>
     {
         var strip = BuildStrip();
 
-        var expected = Enum.GetValues<ToolbarButtonId>().Where(id => id != ToolbarButtonId.Preview).ToHashSet();
-        Assert.Equal(expected, strip.Parts.Buttons.Keys.ToHashSet());
+        Assert.Equal(Enum.GetValues<ToolbarButtonId>().ToHashSet(), strip.Parts.Buttons.Keys.ToHashSet());
+    });
+
+    public static IEnumerable<object[]> AllButtonIds() => Enum.GetValues<ToolbarButtonId>().Select(id => new object[] { id });
+
+    /// <summary>
+    /// 59단계(A5-1): ActionFor 스위치의 모든 팔을 잠근다. 빠진 팔은 Build가 던지지만(X7/R9) 뒤바뀐 팔은 그 트립와이어를 지나간다 —
+    /// 여기서는 버튼마다 클릭 한 번의 결과 전부(기록된 호출, 클릭 통과 상태, 설정 메뉴 열림 요청)를 본다. 그래서 "다른 버튼의 동작을
+    /// 하나 더 한다"도 빨간불이다. 새 id가 생기면 기대값 스위치가 던진다 — 기대값을 여기 적어야 초록이 된다.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AllButtonIds))]
+    public void Build_EveryButtonClick_DispatchesItsAction(ToolbarButtonId id) => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        string[] expectedCalls = id switch
+        {
+            ToolbarButtonId.Visibility => ["toggle-menu"],
+            ToolbarButtonId.ClickThrough => [], // 창 콜백이 아니라 상태를 직접 뒤집는다 — 아래 ClickThrough 단언이 본다
+            ToolbarButtonId.Select => ["select:Select"],
+            ToolbarButtonId.Shapes => ["rotate-shapes"],
+            ToolbarButtonId.Pen => ["rotate-pen"],
+            ToolbarButtonId.Eraser => ["select:Eraser"],
+            ToolbarButtonId.Fading => ["toggle-fading"],
+            ToolbarButtonId.Undo => ["undo"],
+            ToolbarButtonId.ClearAll => ["clear-all"],
+            ToolbarButtonId.Board => ["rotate-board"],
+            ToolbarButtonId.Capture => ["capture"],
+            ToolbarButtonId.Settings => [], // 설정 창이 아니라 메뉴를 연다 (55단계) — 아래 SettingsFlyout 단언이 본다
+            _ => throw new Xunit.Sdk.XunitException($"새 버튼 {id}의 클릭 기대값을 이 증인에 적으세요."),
+        };
+
+        Click(strip.Parts.Buttons[id].Root);
+
+        Assert.Equal(expectedCalls, strip.Actions.Calls);
+        Assert.Equal(id == ToolbarButtonId.ClickThrough, strip.State.ClickThrough);
+        Assert.Equal(id == ToolbarButtonId.Settings, IsOpenRequested(strip.Flyouts.SettingsFlyout));
+    });
+
+    /// <summary>논리 트리를 깊이 우선으로 모두 돈다 — host Grid의 Popup 자식은 Child를 논리 자식으로 가지므로 플라이아웃 내용도 포함된다.</summary>
+    private static IEnumerable<DependencyObject> LogicalDescendants(DependencyObject root)
+    {
+        yield return root;
+        foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+        {
+            foreach (var descendant in LogicalDescendants(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 59단계(A5-4): "미등록 툴팁은 표현할 수 없다"를 Attach 단위가 아니라 조립 결과 전체로 잠근다. 스트립과 플라이아웃 트리의
+    /// 모든 툴팁은 (a) 문자열이 아닌 ToolTip 인스턴스이고, (b) 그 집합이 <see cref="ToolbarFlyouts.RegisteredTooltips"/>와 참조로 같으며,
+    /// (c) 레지스트리에 두 번 든 것이 없다. 로고·팔레트처럼 Attach를 거치지 않는 툴팁의 등록이 빠지거나 창 쪽에 이중 등록이
+    /// 되살아나면 빨간불이다 — 둘 다 툴바가 숨을 때 닫히지 않는 툴팁(AGENTS L89)으로 이어진다.
+    /// </summary>
+    [Fact]
+    public void Build_EveryToolTipInStripAndFlyouts_IsRegisteredExactlyOnce() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+
+        var values = LogicalDescendants(strip.Host).OfType<FrameworkElement>()
+            .Select(e => e.ToolTip).Where(t => t is not null).ToList();
+        var registered = strip.Flyouts.RegisteredTooltips;
+
+        Assert.All(values, v => Assert.IsType<ToolTip>(v));
+        var found = values.Cast<ToolTip>().ToHashSet(ReferenceEqualityComparer.Instance);
+        Assert.True(found.SetEquals(registered), $"트리 {found.Count}개 / 레지스트리 {registered.Count}개가 같은 집합이 아니다");
+        Assert.Equal(registered.Count, registered.Distinct(ReferenceEqualityComparer.Instance).Count());
+        // 실측(59단계): 스트립 21(버튼 12·미리보기 1·퀵컬러 6·팔레트 1·로고 1) + 플라이아웃 13(도형 5·펜 3·보드 2·설정 메뉴 3).
+        Assert.Equal(34, registered.Count);
     });
 
     /// <summary>스트립 레이아웃 스펙의 스냅샷 — 그룹 1 클릭 통과 / 그룹 2 도구 + 미리보기 / 그룹 3 편집 / 그룹 4 보드·캡처·설정 / 그룹 5 퀵컬러.</summary>
@@ -153,8 +228,7 @@ public class ToolbarStripBuilderTests
         Assert.Equal(5, flyoutButtons.Count);
         Assert.All(flyoutButtons, b => Assert.Same(strip.Parts.Buttons[b.Id].Root, PopupOf(b.Flyout!.Value).PlacementTarget));
 
-        int previewIndex = ToolbarLayout.Menu.ToList().FindIndex(e => e is ToolbarPreviewEntry);
-        Assert.Same(MenuPanel(strip.Host).Children[previewIndex], strip.Flyouts.ThicknessFlyout.PlacementTarget);
+        Assert.Same(PreviewButton(strip), strip.Flyouts.ThicknessFlyout.PlacementTarget);
     });
 
     /// <summary>
@@ -295,5 +369,117 @@ public class ToolbarStripBuilderTests
         Release(button);
 
         Assert.Empty(strip.Actions.Calls);
+    });
+
+    // ── 휠 배선 (59단계, A8-4) ─────────────────────────────────────────────────────────────────────────────
+    // 예전 E2E 'Toolbar_ScrollWheel' 2건은 AppController와 실제 창을 띄우고도 순수 함수(NextToolByWheel·StepThickness·StepByWheel)만
+    // 다시 불렀다 — ToolbarWheel 스위치 팔이 뒤바뀌거나 ShowStatusReadout 호출이 빠져도 초록이었다. 여기서는 실현된 요소에
+    // 휠 이벤트를 직접 올려 Build가 단 핸들러를 구동한다. 휠은 화면 흔적이 거의 없는 변경이라 배선 증인이 특히 필요한 자리다.
+
+    /// <summary>휠 한 칸을 요소에 올리고, 핸들러가 이벤트를 소비했는지(Handled)를 돌려준다.</summary>
+    private static bool Wheel(UIElement element, int delta)
+    {
+        var e = new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, delta) { RoutedEvent = UIElement.MouseWheelEvent };
+        element.RaiseEvent(e);
+        return e.Handled;
+    }
+
+    /// <summary>미리보기 항목의 실현 요소 — ToolbarLayout.Menu에서 미리보기 항목의 자리가 곧 메뉴 패널의 자식 번호다.</summary>
+    private static UIElement PreviewButton(Strip strip)
+    {
+        int previewIndex = ToolbarLayout.Menu.ToList().FindIndex(e => e is ToolbarPreviewEntry);
+        return MenuPanel(strip.Host).Children[previewIndex];
+    }
+
+    [Fact]
+    public void Build_PenButtonWheel_CyclesPenGroup_AndReadsOutStatus() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        strip.State.ActiveTool = ToolKind.Pen;
+
+        bool handled = Wheel(strip.Parts.Buttons[ToolbarButtonId.Pen].Root, -120);
+
+        Assert.Equal(ToolbarStateMap.NextInCycle(ToolbarStateMap.PenCycle, ToolKind.Pen, -120), strip.State.ActiveTool);
+        Assert.Equal(ToolKind.Highlighter, strip.State.ActiveTool); // 위 기대값이 제자리가 아님을 못 박는다
+        Assert.Equal(["status"], strip.Actions.Calls);
+        Assert.True(handled);
+    });
+
+    [Fact]
+    public void Build_ShapesButtonWheel_CyclesShapeGroup_AndReadsOutStatus() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        strip.State.ActiveTool = ToolKind.Line;
+
+        bool handled = Wheel(strip.Parts.Buttons[ToolbarButtonId.Shapes].Root, -120);
+
+        Assert.Equal(ToolbarStateMap.NextInCycle(ToolbarStateMap.ShapeCycle, ToolKind.Line, -120), strip.State.ActiveTool);
+        Assert.Equal(ToolKind.Arrow, strip.State.ActiveTool); // 펜 그룹 순환으로 뒤바뀌면 Line은 펜 순환에 없어 Pen이 된다
+        Assert.Equal(["status"], strip.Actions.Calls);
+        Assert.True(handled);
+    });
+
+    [Fact]
+    public void Build_FadingButtonWheel_StepsDurationThroughShellActions() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        double before = strip.Actions.FadingSeconds;
+
+        bool handled = Wheel(strip.Parts.Buttons[ToolbarButtonId.Fading].Root, 120);
+
+        double expected = FadingDurations.StepByWheel(before, 120);
+        Assert.True(expected > before); // 위로 한 칸은 실제로 길어진다 — 제자리 기대값이면 증인이 비어 버린다
+        Assert.Equal([$"fading:{expected}", "status"], strip.Actions.Calls);
+        Assert.Equal(expected, strip.Actions.FadingSeconds);
+        Assert.True(handled);
+    });
+
+    [Fact]
+    public void Build_PreviewWheel_StepsThickness() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        Assert.Equal(ThicknessStep.Medium, strip.State.Thickness);
+
+        bool handled = Wheel(PreviewButton(strip), 120);
+
+        Assert.Equal(ThicknessStep.Large, strip.State.Thickness);
+        Assert.Empty(strip.Actions.Calls); // 굵기 휠은 상태 읽기를 띄우지 않는다 — 미리보기 원 크기가 곧 흔적이다
+        Assert.True(handled);
+    });
+
+    /// <summary>휠은 퀵컬러 칸 위에서 굴러 모자이크 그리드(UniformGrid)의 핸들러까지 버블링한다 — 실제 포인터 경로 그대로다.</summary>
+    [Fact]
+    public void Build_QuickColorsWheel_AdvancesToNextSlot() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        var quickColors = strip.State.QuickColors;
+        strip.State.CurrentColor = quickColors[0];
+        int next = ToolbarStateMap.NextQuickColorSlotByWheel(0, -120, quickColors.Count);
+        Assert.NotEqual(quickColors[0], quickColors[next]);
+
+        bool handled = Wheel(strip.Parts.QuickSwatches[0].Ring, -120);
+
+        Assert.Equal(quickColors[next], strip.State.CurrentColor);
+        Assert.Empty(strip.Actions.Calls);
+        Assert.True(handled);
+    });
+
+    /// <summary>ToolbarWheel.None 팔: 휠이 없는 버튼은 상태도 호출도 건드리지 않고 이벤트를 소비하지도 않는다(창의 도구 순환 휠로 흘러간다).</summary>
+    [Fact]
+    public void Build_UndoButtonWheel_ChangesNothing() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        strip.State.ActiveTool = ToolKind.Pen;
+        var colorBefore = strip.State.CurrentColor;
+        var thicknessBefore = strip.State.Thickness;
+
+        bool handled = Wheel(strip.Parts.Buttons[ToolbarButtonId.Undo].Root, -120);
+
+        Assert.Equal(ToolKind.Pen, strip.State.ActiveTool);
+        Assert.Equal(colorBefore, strip.State.CurrentColor);
+        Assert.Equal(thicknessBefore, strip.State.Thickness);
+        Assert.Equal(1.0, strip.Actions.FadingSeconds);
+        Assert.Empty(strip.Actions.Calls);
+        Assert.False(handled);
     });
 }

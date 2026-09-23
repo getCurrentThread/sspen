@@ -89,7 +89,6 @@ public sealed class ToolbarWindow : Window
         _state.Changed += _onStateChanged;
         // 캡처 세션 등으로 툴바가 숨겨지면 Popup은 자체 HWND라 함께 사라지지 않으므로 직접 닫는다
         // (아키텍트 자문: 캡처 결과물/오버레이 위 플라이아웃 잔류 방지).
-        _flyouts.RegisterTooltip(logo.Tooltip);
         IsVisibleChanged += (_, _) =>
         {
             if (!IsVisible)

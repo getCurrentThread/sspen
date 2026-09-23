@@ -73,6 +73,12 @@ public sealed class ToolbarFlyouts
     /// </summary>
     internal void RegisterTooltip(ToolTip tooltip) => _tooltips.Add(tooltip);
 
+    /// <summary>
+    /// 등록된 툴팁 레지스트리의 읽기 전용 보기 (59단계, A5-4). 헤드리스 증인이 "트리의 모든 ToolTip == 레지스트리"를
+    /// 확인하려고 연다 — <see cref="CloseTooltips"/>가 닫을 수 있는 것은 여기 든 것뿐이다 (AGENTS L89).
+    /// </summary>
+    internal IReadOnlyList<ToolTip> RegisteredTooltips => _tooltips;
+
     /// <summary>열려 있는 툴팁을 전부 닫는다 (툴바 숨김 시).</summary>
     public void CloseTooltips()
     {

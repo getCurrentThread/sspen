@@ -24,7 +24,7 @@ public class ToolbarLayoutTests
             .Concat(ToolbarLayout.Menu.OfType<ToolbarPreviewEntry>().Select(p => p.HotkeyId));
 
     public static IEnumerable<object[]> AllButtonIds() =>
-        Enum.GetValues<ToolbarButtonId>().Where(id => id != ToolbarButtonId.Preview).Select(id => new object[] { id });
+        Enum.GetValues<ToolbarButtonId>().Select(id => new object[] { id });
 
     private static string Classify(ToolbarLayoutEntry? entry) => entry switch
     {
@@ -52,12 +52,12 @@ public class ToolbarLayoutTests
     }
 
     [Fact]
-    public void Buttons_CoverEveryToolbarButtonIdExceptPreview_ExactlyOnce()
+    public void Buttons_CoverEveryToolbarButtonId_ExactlyOnce()
     {
         var ids = AllButtons().Select(b => b.Id).ToList();
 
         Assert.Equal(ids.Count, ids.Distinct().Count());
-        Assert.Equal(Enum.GetValues<ToolbarButtonId>().Where(id => id != ToolbarButtonId.Preview).ToHashSet(), ids.ToHashSet());
+        Assert.Equal(Enum.GetValues<ToolbarButtonId>().ToHashSet(), ids.ToHashSet());
         Assert.DoesNotContain(ToolbarLayout.Menu.OfType<ToolbarButtonEntry>(), b => b.Id == ToolbarButtonId.Visibility); // 눈 버튼은 메뉴 밖
     }
 

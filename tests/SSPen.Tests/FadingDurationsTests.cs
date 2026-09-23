@@ -3,7 +3,10 @@ using Xunit;
 
 namespace SSPen.Tests;
 
-/// <summary>페이딩 잉크 지속 시간 사다리·정규화 (사용자 요청 16차: 0.1~5초 재조정).</summary>
+/// <summary>
+/// 페이딩 잉크 지속 시간 사다리·정규화·휠 계단 (사용자 요청 16차: 0.1~5초 재조정). StepByWheel 증인 3건은 주제가
+/// FadeSchedulerCore인 FadeSchedulerTests에 있던 것을 59단계(A8-4)에 본문 그대로 옮겼다.
+/// </summary>
 public class FadingDurationsTests
 {
     [Fact]
@@ -92,5 +95,44 @@ public class FadingDurationsTests
     public void Same_DistinguishesAdjacentSteps()
     {
         Assert.False(FadingDurations.Same(0.1, 0.5));
+    }
+
+    [Fact]
+    public void StepByWheel_ZeroDelta_ReturnsSameDuration()
+    {
+        Assert.Equal(2.0, FadingDurations.StepByWheel(2.0, 0));
+    }
+
+    [Fact]
+    public void StepByWheel_ScrollUp_IncreasesDuration()
+    {
+        // 0.1 -> 0.5 -> 1.0 -> 2.0 -> 3.0 -> 5.0
+        double val = 0.1;
+        foreach (var expected in FadingDurations.Steps.Skip(1))
+        {
+            val = FadingDurations.StepByWheel(val, 120);
+            Assert.Equal(expected, val);
+        }
+
+        // 최대치(5.0)에서 더 올려도 5.0에 클램프
+        val = FadingDurations.StepByWheel(val, 120);
+        Assert.Equal(FadingDurations.Max, val);
+    }
+
+    [Fact]
+    public void StepByWheel_ScrollDown_DecreasesDuration()
+    {
+        // 5.0 -> 3.0 -> 2.0 -> 1.0 -> 0.5 -> 0.1
+        double val = FadingDurations.Max;
+        var reversed = FadingDurations.Steps.Reverse().Skip(1);
+        foreach (var expected in reversed)
+        {
+            val = FadingDurations.StepByWheel(val, -120);
+            Assert.Equal(expected, val);
+        }
+
+        // 최소치(0.1)에서 더 내려도 0.1에 클램프
+        val = FadingDurations.StepByWheel(val, -120);
+        Assert.Equal(FadingDurations.Min, val);
     }
 }

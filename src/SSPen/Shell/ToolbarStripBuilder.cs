@@ -10,6 +10,8 @@ namespace SSPen.Shell;
 /// 툴바 스트립 조립 (god file 분할, ARCH-11 후속): <see cref="ToolbarLayout"/> 스펙(순수 데이터, 51단계)을 Realize 루프가
 /// 시각 트리로 실현한다 — MakeButton/BuildPreviewButton/BuildQuickColors/MakeBoardBadge — 산출물은 <see cref="ToolbarParts"/>.
 /// 툴팁은 <see cref="ToolbarTooltips.Attach"/>가 만들고 <see cref="ToolbarFlyouts.RegisterTooltip"/>에 등록한다 (37단계).
+/// Attach를 거치지 않는 로고·팔레트 툴팁도 Build 안에서 등록한다 (59단계, A5-4) — 창 생성자에서 등록하면 Build만 도는
+/// 헤드리스 증인(ToolbarStripBuilderTests.Build_EveryToolTipInStripAndFlyouts_IsRegisteredExactlyOnce)이 누락을 볼 수 없다.
 /// </summary>
 public static class ToolbarStripBuilder
 {
@@ -374,6 +376,7 @@ public static class ToolbarStripBuilder
 
         // 로고는 스트립 밖, 투명 배경 위에 띄운다 (사용자 조타: 원형 아이콘 뒤 배경 제거 — Epic Pen 닙 배치).
         var logo = new ToolbarTheme.LogoBadge();
+        flyouts.RegisterTooltip(logo.Tooltip);
         // 좌상단 고정 (사용자 조타: 표시 접기/펼치기 때 미묘한 오프셋 틀어짐 수정):
         // 재측정으로 창 폭이 변해도 스트립이 가운데로 재배치되지 않게 좌측 정렬.
         var outer = new StackPanel
