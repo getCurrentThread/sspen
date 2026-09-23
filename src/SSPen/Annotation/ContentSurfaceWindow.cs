@@ -145,7 +145,8 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         _input = new SurfaceInputController(
             _inkCanvas, _state, Document, ledger, _fading, this,
             selection, ownerLookup, dpiOf, SetMarquee, SetGestureGroupFrame, SetTableBadge,
-            (deltas, drop) => commitTransform(deltas, drop is { } p ? ToPhysical(p) : null),
+            // 드롭 지점 변환(논리 → 가상 스크린 물리, WorkArea 원점)은 SurfaceProjection이 소유한다 (64단계, A2-4). 창은 모니터와 DPI만 고른다.
+            (deltas, drop) => commitTransform(deltas, drop is { } p ? SurfaceProjection.DropPointToVirtual(_monitor, p, DpiScale) : null),
             // R5: 해제 제스처가 끝난 **뒤에** 상태를 바꾼다. 마우스 업 핸들러 안에서 곧바로 켜면
             // ApplyState → CancelActiveInput이 같은 콜 스택에서 재진입해 캡처 해제 순서가 뒤엉킨다.
             () => Dispatcher.BeginInvoke(requestClickThrough),
@@ -247,7 +248,11 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
 
     private bool _suspended;
 
-    /// <summary>캡처 세션 등에서 서피스 입력을 일시 중단/복원한다.</summary>
+    /// <summary>
+    /// 캡처 세션 등에서 서피스 입력을 일시 중단/복원한다. 중단 표현(클릭 통과·배경 없음·히트 끔·화살표 커서)은
+    /// <see cref="SurfacePresentationRules.Resolve"/>의 중단 행이 유도한다 — 여기서 세 값을 손으로 다시 적지 않는다 (ARCH-1, 64단계 A2-3).
+    /// 취소가 표현 적용보다 먼저다 (표 배지 18단계 증인: <c>CancelActiveInput → DiscardAll</c>이 배지를 걷는다).
+    /// </summary>
     public void SetSuspended(bool suspended)
     {
         if (_closed || Hwnd == 0)
@@ -258,16 +263,8 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         if (suspended)
         {
             _input.CancelActiveInput();
-            WindowStyling.SetClickThrough(Hwnd, true);
-            _root.Background = null;
-            _root.IsHitTestVisible = false;
-            Cursor = Cursors.Arrow;
         }
-        else
-        {
-            _root.IsHitTestVisible = true;
-            ApplyState();
-        }
+        ApplyState();
     }
 
     /// <summary>
@@ -289,7 +286,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         WindowStyling.SetClickThrough(Hwnd, !interactive);
         _root.Background = interactive ? HitTestBrush : null;
         _root.IsHitTestVisible = interactive;
-        Cursor = interactive ? ToCursor(SurfacePresentationRules.HoverCursor(_state.ActiveTool, stylusInverted: false)) : Cursors.Arrow;
+        Cursor = ToCursor(SurfacePresentationRules.Cursor(interactive, _state.ActiveTool, stylusInverted: false));
 
         if (presentation.CollapseHalo)
         {
@@ -431,7 +428,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
     }
 
     /// <summary>
-    /// 커서 종류 → WPF 커서 (사용자 조타: UX 미려화). 어느 종류인지는 <see cref="SurfacePresentationRules.HoverCursor"/>가 정하고,
+    /// 커서 종류 → WPF 커서 (사용자 조타: UX 미려화). 어느 종류인지는 <see cref="SurfacePresentationRules.Cursor"/>가 정하고,
     /// 여기는 객체 매핑만 한다 — 지우개 커서는 Win32 시스템 커서 크기에 동기화된 <see cref="CursorFactory.Eraser"/>라 순수 코어에 둘 수 없다.
     /// </summary>
     private static Cursor ToCursor(SurfaceCursorKind kind) => kind switch
@@ -528,15 +525,8 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         var owned = SelectionGroup.OwnedBy(Document, _selection);
         foreach (var primitive in SurfaceDecorationPlanner.Plan(owned, _selection.Count, _marquee, _gestureGroupFrame, SurfaceBounds))
         {
-            _decorationLayer.Children.Add(primitive switch
-            {
-                MarqueePrimitive m => AnnotationVisualFactory.BuildMarquee(m.Rect),
-                OutlinePrimitive o => AnnotationVisualFactory.BuildSelectionBorder(o.Corners),
-                HandlePrimitive { Rotate: true } h => AnnotationVisualFactory.BuildRotateHandle(h.Center, TransformMath.HandleScreenSize),
-                HandlePrimitive h => AnnotationVisualFactory.BuildHandle(h.Center, TransformMath.HandleScreenSize),
-                RotateStemPrimitive stem => AnnotationVisualFactory.BuildRotateStem(stem.From, stem.To),
-                _ => throw new InvalidOperationException(primitive.GetType().Name),
-            });
+            // 프리미티브 → 시각물 매핑은 AnnotationVisualFactory.BuildDecoration이 소유한다 (64단계, A2-6 — 빠진 팔은 헤드리스 전수 증인이 잡는다).
+            _decorationLayer.Children.Add(AnnotationVisualFactory.BuildDecoration(primitive));
         }
     }
 
@@ -555,14 +545,6 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         RedrawDecorations();
     }
 
-    /// <summary>논리 서피스 좌표 → 가상 스크린 물리 좌표 (이관 대상 모니터 판별용).</summary>
-    private (int X, int Y) ToPhysical(Point logical)
-    {
-        double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        var (x, y) = CoordinateSpace.ToPhysical(logical, scale);
-        return (_monitor.WorkArea.X + x, _monitor.WorkArea.Y + y);
-    }
-
     // ---- 입력 처리: SurfaceInputController에 전량 위임 ----
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
@@ -574,18 +556,9 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         }
         StylusProbe.Observe("마우스다운(승격)", e.StylusDevice);
         UpdateStylusCursor(e.StylusDevice);
-
-        float pressure = StrokeGeometry.DefaultPressure;
-        if (e.StylusDevice != null)
-        {
-            var points = e.StylusDevice.GetStylusPoints(_inkCanvas);
-            if (points.Count > 0)
-            {
-                pressure = points[^1].PressureFactor;
-            }
-        }
         StylusProbe.BeginStroke();
-        _input.OnMouseLeftButtonDown(e, pressure);
+        // 다운 필압은 뒤집힘과 함께 컨트롤러 어댑터가 같은 StylusDevice에서 꺼낸다 (64단계, A2-1 — StylusFeedPolicy.DownPressure).
+        _input.OnMouseLeftButtonDown(e);
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -641,9 +614,11 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         {
             var points = e.GetStylusPoints(_inkCanvas);
             StylusProbe.CountStylusBatch(points.Count);
+            // D3: Shift는 이벤트당 한 번만 읽는다 (SurfaceInputController 어댑터 절 규약, 64단계 A3-8) — 배치의 모든 패킷이 같은 값을 쓴다.
+            bool shift = KeyboardState.Shift;
             foreach (var sp in points)
             {
-                _input.PointerMove(new Point(sp.X, sp.Y), KeyboardState.Shift, leftPressed: true, sp.PressureFactor);
+                _input.PointerMove(new Point(sp.X, sp.Y), shift, leftPressed: true, sp.PressureFactor);
             }
         }
     }
@@ -678,7 +653,8 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
             return;
         }
 
-        Cursor = ToCursor(SurfacePresentationRules.HoverCursor(_state.ActiveTool, stylusInverted: device?.Inverted == true));
+        // 비인터랙티브는 위 가드가 조기 반환한다 — 커서를 아예 건드리지 않는 것이 오늘의 의미다 (Arrow 대입이 아니다).
+        Cursor = ToCursor(SurfacePresentationRules.Cursor(interactive: true, _state.ActiveTool, stylusInverted: device?.Inverted == true));
     }
 
     private void ResetCursor()
@@ -688,7 +664,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
             return;
         }
 
-        Cursor = _state.IsInteractive ? ToCursor(SurfacePresentationRules.HoverCursor(_state.ActiveTool, stylusInverted: false)) : Cursors.Arrow;
+        Cursor = ToCursor(SurfacePresentationRules.Cursor(_state.IsInteractive, _state.ActiveTool, stylusInverted: false));
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)

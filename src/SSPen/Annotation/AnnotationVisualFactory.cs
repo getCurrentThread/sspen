@@ -203,6 +203,22 @@ public static class AnnotationVisualFactory
     /// <summary>핸들 외곽선 두께: 1px 선은 검은 보드·복잡한 배경 위에서 사라진다.</summary>
     private const double HandleStrokeThickness = 2;
 
+    /// <summary>
+    /// 장식 프리미티브(<see cref="SurfaceDecorationPlanner"/>의 계획 한 항목) → 시각물 (64단계, A2-6). 타입 넷이 빌더 다섯으로 간다 —
+    /// <see cref="HandlePrimitive.Rotate"/>는 모양만 가른다(원/사각형). 크기는 <see cref="TransformMath.HandleScreenSize"/>다.
+    /// 빠진 팔은 던진다: 창의 <c>RedrawDecorations</c>(디스패처 콜백 안)가 아니라 헤드리스 전수 증인
+    /// (<c>DecorationVisualMappingTests</c>)에서 드러나게 하려는 것이다 — <c>ToolbarStripBuilder</c>의 두 스위치와 같은 관용구.
+    /// </summary>
+    public static Shape BuildDecoration(DecorationPrimitive primitive) => primitive switch
+    {
+        MarqueePrimitive m => BuildMarquee(m.Rect),
+        OutlinePrimitive o => BuildSelectionBorder(o.Corners),
+        HandlePrimitive { Rotate: true } h => BuildRotateHandle(h.Center, TransformMath.HandleScreenSize),
+        HandlePrimitive h => BuildHandle(h.Center, TransformMath.HandleScreenSize),
+        RotateStemPrimitive stem => BuildRotateStem(stem.From, stem.To),
+        _ => throw new InvalidOperationException(primitive.GetType().Name),
+    };
+
     /// <summary>로컬 프레임 4점(OBB) 위의 점선 경계. 축 정렬 <see cref="Rect"/>가 아니라 꼭짓점을 받는다 (MI-1).</summary>
     public static Polygon BuildSelectionBorder(Point[] corners)
     {

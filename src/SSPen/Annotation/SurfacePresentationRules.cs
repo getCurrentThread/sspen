@@ -22,7 +22,8 @@ public readonly record struct SurfacePresentation(Visibility Visibility, bool In
 /// <summary>
 /// 서피스 표현 판정의 순수 진리표 (44단계, ARCH-1, D4, R8). <c>ContentSurfaceWindow.ApplyState</c>의 중단/비중단 분기와
 /// 커서 규칙(도구별·스타일러스 뒤집기)을 한 곳에 둔다 — 이전에는 판정이 ApplyState·SetSuspended·CursorFor·UpdateStylusCursor·
-/// ResetCursor 다섯 메서드에 흩어져 있고 창 코드에는 헤드리스 증인이 없었다.
+/// ResetCursor 다섯 메서드에 흩어져 있고 창 코드에는 헤드리스 증인이 없었다. 64단계(A2-3)부터 <c>SetSuspended</c>도 <see cref="Resolve"/>의
+/// 중단 행을 거치고, 창의 커서 대입 세 곳은 모두 <see cref="Cursor"/>를 거친다.
 /// </summary>
 public static class SurfacePresentationRules
 {
@@ -39,8 +40,16 @@ public static class SurfacePresentationRules
     }
 
     /// <summary>
+    /// 서피스 커서 (64단계, A2-3): 비인터랙티브(중단 포함)면 화살표, 인터랙티브면 <see cref="HoverCursor"/>.
+    /// 창의 커서 대입 지점(ApplyState·UpdateStylusCursor·ResetCursor)은 모두 이 함수를 거친다 — "비인터랙티브면 화살표"를 창이 재유도하지 않는다.
+    /// <paramref name="interactive"/>는 호출자가 넘긴다: ApplyState는 <see cref="Resolve"/>의 <c>Interactive</c>, ResetCursor는 <see cref="AppState.IsInteractive"/>.
+    /// </summary>
+    public static SurfaceCursorKind Cursor(bool interactive, ToolKind tool, bool stylusInverted) =>
+        interactive ? HoverCursor(tool, stylusInverted) : SurfaceCursorKind.Arrow;
+
+    /// <summary>
     /// 인터랙티브 서피스의 호버 커서: 펜/형광펜 = 펜, 텍스트 = IBeam, 지우개 = 지우개, 선택 = 화살표, 도형 = 십자.
-    /// 스타일러스 뒤집기(R8)는 도구와 무관하게 지우개다. 비인터랙티브의 화살표는 창이 결정한다 (이 함수는 도구가 있을 때만 의미).
+    /// 스타일러스 뒤집기(R8)는 도구와 무관하게 지우개다. 비인터랙티브의 화살표는 <see cref="Cursor"/>가 결정한다 (이 함수는 도구가 있을 때만 의미).
     /// </summary>
     public static SurfaceCursorKind HoverCursor(ToolKind tool, bool stylusInverted) => stylusInverted
         ? SurfaceCursorKind.Eraser

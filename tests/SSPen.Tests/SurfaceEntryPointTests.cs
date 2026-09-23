@@ -346,6 +346,30 @@ public class SurfaceEntryPointTests
         });
     }
 
+    /// <summary>
+    /// 필압 흐름 증인 (64단계, A2-1): 다운 필압과 이동마다의 필압이 커밋된 획의 <c>Pressures</c>까지 순서대로 간다 — 1.3.3 와콤 결함이
+    /// 났던 경로(스타일러스 배치 → PointerMove)의 컨트롤러 절반이다. 다운 필압의 출처 규칙은 <c>StylusFeedPolicy.DownPressure</c>가,
+    /// 창의 배치 루프(패킷마다 PointerMove, Shift는 배치당 1회)는 헤드리스로 구동할 수 없어 통합 영역이다.
+    /// </summary>
+    [Fact]
+    public void PointerDownAndMoves_PenStroke_CommitsEveryPointPressure()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            h.State.ActiveTool = ToolKind.Pen;
+
+            h.Controller.PointerDown(new Point(0, 0), shift: false, pressure: 0.3f);
+            h.Controller.PointerMove(new Point(10, 0), shift: false, leftPressed: true, 0.4f);
+            h.Controller.PointerMove(new Point(20, 0), shift: false, leftPressed: true, 0.6f);
+            h.Controller.PointerMove(new Point(30, 0), shift: false, leftPressed: true, 0.8f);
+            h.Controller.PointerUp(new Point(30, 0), shift: false);
+
+            var stroke = Assert.IsType<StrokeElement>(Assert.Single(h.Document.Elements));
+            Assert.Equal([0.3f, 0.4f, 0.6f, 0.8f], stroke.Pressures);
+        });
+    }
+
     private static TextBox OpenTextBox(Harness h) => Assert.Single(h.Canvas.Children.OfType<TextBox>());
 
     /// <summary>

@@ -1,3 +1,5 @@
+using System.Windows.Input;
+
 namespace SSPen.Annotation;
 
 /// <summary>스타일러스 패킷이 들어올 수 있는 두 창 이벤트 채널.</summary>
@@ -41,4 +43,12 @@ public static class StylusFeedPolicy
             _ => false,
         };
     }
+
+    /// <summary>
+    /// 펜 다운 시작 필압 (64단계, A2-1): 다운 이벤트의 스타일러스 패킷 중 <b>마지막</b> 것의 필압, 패킷이 없거나 스타일러스가 아니면
+    /// <see cref="StrokeGeometry.DefaultPressure"/>. 클램프는 하지 않는다 — 0.05–1.0 클램프는 <see cref="StrokeGeometry"/> 단독 소유다 (31단계).
+    /// 뒤집힘과 같은 <c>StylusDevice</c>에서 꺼내므로 호출자는 컨트롤러의 WPF 어댑터 절(<c>SurfaceInputController.OnMouseLeftButtonDown</c>) 하나다.
+    /// </summary>
+    public static float DownPressure(StylusPointCollection? points) =>
+        points is { Count: > 0 } ? points[^1].PressureFactor : StrokeGeometry.DefaultPressure;
 }

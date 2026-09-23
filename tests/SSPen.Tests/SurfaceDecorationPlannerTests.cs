@@ -266,12 +266,16 @@ public class SurfaceDecorationPlannerTests
         Assert.DoesNotContain(plan.GetParameters(), p => p.ParameterType == typeof(bool));
     }
 
-    /// <summary>SEL-LIM-6: 프리미티브는 그룹 각도를 싣지 않는다 — 각도는 좌표 계산에만 쓰이고 죽는다.</summary>
+    /// <summary>
+    /// SEL-LIM-6: 프리미티브는 그룹 각도를 싣지 않는다 — 각도는 좌표 계산에만 쓰이고 죽는다. 타입 목록은 손으로 적지 않고
+    /// 리플렉션으로 전수 모은다 (64단계, A2-6) — 새 프리미티브도 자동으로 검사 대상이 된다.
+    /// </summary>
     [Fact]
     public void DecorationPrimitives_HaveNoGroupFrameOrAngleSlot_ByReflection()
     {
-        var types = new[] { typeof(MarqueePrimitive), typeof(OutlinePrimitive), typeof(HandlePrimitive), typeof(RotateStemPrimitive) };
+        var types = DecorationVisualMappingTests.ConcretePrimitiveTypes();
 
+        Assert.NotEmpty(types);
         foreach (var type in types)
         {
             Assert.DoesNotContain(type.GetProperties(), p => p.PropertyType == typeof(GroupFrame) || p.PropertyType == typeof(double));

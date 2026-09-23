@@ -82,18 +82,24 @@ public class SurfacePresentationTests
             rig.Surface.Show();
             StaRunner.PumpMessages();
             Assert.Equal(Cursors.IBeam, rig.Surface.Cursor);
+            var visibilityBefore = rig.Surface.Visibility;
 
+            // 64단계(A2-3): 중단 표현은 SurfacePresentationRules.Resolve의 중단 행이 유도한다 — 세 값이 함께 움직이고 가시성은 그대로다.
             rig.Surface.SetSuspended(true);
             StaRunner.PumpMessages();
             Assert.True(WindowStyling.IsClickThrough(rig.Surface.Hwnd));
             Assert.Null(Root(rig.Surface).Background);
+            Assert.False(Root(rig.Surface).IsHitTestVisible);
             Assert.Equal(Cursors.Arrow, rig.Surface.Cursor);
+            Assert.Equal(visibilityBefore, rig.Surface.Visibility);
 
             rig.Surface.SetSuspended(false);
             StaRunner.PumpMessages();
             Assert.False(WindowStyling.IsClickThrough(rig.Surface.Hwnd));
             Assert.NotNull(Root(rig.Surface).Background);
+            Assert.True(Root(rig.Surface).IsHitTestVisible);
             Assert.Equal(Cursors.IBeam, rig.Surface.Cursor);
+            Assert.Equal(visibilityBefore, rig.Surface.Visibility);
         }
         finally
         {

@@ -118,9 +118,14 @@ public sealed class SurfaceInputController(
     // Handled는 **반환값이 참일 때만** 세운다. `e.Handled = 반환값`으로 대입하면 상위에서
     // 이미 세워 둔 Handled를 false로 되돌려, 오늘 서피스가 통과시키는 입력의 소비 여부가 바뀐다.
 
-    public void OnMouseLeftButtonDown(MouseButtonEventArgs e, float pressure = StrokeGeometry.DefaultPressure)
+    /// <summary>
+    /// 뒤집힘과 다운 필압은 <b>같은 <c>StylusDevice</c></b>에서 이 어댑터가 꺼낸다 (64단계, A2-1) — 예전에는 필압만 창이 꺼내 인자로
+    /// 넘기는 이중 구조였다. 필압 규칙은 <see cref="StylusFeedPolicy.DownPressure"/>가 소유한다 (마지막 패킷, 없으면 기본값).
+    /// </summary>
+    public void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         bool inverted = e.StylusDevice?.Inverted == true;
+        float pressure = StylusFeedPolicy.DownPressure(e.StylusDevice?.GetStylusPoints(inkCanvas));
         if (PointerDown(e.GetPosition(inkCanvas), KeyboardState.Shift, IsOverActiveTextBox(), inverted, pressure))
         {
             e.Handled = true;

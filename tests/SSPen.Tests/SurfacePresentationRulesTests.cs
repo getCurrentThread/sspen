@@ -74,12 +74,37 @@ public class SurfacePresentationRulesTests
     public void HoverCursor_StylusInverted_IsEraserForEveryTool(ToolKind tool) =>
         Assert.Equal(SurfaceCursorKind.Eraser, SurfacePresentationRules.HoverCursor(tool, stylusInverted: true));
 
+    /// <summary>64단계(A2-3): 비인터랙티브(중단 포함)는 도구·뒤집힘과 무관하게 화살표다 — 창의 커서 대입 세 곳이 이 한 규칙을 거친다.</summary>
+    [Theory]
+    [MemberData(nameof(AllToolsAndInversion))]
+    public void Cursor_NotInteractive_IsArrowForEveryToolAndInversion(ToolKind tool, bool stylusInverted) =>
+        Assert.Equal(SurfaceCursorKind.Arrow, SurfacePresentationRules.Cursor(interactive: false, tool, stylusInverted));
+
+    /// <summary>64단계(A2-3): 인터랙티브면 호버 커서 표 그대로다 — Cursor는 표를 재유도하지 않고 HoverCursor에 위임한다.</summary>
+    [Theory]
+    [MemberData(nameof(AllToolsAndInversion))]
+    public void Cursor_Interactive_EqualsHoverCursor(ToolKind tool, bool stylusInverted) =>
+        Assert.Equal(
+            SurfacePresentationRules.HoverCursor(tool, stylusInverted),
+            SurfacePresentationRules.Cursor(interactive: true, tool, stylusInverted));
+
     public static TheoryData<ToolKind> AllTools()
     {
         var data = new TheoryData<ToolKind>();
         foreach (var tool in Enum.GetValues<ToolKind>())
         {
             data.Add(tool);
+        }
+        return data;
+    }
+
+    public static TheoryData<ToolKind, bool> AllToolsAndInversion()
+    {
+        var data = new TheoryData<ToolKind, bool>();
+        foreach (var tool in Enum.GetValues<ToolKind>())
+        {
+            data.Add(tool, false);
+            data.Add(tool, true);
         }
         return data;
     }

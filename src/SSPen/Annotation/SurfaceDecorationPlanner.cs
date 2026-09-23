@@ -2,7 +2,10 @@ using System.Windows;
 
 namespace SSPen.Annotation;
 
-/// <summary>장식 프리미티브 (43단계) — <see cref="AnnotationVisualFactory"/>의 장식 빌더 넷과 1:1이다. 창은 이 목록을 순서대로 그리기만 한다.</summary>
+/// <summary>
+/// 장식 프리미티브 (43단계) — 타입 넷이 <see cref="AnnotationVisualFactory.BuildDecoration"/>의 빌더 다섯으로 간다
+/// (<see cref="HandlePrimitive.Rotate"/>는 모양만 가른다, 64단계 A2-6). 창은 이 목록을 순서대로 그리기만 한다.
+/// </summary>
 public abstract record DecorationPrimitive;
 
 /// <summary>마퀴 사각형 — 축 정렬 (SEL-B-1).</summary>
