@@ -1,3 +1,5 @@
+using SSPen.Interop;
+
 namespace SSPen.Annotation;
 
 /// <summary>보드 표시 전이 종류 (사용자 요청 16차: 위→아래로 내려오고 다시 위로 걷힌다).</summary>
@@ -56,4 +58,14 @@ public static class BoardTransition
         }
         return BoardTransitionKind.None;
     }
+
+    /// <summary>
+    /// 보드 슬라이드 이동 거리(논리 px, 90단계 A2-2). 작업 영역(AGENTS L17)을 <see cref="CoordinateSpace"/>로
+    /// 논리화한 높이와 레이아웃 높이 중 큰 값 — 이만큼 올리면 보드가 화면 밖으로 완전히 빠진다.
+    /// 보드는 <c>Canvas.Top</c>으로 움직이므로 두 항 모두 논리 단위여야 한다. 물리 <c>WorkArea.Height</c>를 그대로
+    /// 섞으면 150%에서 거리가 1.5배가 되어, EaseOut 커브 탓에 걷힘이 처음 ~86ms 만에 화면 밖으로 빠져 스냅처럼
+    /// 보였다. 레이아웃 전(<paramref name="actualHeight"/> = 0)에는 논리화한 작업 영역 높이로 폴백한다.
+    /// </summary>
+    public static double Travel(double actualHeight, PhysicalRect workArea, double dpiScale) =>
+        Math.Max(actualHeight, CoordinateSpace.ToLogical(workArea, dpiScale).Height);
 }

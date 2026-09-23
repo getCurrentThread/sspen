@@ -375,10 +375,11 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
     }
 
     /// <summary>
-    /// 이동 거리: 모니터 높이만큼 올리면 화면 밖으로 완전히 빠진다.
-    /// 논리 단위를 쓰는 이유: 보드 사각형은 WPF 레이아웃 안에 있으므로 물리 픽셀이 아니다.
+    /// 이동 거리(논리 px): 작업 영역 높이만큼 올리면 화면 밖으로 완전히 빠진다. 보드 사각형은 WPF 레이아웃 안에서
+    /// <c>Canvas.Top</c>으로 움직이므로 논리 단위여야 하고, 물리 픽셀인 <c>WorkArea</c>의 논리화는
+    /// <see cref="BoardTransition.Travel"/>이 <c>CoordinateSpace</c>로 한다 (90단계, A2-2 — AGENTS L17·L18).
     /// </summary>
-    private double BoardTravel => Math.Max(ActualHeight, _monitor.WorkArea.Height);
+    private double BoardTravel => BoardTransition.Travel(ActualHeight, _monitor.WorkArea, DpiScale);
 
     private void BeginBoardSlide(double from, double to, bool collapseWhenDone)
     {
