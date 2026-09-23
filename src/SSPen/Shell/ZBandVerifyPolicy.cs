@@ -10,6 +10,7 @@ namespace SSPen.Shell;
 /// 복구가 연속 <see cref="MaxConsecutiveRepairs"/>번 소용없으면(낡은 HWND·외부 앱이 계속 뒤집음) 정규 재적용
 /// (<see cref="Reset"/>: AppState.Changed 등)까지 쉰다. 없으면 복구 → 재정렬 이벤트 → 검증 → 복구의 무한 루프가
 /// Background 우선순위로 CPU를 먹는다. AGENTS의 "렌더 틱에서 밴드 재적용 금지"와 같은 정신이다: 밴드 적용은 사건에만 반응한다.
+/// (c) <b>깨우는 계기</b> — 어떤 WinEvent가 깨우는가(<see cref="Wakes"/>)와 두 훅을 모두 설치 시도하는 규칙(<see cref="InstallWatches"/>, 70단계).
 /// </summary>
 public sealed class ZBandVerifyPolicy
 {
@@ -26,6 +27,26 @@ public sealed class ZBandVerifyPolicy
         NativeMethods.EVENT_OBJECT_REORDER => hwnd == desktop,
         _ => false,
     };
+
+    /// <summary>
+    /// 검증을 깨우는 두 WinEvent 훅(REORDER, FOREGROUND)을 이 순서로 <b>둘 다</b> 설치 시도한다 (70단계, A9-8).
+    /// 예전 배선은 <c>||</c> 단락 평가라 REORDER가 실패하면 FOREGROUND는 시도조차 안 되어 사후 검증이 전혀 깨어나지 않았다.
+    /// 한쪽만 성공해도 그 계기는 되돌리지 않는다 — 검증을 하나라도 깨우는 편이 낫다. 둘 다 성공하면 null,
+    /// 아니면 어느 훅이 실패했는지 밝힌 경고 로그 문구를 돌려준다(기록은 호출자가 한다).
+    /// </summary>
+    public static string? InstallWatches(Func<bool> installReorder, Func<bool> installForeground)
+    {
+        bool reorder = installReorder();
+        bool foreground = installForeground();
+        if (reorder && foreground)
+        {
+            return null;
+        }
+        return $"z-밴드 검증 WinEvent 훅 설치 실패 (REORDER={Outcome(reorder)}, FOREGROUND={Outcome(foreground)}) — "
+            + "요청·결과 단계 훅과 설치된 계기로만 방어한다.";
+
+        static string Outcome(bool installed) => installed ? "설치됨" : "실패";
+    }
 
     private int _consecutiveRepairs;
     private bool _pending;

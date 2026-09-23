@@ -225,14 +225,15 @@ public sealed class AppController : IShellActions, ISettingsHost
         ApplyZBand();
 
         // 54단계 L2/L3: 툴바 z-변화와 전역 z-순서 변화가 밴드 검증을 깨운다. 설치 실패는 진단만 남긴다 — 요청·결과 단계 훅은 그대로 산다.
+        // 두 훅은 한쪽이 실패해도 둘 다 시도하고, 로그는 어느 쪽이 실패했는지 밝힌다 (70단계, A9-8: 예전 || 단락 평가 결함).
         _toolbar.ZOrderChanged += RequestZBandVerify;
         _zReorderWatch = new WinEventWatch(
             NativeMethods.EVENT_OBJECT_REORDER, NativeMethods.EVENT_OBJECT_REORDER, OnZOrderEvent, WinEventWatch.Native);
         _zForegroundWatch = new WinEventWatch(
             NativeMethods.EVENT_SYSTEM_FOREGROUND, NativeMethods.EVENT_SYSTEM_FOREGROUND, OnZOrderEvent, WinEventWatch.Native);
-        if (!_zReorderWatch.Install() || !_zForegroundWatch.Install())
+        if (ZBandVerifyPolicy.InstallWatches(_zReorderWatch.Install, _zForegroundWatch.Install) is { } installFailure)
         {
-            Log.Warn("z-밴드 검증 WinEvent 훅 설치 실패 — 요청·결과 단계 훅만으로 방어한다.");
+            Log.Warn(installFailure);
         }
 
         if (_settingsBinder.Settings.CheckUpdateOnStart)
