@@ -47,21 +47,35 @@ public sealed class PinManager
     public PinWindow CreatePin(BitmapSource image, PhysicalRect region)
     {
         var pin = new PinWindow(image, region, _zAnchor, _controlDown);
-        pin.PinClosed += OnPinClosed;
-        pin.ClickThroughChanged += on =>
-        {
-            if (on)
-            {
-                ClickThroughEngaged?.Invoke();
-            }
-        };
-        _pins.Add(pin);
+        Adopt(pin);
         pin.Show();
         WindowStyling.PlacePhysical(pin.Hwnd, region);
         Log.Info($"핀 생성: {region} (총 {_pins.Count}개)");
         _monitor.Refresh();
         PinsChanged?.Invoke();
         return pin;
+    }
+
+    /// <summary>
+    /// 핀을 레지스트리에 들이고 수명·통과 이벤트를 배선한다 (83단계, A7-1). <see cref="CreatePin"/>이 쓰고, 헤드리스 증인은
+    /// 띄우지 않은 핀으로 직접 부른다 — 표시·배치·<see cref="PinsChanged"/>는 여기서 하지 않는다.
+    /// 통과 토글은 <b>반드시</b> 복귀 훅의 Refresh 계기여야 한다(AGENTS L35 부류, AC-17): 핀이 스스로 통과를 켜는 두 경로
+    /// (크롬 '클릭 통과' 버튼, 창 안 Ctrl+가운데 버튼)는 <see cref="PinWindow.ClickThroughChanged"/>만 올리므로, 여기서 Refresh하지
+    /// 않으면 WH_MOUSE_LL이 걸리지 않고 입력을 받지 못하는 통과 핀을 되찾을 길이 없다. Refresh를 토스트 계기보다 먼저 둔다 —
+    /// <see cref="ClickThroughEngaged"/> 처리기가 던져도 훅은 이미 걸려 있어야 한다.
+    /// </summary>
+    internal void Adopt(PinWindow pin)
+    {
+        pin.PinClosed += OnPinClosed;
+        pin.ClickThroughChanged += on =>
+        {
+            _monitor.Refresh();
+            if (on)
+            {
+                ClickThroughEngaged?.Invoke();
+            }
+        };
+        _pins.Add(pin);
     }
 
     public void NotifyClickThroughChanged() => _monitor.Refresh();

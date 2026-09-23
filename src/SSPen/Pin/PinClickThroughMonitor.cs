@@ -39,7 +39,7 @@ public sealed class PinClickThroughMonitor : IDisposable
 
     /// <param name="pins">현재 핀 목록 (생성 순서 = 겹칠 때 우선순위). 매번 평가한다.</param>
     /// <param name="controlDown">Ctrl이 물리적으로 눌려 있는가 — 프로덕션은 <see cref="KeyboardState.Control"/>.</param>
-    /// <param name="clickThroughChanged">복귀 뒤 통지 — 프로덕션은 <c>PinManager.NotifyClickThroughChanged</c>(= Refresh).</param>
+    /// <param name="clickThroughChanged">복귀 뒤 통지 — 프로덕션은 <c>PinManager.NotifyClickThroughChanged</c>(= Refresh). 켜기 계기는 이 인자가 아니라 <c>PinManager.Adopt</c>의 ClickThroughChanged 구독이다 (83단계, A7-1).</param>
     /// <param name="hooks">OS 훅 이음매 — 프로덕션은 <see cref="LowLevelHook.Native"/>, 테스트는 가짜 (52단계).</param>
     public PinClickThroughMonitor(
         Func<IReadOnlyList<IClickThroughPin>> pins,
