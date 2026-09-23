@@ -35,20 +35,6 @@ public class SelectionDecorationVisualTests
         Assert.True(ShellPalette.ContrastRatio(DecorationColor(), Colors.Black) >= 3.0);
     }
 
-    /// <summary>
-    /// "그려진 것 == 잡히는 것" (AGENTS L25): 렌더와 히트 판정이 같은 상수를 쓴다. 회전 핸들도
-    /// 모양만 원이고 지름은 같다 — 더 크게 그리면 잡히지 않는 가장자리가 생긴다.
-    /// </summary>
-    [Fact]
-    public void Plan_DrawnHandleRadius_DoesNotExceedHitRadius()
-    {
-        double drawnRadius = TransformMath.HandleScreenSize / 2;
-        double hitReach = TransformMath.HandleScreenSize / 2;
-
-        Assert.Equal(hitReach, drawnRadius);
-        Assert.True(TransformMath.HandleScreenSize >= 10, "핸들이 10px 미만이면 잡는 손이 자주 빗나간다");
-    }
-
     /// <summary>회전 핸들만 <c>Rotate</c>다 — 창의 렌더 스위치가 이 플래그로 원/사각형을 가른다.</summary>
     [Fact]
     public void Plan_MarksExactlyTheRotateHandle()

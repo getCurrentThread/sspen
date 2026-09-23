@@ -220,7 +220,7 @@ public sealed class CaptureSessionController
         {
             // 마우스가 오버레이(또는 그 액션바 버튼) 위에 있는 채로 HWND를 파괴하면
             // WPF 입력 계층이 죽은 창을 계속 가리키다 다음 마우스 이동에서 Win32 1400으로 터진다.
-            // 캐프처는 반드시 버튼 클릭으로 끝나므로 이 경로가 정확히 그 상황이다 (WindowLifetime 참조).
+            // 캡처는 반드시 버튼 클릭으로 끝나므로 이 경로가 정확히 그 상황이다 (WindowLifetime 참조).
             Shell.WindowLifetime.HideThenClose(_captureOverlay);
         }
         _captureOverlay = null;

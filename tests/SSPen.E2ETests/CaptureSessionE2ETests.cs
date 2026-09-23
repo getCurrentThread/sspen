@@ -1,5 +1,6 @@
 using System.Windows;
 using SSPen.Capture;
+using SSPen.Interop;
 using Xunit;
 
 namespace SSPen.E2ETests;
@@ -27,33 +28,31 @@ public class CaptureSessionE2ETests
         Assert.Equal(Visibility.Visible, toolbar.Visibility);
     });
 
+    /// <summary>
+    /// 세션 중 서피스 입력 중단의 관측 가능한 결과는 실제 창의 클릭 통과(WS_EX_TRANSPARENT)다 (A8-3) — 마우스가 서피스를 지나
+    /// 캡처 오버레이에 닿는다. 컨트롤러를 직접 부르는 <c>PointerDown</c>은 창의 중단 가드를 우회하므로 증인이 될 수 없다.
+    /// 호출 순서 자체는 헤드리스 <c>CaptureSessionControllerTests</c>가 본다.
+    /// </summary>
     [Fact]
     public void StartCapture_SuspendsSurfacesInput_AndRestoresOnEnd() => E2EAppFixture.Run(actor =>
     {
         actor.SelectTool(Annotation.ToolKind.Pen);
         var surface = actor.Surface(1);
 
-        // 캡처 전: 서피스가 인터랙티브 상태 (HitTest 가능)
-        Assert.True(actor.State.IsInteractive);
+        // 캡처 전: 펜 도구라 서피스가 입력을 받는다 (클릭 통과 아님)
+        Assert.False(WindowStyling.IsClickThrough(surface.Hwnd));
 
-        // 캡처 세션 시작
+        // 캡처 세션 시작: 서피스 입력 중단 = 클릭 통과
         actor.StartCapture();
+        Assert.True(WindowStyling.IsClickThrough(surface.Hwnd));
 
-        // 캡처 중: 마우스 입력이 서피스에 획을 추가하지 않음
-        var docCountBefore = surface.Document.Elements.Count;
-        surface.Input.PointerDown(new Point(100, 100), shift: false);
-        surface.Input.PointerMove(new Point(200, 200), shift: false, leftPressed: true);
-        surface.Input.PointerUp(new Point(200, 200), shift: false);
-        actor.Pump();
-
-        // 세션 중 마우스 이벤트 핸들러가 차단되거나 서피스가 suspended 상태이므로 요소 추가 안 됨
-        // (직접 PointerDown은 컨트롤러 단위이므로, 창의 OnMouseLeftButtonDown을 통한 획 차단 검증)
-
-        // 세션 취소
+        // 세션 취소: 상태에 맞게 다시 입력을 받는다
         actor.App.Capture.CancelCaptureSession();
         actor.Pump();
+        Assert.False(WindowStyling.IsClickThrough(surface.Hwnd));
 
         // 세션 종료 후 다시 그리기 가능 확인
+        var docCountBefore = surface.Document.Elements.Count;
         actor.DrawStroke(new Point(100, 100), new Point(200, 200), monitorIndex: 1);
         Assert.True(surface.Document.Elements.Count > docCountBefore);
     });

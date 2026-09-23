@@ -14,6 +14,7 @@ public sealed record OutlinePrimitive(Point[] Corners) : DecorationPrimitive;
 /// <summary>
 /// 크기/회전 핸들 하나 — 월드 좌표 중심, 크기는 <c>TransformMath.HandleScreenSize</c>로 창이 그린다.
 /// <paramref name="Rotate"/>는 <b>모양만</b> 가른다(회전은 원, 크기는 사각형) — 위치·히트 판정은 동일하다.
+/// 알려진 한계: 크기 핸들 사각형은 월드 축 정렬로 그려지고 히트(<c>TransformMath.HitHandle</c>)는 요소 로컬 축이라, 회전된 요소에서는 두 사각형의 모서리가 어긋난다(45°에서 약 2px).
 /// </summary>
 public sealed record HandlePrimitive(Point Center, bool Rotate = false) : DecorationPrimitive;
 

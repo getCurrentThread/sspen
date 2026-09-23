@@ -245,6 +245,33 @@ public class SurfaceEntryPointTests
     }
 
     /// <summary>
+    /// 도형 도구의 끝에서 끝 증인 (60단계, A3-7). 라우터 표(ToolKind→SurfaceGesture)는 <c>SurfaceInputRouterTests</c>가 보고,
+    /// 적용부 switch(SurfaceGesture→ShapeKind, <c>SurfaceInputController.PointerDown</c>)는 이 Theory가 끝에서 끝까지 본다 —
+    /// <c>StartArrow → ShapeKind.Line</c> 같은 전치가 생기면 여기가 빨갛다.
+    /// </summary>
+    [Theory]
+    [InlineData(ToolKind.Line, ShapeKind.Line)]
+    [InlineData(ToolKind.Arrow, ShapeKind.Arrow)]
+    [InlineData(ToolKind.Rectangle, ShapeKind.Rectangle)]
+    [InlineData(ToolKind.Ellipse, ShapeKind.Ellipse)]
+    public void PointerUp_EachShapeTool_CommitsShapeOfThatKind(ToolKind tool, ShapeKind expected)
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            h.State.ActiveTool = tool;
+
+            h.Controller.PointerDown(new Point(10, 10), shift: false);
+            h.Controller.PointerMove(new Point(110, 90), shift: false, leftPressed: true);
+            h.Controller.PointerUp(new Point(110, 90), shift: false);
+
+            var shape = Assert.IsType<ShapeElement>(Assert.Single(h.Document.Elements));
+            Assert.Equal(expected, shape.Kind);
+            Assert.Equal(1, h.Ledger.Count);
+        });
+    }
+
+    /// <summary>
     /// 텍스트 페이드 경로의 첫 컨트롤러 수준 증인 (Fading ink 규약, 56단계). 텍스트도 획·도형·표처럼 페이딩하며,
     /// 그 판정은 편집 시작 시점의 스냅샷이다 — 편집 도중 페이딩을 꺼도 확정된 텍스트는 예약대로 사라진다.
     /// <c>CommitElement</c>의 옛 문서('도형/텍스트는 항상 false')를 믿고 텍스트 커밋에 false를 넘기면 여기가 빨갛다.

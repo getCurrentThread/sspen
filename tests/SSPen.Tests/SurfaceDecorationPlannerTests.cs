@@ -9,7 +9,8 @@ namespace SSPen.Tests;
 /// <see cref="SurfaceDecorationPlanner"/>의 증인 (43단계, SEL-10, SEL-LIM-5/6, R5). 프리미티브 개수·순서(단일 11 / 그룹 7 / 걸친 선택 1 /
 /// 빈 선택 0 — 통합 DecorationRenderTests의 DecorationsPerElement=11과 같은 수), 포즈 프레임의 코너가 <see cref="SelectionGroup.CornerCenter"/>와
 /// 같음, 그리고 <b>교차 불변식</b>: 플래너가 낸 모든 핸들 중심에서 <see cref="SelectionGesturePlanner.Plan"/>을 부르면 같은 종류의 핸들이
-/// 잡힌다 — "그려지는 위치 == 잡히는 위치"의 두 절반이 같은 함수군을 쓴다는 헤드리스 증인.
+/// 잡힌다 — "그려지는 위치 == 잡히는 위치"의 두 절반이 같은 함수군을 쓴다는 헤드리스 증인. 크기 쪽(그려진 가장자리 == 도달거리)과
+/// 회전 시의 알려진 한계는 <c>Plan_EveryDrawnHandleEdge_*</c>·<c>Plan_RotatedElement_*_KnownLimit</c>가 본다 (60단계, A4-6).
 /// </summary>
 public class SurfaceDecorationPlannerTests
 {
@@ -150,6 +151,109 @@ public class SurfaceDecorationPlannerTests
         var rotate = Assert.IsType<HandlePrimitive>(plan[10]);
         Assert.Equal(stem.To, rotate.Center);
         Assert.True(rotate.Center.Y >= TransformMath.HandleScreenSize / 2, $"회전 핸들 Y {rotate.Center.Y}");
+    }
+
+    /// <summary>
+    /// "그려진 크기 == 잡히는 도달거리" — AGENTS L25 불변식의 <b>크기</b> 절반 (60단계, A4-6). 창은 각 핸들을 중심에서 한 변
+    /// <see cref="TransformMath.HandleScreenSize"/>인 월드 축 정렬 사각형(회전 핸들은 같은 지름의 원)으로 그린다. 각도 0에서는
+    /// 그 그림의 가장자리 표본(<see cref="DrawnEdgeOffsets"/>)이 모두 <b>같은</b> 핸들로 잡혀야 한다 — 모서리 핸들은 모서리 우선
+    /// 규칙이 같은 종류를 보장하고, 200×100 요소에서는 변 핸들끼리 겹치지 않는다. 배율 3은 로컬 도달거리를 배율로 나누는
+    /// 보정(<c>reachX/reachY</c>)이 월드 반경을 지키는지 본다. 이 자리의 옛 증인은 같은 상수를 자기 자신과 비교해 아무것도 보지 않았다.
+    /// </summary>
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(3.0)]
+    public void Plan_EveryDrawnHandleEdge_IsGrabbable_AxisAligned_Single(double scale)
+    {
+        // 옛 증인에서 옮긴 사용성 하한: 핸들이 10px 미만이면 잡는 손이 자주 빗나간다.
+        Assert.True(TransformMath.HandleScreenSize >= 10, "핸들이 10px 미만이면 잡는 손이 자주 빗나간다");
+        var element = Stroke(300, 300, 200, 100);
+        element.TransformState = ElementTransformState.Identity with { ScaleX = scale, ScaleY = scale };
+
+        var plan = SurfaceDecorationPlanner.Plan([element], 1, null, null, Surface);
+
+        var expected = TransformMath.SizeHandlesCornersFirst.Append(HandleKind.Rotate).ToArray();
+        var handles = plan.OfType<HandlePrimitive>().ToArray();
+        Assert.Equal(expected.Length, handles.Length);
+        for (int i = 0; i < handles.Length; i++)
+        {
+            foreach (var offset in DrawnEdgeOffsets(square: !handles[i].Rotate))
+            {
+                var point = handles[i].Center + offset;
+                var hit = TransformMath.HitHandle(element.TransformState, element.LocalBounds, point, Surface);
+                Assert.True(hit == expected[i], $"배율 {scale}: {expected[i]} 핸들의 그려진 가장자리 {point}에서 {hit}");
+            }
+        }
+    }
+
+    /// <summary>그룹(각도 0 — 마우스 다운 시점의 프레임): 모서리 4 + 회전 1의 그려진 가장자리가 모두 같은 그룹 핸들로 잡힌다.</summary>
+    [Fact]
+    public void Plan_EveryDrawnHandleEdge_IsGrabbable_AxisAligned_Group()
+    {
+        var owned = new List<AnnotationElement> { Stroke(300, 300, 200, 100), Stroke(600, 400, 100, 100) };
+        var frame = SelectionGroup.Frame(owned)!.Value;
+
+        var plan = SurfaceDecorationPlanner.Plan(owned, 2, null, null, Surface);
+
+        var expected = SelectionGroup.CornersClockwise.Append(GroupHandleKind.Rotate).ToArray();
+        var handles = plan.OfType<HandlePrimitive>().ToArray();
+        Assert.Equal(expected.Length, handles.Length);
+        for (int i = 0; i < handles.Length; i++)
+        {
+            foreach (var offset in DrawnEdgeOffsets(square: !handles[i].Rotate))
+            {
+                var point = handles[i].Center + offset;
+                var hit = SelectionGroup.HitHandle(frame, point, Surface);
+                Assert.True(hit == expected[i], $"{expected[i]} 그룹 핸들의 그려진 가장자리 {point}에서 {hit}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 알려진 한계의 특성화 (A4-6, <see cref="HandlePrimitive"/> 문서): 회전된 요소의 크기 핸들은 월드 축 정렬 사각형으로 그려지지만
+    /// 히트는 요소 로컬 축으로 돈 정사각형이다. 45°에서 그려진 사각형의 모서리 방향 (+4.9, +4.9)는 중심에서 약 6.9px라 로컬 축으로
+    /// 되돌리면 한 축이 도달거리 5를 넘는다 — 보이는데 잡히지 않는다. 반대로 로컬 대각 (4.9, 4.9)를 월드로 올린 점은 그려진 사각형
+    /// 밖인데 잡힌다. 그림을 로컬 축으로 돌리거나 히트를 월드 축으로 바꾸면 여기가 빨개진다 — 그때 이 테스트와 한계 문장을 함께 고친다.
+    /// </summary>
+    [Fact]
+    public void Plan_RotatedElement_SizeHandleDrawnCorner_OutsideReach_KnownLimit()
+    {
+        var element = Stroke(300, 300, 200, 100);
+        element.TransformState = ElementTransformState.Identity with { AngleDegrees = 45 };
+
+        var plan = SurfaceDecorationPlanner.Plan([element], 1, null, null, Surface);
+
+        var sizeHandles = plan.OfType<HandlePrimitive>().Where(h => !h.Rotate).ToArray();
+        Assert.Equal(TransformMath.SizeHandlesCornersFirst.Length, sizeHandles.Length);
+        var drawnCorner = new Vector(4.9, 4.9);
+        var rotatedCorner = element.TransformMatrix.Transform(drawnCorner); // 로컬 대각을 월드로 — 이동 성분 없이 회전만
+        for (int i = 0; i < sizeHandles.Length; i++)
+        {
+            var kind = TransformMath.SizeHandlesCornersFirst[i];
+            var center = sizeHandles[i].Center;
+            Assert.Null(TransformMath.HitHandle(element.TransformState, element.LocalBounds, center + drawnCorner, Surface));
+            Assert.Equal(kind, TransformMath.HitHandle(element.TransformState, element.LocalBounds, center + rotatedCorner, Surface));
+        }
+    }
+
+    /// <summary>
+    /// 그려진 핸들 가장자리의 표본: 축 방향 네 점(원·사각형 공통), 사각형이면 네 모서리도. 경계에서 부동소수 오차로
+    /// 갈리지 않도록 0.01 안쪽을 잡는다.
+    /// </summary>
+    private static IEnumerable<Vector> DrawnEdgeOffsets(bool square)
+    {
+        double r = TransformMath.HandleScreenSize / 2 - 0.01;
+        yield return new Vector(r, 0);
+        yield return new Vector(-r, 0);
+        yield return new Vector(0, r);
+        yield return new Vector(0, -r);
+        if (square)
+        {
+            yield return new Vector(r, r);
+            yield return new Vector(r, -r);
+            yield return new Vector(-r, r);
+            yield return new Vector(-r, -r);
+        }
     }
 
     /// <summary>단일 술어 규약: HandlesGrabbable의 정의는 SelectionGroup 한 곳뿐이고 플래너는 사전 bool을 받지 않는다.</summary>
