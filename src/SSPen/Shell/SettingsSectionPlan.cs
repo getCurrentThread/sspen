@@ -25,6 +25,8 @@ public static class SettingsSectionPlan
     /// <summary>
     /// 섹션 표시 순서 (일반 → 판서 화면 → 바로가기 색상 → 실험적 기능 → 단축키). 실험적 기능(73단계)은 접힌 단축키 위에 둔다 —
     /// 기본 켜짐인 기능을 끄는 스위치가 21행 목록 뒤에 숨으면 문제가 생겼을 때 찾지 못한다.
+    /// 창이 이 목록을 돌며 섹션을 쌓는다 — 순서의 원천은 여기 하나다 (102단계). 예전에는 창이 순서를 손으로 쌓아
+    /// 이 목록을 잠그는 테스트가 실제 창과 무관했다.
     /// </summary>
     public static readonly IReadOnlyList<SettingsSection> Order =
         [SettingsSection.General, SettingsSection.Monitors, SettingsSection.QuickColors, SettingsSection.Experimental, SettingsSection.Hotkeys];

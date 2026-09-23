@@ -3,7 +3,10 @@ using Xunit;
 
 namespace SSPen.Tests;
 
-/// <summary><see cref="SettingsSectionPlan"/>의 증인: 접힘 기본값·검색 판정·최소 크기.</summary>
+/// <summary>
+/// <see cref="SettingsSectionPlan"/>의 증인: 섹션 순서·접힘 기본값·검색 판정·최소 크기. 102단계부터 설정 창이
+/// <see cref="SettingsSectionPlan.Order"/>를 돌며 섹션을 쌓으므로 순서 단언이 실제 창을 잠근다(실현된 창 쪽 증인은 <see cref="SettingsWindowTests"/>).
+/// </summary>
 public class SettingsSectionPlanTests
 {
     [Fact]

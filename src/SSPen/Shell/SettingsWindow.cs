@@ -159,35 +159,56 @@ public sealed class SettingsWindow : Window
         };
         monitorSection.Children.Add(_monitorNotice);
 
+        // 섹션 순서의 원천은 SettingsSectionPlan.Order 하나다 (102단계, FINAL-REVIEW-SECTION-ORDER) — 예전에는 여기서 섹션을
+        // 손으로 쌓아 Order를 잠그는 계획 테스트가 실제 창을 잠그지 못했다. 섹션 안의 행 순서는 SectionElements의 각 팔이 정한다.
+        // 섹션을 새 패널로 싸지 않고 요소를 stack에 바로 넣는다 — 트리·배치가 예전 손 조립과 같다(픽셀 불변).
         var stack = new StackPanel { Margin = new Thickness(14) };
-        stack.Children.Add(SectionHeader(Strings.SettingsGeneral));
-        stack.Children.Add(_runAtLogin);
-        stack.Children.Add(updateRow);
-        stack.Children.Add(_wheelSize);
-        stack.Children.Add(_syncStyles);
-        stack.Children.Add(_boardAll);
-        stack.Children.Add(_boardSingle);
-        stack.Children.Add(RowLabel(Strings.SettingsBoardDefault));
-        stack.Children.Add(_boardWhite);
-        stack.Children.Add(_boardBlack);
-        stack.Children.Add(_halo);
-        stack.Children.Add(RowLabel(Strings.SettingsSaveFolder));
-        stack.Children.Add(folderRow);
-        stack.Children.Add(monitorSection);
-        stack.Children.Add(SectionHeader(Strings.SettingsQuickColors));
-        stack.Children.Add(BuildQuickColorRow());
-        // 실험적 기능은 접힌 단축키 위 (SettingsSectionPlan.Order, 73단계): 섹션 머리 + 체크박스 + 회색 힌트(판서 화면·바로가기 색상 힌트와 같은 모양).
-        stack.Children.Add(SectionHeader(Strings.SettingsExperimental));
-        stack.Children.Add(_zBandPolling);
-        stack.Children.Add(new TextBlock
+        foreach (var section in SettingsSectionPlan.Order)
         {
-            Text = Strings.SettingsZBandPollingHint,
-            Margin = new Thickness(4, 0, 4, 6),
-            Foreground = Brushes.Gray,
-            FontSize = 11,
-            TextWrapping = TextWrapping.Wrap,
-        });
-        stack.Children.Add(BuildHotkeySection(host));
+            foreach (var element in SectionElements(section))
+            {
+                stack.Children.Add(element);
+            }
+        }
+
+        // 섹션 → 요소 빌더. 팔이 없는 섹션은 창을 만드는 순간 던진다 — 조용히 빠진 섹션이 되지 않게 (SettingsWindowTests가 전수로 잠근다).
+        IReadOnlyList<UIElement> SectionElements(SettingsSection section) => section switch
+        {
+            SettingsSection.General =>
+            [
+                SectionHeader(Strings.SettingsGeneral),
+                _runAtLogin,
+                updateRow,
+                _wheelSize,
+                _syncStyles,
+                _boardAll,
+                _boardSingle,
+                RowLabel(Strings.SettingsBoardDefault),
+                _boardWhite,
+                _boardBlack,
+                _halo,
+                RowLabel(Strings.SettingsSaveFolder),
+                folderRow,
+            ],
+            SettingsSection.Monitors => [monitorSection],
+            SettingsSection.QuickColors => [SectionHeader(Strings.SettingsQuickColors), BuildQuickColorRow()],
+            // 실험적 기능은 접힌 단축키 위 (SettingsSectionPlan.Order, 73단계): 섹션 머리 + 체크박스 + 회색 힌트(판서 화면·바로가기 색상 힌트와 같은 모양).
+            SettingsSection.Experimental =>
+            [
+                SectionHeader(Strings.SettingsExperimental),
+                _zBandPolling,
+                new TextBlock
+                {
+                    Text = Strings.SettingsZBandPollingHint,
+                    Margin = new Thickness(4, 0, 4, 6),
+                    Foreground = Brushes.Gray,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                },
+            ],
+            SettingsSection.Hotkeys => [BuildHotkeySection(host)],
+            _ => throw new ArgumentOutOfRangeException(nameof(section), section, "빌더가 배선되지 않은 설정 창 섹션 (102단계)"),
+        };
 
         // 하단 "업데이트 확인" 버튼은 뺐다: 버전 라벨 옆 인라인 버튼과 같은 동작이라,
         // 나란히 놓인 확인/취소와 같은 무게로 보이면 그 줄이 무엇을 확정하는 줄인지 흐려진다.
