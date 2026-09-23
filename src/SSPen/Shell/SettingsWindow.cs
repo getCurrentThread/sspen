@@ -453,8 +453,9 @@ public sealed class SettingsWindow : Window
     /// 확인: 컨트롤 → 값 스냅샷은 여기, 값 → AppSettings는 <see cref="SettingsFormRules"/> (41단계).
     /// <c>_host.Settings</c>를 제자리 변형하고 ApplyGeneralSettings를 정확히 1회 부른다 — 새 AppSettings를 만들면 폼에 없는
     /// 필드(핫키·툴바 위치·페이딩·도구별 스타일)가 소실된다.
+    /// 창을 닫을지는 반환한 결과의 <see cref="SettingsApplyResult.KeepsWindowOpen"/>이 정한다 (78단계, A6-1).
     /// </summary>
-    private void Apply()
+    private SettingsApplyResult Apply()
     {
         var values = new SettingsFormValues(
             RunAtLogin: _runAtLogin.IsChecked == true,
@@ -478,7 +479,7 @@ public sealed class SettingsWindow : Window
             _host.RemapHotkey(id, def);
         }
         _host.ApplyGeneralSettings(updated);
-        if (result.MonitorSelectionCoerced && result.RestoredDeviceName is { } device)
+        if (result.KeepsWindowOpen && result.RestoredDeviceName is { } device)
         {
             // 교정을 알리되 창은 닫지 않는다: 사용자가 방금 무슨 일이 일어났는지 보고 다시 고를 수 있어야 한다.
             _monitorNotice.Text = Strings.MonitorRestored(device);
@@ -489,13 +490,22 @@ public sealed class SettingsWindow : Window
                 restored.CheckBox.IsChecked = true;
             }
         }
+        else
+        {
+            // 이번 확인에는 교정이 없었다 — 지난 교정의 알림을 접는다 (78단계, A6-1).
+            _monitorNotice.Visibility = Visibility.Collapsed;
+        }
+        return result;
     }
 
-    /// <summary>확인 버튼: 적용 후 교정이 있었으면 창을 열어 둔다 (사용자가 결과를 봐야 한다).</summary>
+    /// <summary>
+    /// 확인 버튼: 적용 후 교정이 있었으면 창을 열어 둔다 (사용자가 결과를 봐야 한다). 판정은 순수 결과값
+    /// <see cref="SettingsApplyResult.KeepsWindowOpen"/> 하나다 — 알림 라벨의 가시성을 읽으면 한 번 뜬 알림이
+    /// 이후의 모든 확인을 막는다 (78단계, A6-1).
+    /// </summary>
     private void ApplyAndClose()
     {
-        Apply();
-        if (_monitorNotice.Visibility != Visibility.Visible)
+        if (!Apply().KeepsWindowOpen)
         {
             Close();
         }

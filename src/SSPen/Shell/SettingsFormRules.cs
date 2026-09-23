@@ -19,7 +19,15 @@ public readonly record struct SettingsFormValues(
     bool ZBandPolling);
 
 /// <summary>적용 결과. 규칙이 사용자 입력을 <b>교정</b>했다면 무엇을 되살렸는지 알린다.</summary>
-public readonly record struct SettingsApplyResult(bool MonitorSelectionCoerced, string? RestoredDeviceName);
+public readonly record struct SettingsApplyResult(bool MonitorSelectionCoerced, string? RestoredDeviceName)
+{
+    /// <summary>
+    /// 확인 버튼이 창을 열어 두는가 (78단계, A6-1): 교정 알림을 보여야 하므로 창을 열어 둔다. 창이 알림을 띄우는 조건과
+    /// 한 글자도 다르지 않은 식이어야 한다 — 예전에는 창이 '알림 라벨이 보이는가'로 닫기를 판정했는데 그 라벨을 접는
+    /// 코드가 없어서, 한 번 교정된 뒤로는 교정이 없는 확인도 창을 닫지 못했다.
+    /// </summary>
+    public bool KeepsWindowOpen => MonitorSelectionCoerced && RestoredDeviceName is not null;
+}
 
 /// <summary>
 /// 폼 값 → AppSettings 매핑의 순수 규칙 (41단계, WI-16/AC-26). ToolbarStateMap 선례대로 컨트롤→값은 창이, 값→설정은 여기가.

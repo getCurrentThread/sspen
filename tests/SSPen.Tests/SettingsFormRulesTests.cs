@@ -141,4 +141,73 @@ public class SettingsFormRulesTests
         Assert.All(target.QuickColors, hex => Assert.Equal(ColorPalette.ToHex(purple), hex));
         Assert.Equal(purple, ColorPalette.RestoreQuickColors(target.QuickColors)[0]); // 왕복
     }
+
+    // ── 확인 버튼이 창을 열어 두는가 (78단계, A6-1) ──
+    // 예전에는 창이 '교정 알림 라벨이 보이는가'로 닫기를 판정했는데, 그 라벨을 접는 코드가 없어서 한 번 교정된 뒤로는
+    // 확인 버튼이 영영 창을 닫지 못했다. 판정은 이제 순수 결과값 KeepsWindowOpen 하나이고, 아래가 그 증인이다.
+
+    private static readonly IReadOnlyList<(string, bool)> AllUnchecked =
+        [(@"\\.\DISPLAY1", false), (@"\\.\DISPLAY2", false), (@"\\.\DISPLAY3", false)];
+
+    /// <summary>판서 화면을 전부 해제하면 첫 화면을 되살렸다고 알려야 하므로 창을 열어 둔다.</summary>
+    [Fact]
+    public void KeepsWindowOpen_AllMonitorsUnchecked_True()
+    {
+        var result = SettingsFormRules.ApplyTo(new AppSettings(), Values(monitors: AllUnchecked), DefaultFolder);
+
+        Assert.True(result.KeepsWindowOpen);
+        Assert.Equal(@"\\.\DISPLAY1", result.RestoredDeviceName);
+    }
+
+    [Fact]
+    public void KeepsWindowOpen_OneChecked_False()
+    {
+        var result = SettingsFormRules.ApplyTo(
+            new AppSettings(), Values(monitors: [(@"\\.\DISPLAY1", false), (@"\\.\DISPLAY2", true), (@"\\.\DISPLAY3", false)]), DefaultFolder);
+
+        Assert.False(result.KeepsWindowOpen);
+    }
+
+    [Fact]
+    public void KeepsWindowOpen_NoMonitors_False()
+    {
+        var result = SettingsFormRules.ApplyTo(new AppSettings(), Values(monitors: []), DefaultFolder);
+
+        Assert.False(result.KeepsWindowOpen);
+    }
+
+    /// <summary>
+    /// 창이 실제로 겪는 순서의 순수 증인(회귀): 1회차 확인은 모두 해제 → 교정 → 창 유지, 창은 되살린 체크박스를 다시 켜 두므로
+    /// 2회차 확인은 DISPLAY1이 켜진 채 들어와 교정이 없다 → 창이 닫혀야 한다. 결함 시절에는 1회차에 띄운 알림 라벨이
+    /// 남아 있어 2회차에도 창이 열려 있었다.
+    /// </summary>
+    [Fact]
+    public void ApplyTo_SecondApplyWithRestoredChecked_DoesNotKeepOpen()
+    {
+        var target = new AppSettings();
+
+        var first = SettingsFormRules.ApplyTo(target, Values(monitors: AllUnchecked), DefaultFolder);
+        var second = SettingsFormRules.ApplyTo(
+            target, Values(monitors: [(@"\\.\DISPLAY1", true), (@"\\.\DISPLAY2", false), (@"\\.\DISPLAY3", false)]), DefaultFolder);
+
+        Assert.True(first.KeepsWindowOpen);
+        Assert.False(second.KeepsWindowOpen);
+        Assert.Equal([@"\\.\DISPLAY2", @"\\.\DISPLAY3"], target.DisabledMonitors);
+    }
+
+    /// <summary>
+    /// 창이 알림을 띄우는 조건(교정됨 + 되살린 장치 이름 있음)과 한 글자도 다르지 않다 — 이름 없는 교정은 띄울 알림이 없으니
+    /// 창을 열어 둘 이유도 없다. 규칙은 이 조합을 만들지 않지만, 두 조건이 어긋나면 '알림 없이 안 닫히는 창'이 된다.
+    /// </summary>
+    [Theory]
+    [InlineData(true, @"\\.\DISPLAY1", true)]
+    [InlineData(true, null, false)]
+    [InlineData(false, @"\\.\DISPLAY1", false)]
+    [InlineData(false, null, false)]
+    public void KeepsWindowOpen_RequiresCoercionAndDeviceName(bool coerced, string? device, bool expected)
+    {
+        var result = new SettingsApplyResult(coerced, device);
+
+        Assert.Equal(expected, result.KeepsWindowOpen);
+    }
 }
