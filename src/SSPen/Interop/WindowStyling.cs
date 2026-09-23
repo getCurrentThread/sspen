@@ -68,6 +68,8 @@ public static class WindowStyling
     /// 클릭/표시/재배치/활성화로 OS가 창을 밴드 최상단으로 올리려는 순간 WM_WINDOWPOSCHANGING에서 삽입 위치를
     /// 앵커 바로 아래로 돌린다. "올리려는 요청"의 판정은 <see cref="AnchorBelowRules.IsRise"/>가 소유한다 —
     /// 상수(HWND_TOP 등)뿐 아니라 <b>자기 소유 창 바로 아래</b>(활성화된 적 있는 창의 IME 창)로 오는 요청도 상승이다 (54단계 L1).
+    /// 바꿀지·무엇으로 바꿀지의 판정 전체(밴드 적용 중 억제 → SWP_NOZORDER → 상승 → 앵커 0/자기 자신)는
+    /// <see cref="AnchorBelowRules.RedirectTarget"/>이 가진다 (74단계 A7-2). 이 훅은 WINDOWPOS 읽기·쓰기만 한다.
     /// (사용자 조타: 도구 선택 뒤 서피스가 툴바를 덮어 상호작용 불가 버그의 항구 수정.)
     /// 반환된 훅 델리게이트는 호출 측 필드로 붙잡아 GC를 막아야 한다.
     /// </summary>
@@ -75,18 +77,17 @@ public static class WindowStyling
     {
         HwndSourceHook hook = (nint h, int msg, nint wParam, nint lParam, ref bool handled) =>
         {
+            // 밴드 적용 중이면 WINDOWPOS를 읽지도 않고 끊는다 — 추출 전과 같은 부작용 순서. RedirectTarget의 applyingBand 인자는
+            // 같은 억제 규칙의 순수 계약이다(여기서는 늘 거짓).
             if (msg == NativeMethods.WM_WINDOWPOSCHANGING && !_applyingBand)
             {
                 var pos = Marshal.PtrToStructure<NativeMethods.WINDOWPOS>(lParam);
-                bool zChanging = (pos.flags & NativeMethods.SWP_NOZORDER) == 0;
-                if (zChanging && AnchorBelowRules.IsRise(pos.hwndInsertAfter, hwnd, OwnerOf))
+                nint target = AnchorBelowRules.RedirectTarget(
+                    pos.flags, pos.hwndInsertAfter, hwnd, _applyingBand, anchorProvider, OwnerOf);
+                if (target != 0)
                 {
-                    nint anchor = anchorProvider();
-                    if (anchor != 0 && anchor != hwnd)
-                    {
-                        pos.hwndInsertAfter = anchor;
-                        Marshal.StructureToPtr(pos, lParam, false);
-                    }
+                    pos.hwndInsertAfter = target;
+                    Marshal.StructureToPtr(pos, lParam, false);
                 }
             }
             return 0;
@@ -168,12 +169,16 @@ public static class WindowStyling
     }
 
     /// <summary>
-    /// <see cref="ApplyZBand"/>가 도는 동안 참. 밴드 적용의 구체 삽입(이전 핀·이전 서피스 뒤)은 활성화된 적 있는 창에서
+    /// <see cref="ApplyZBand(IReadOnlyList{nint})"/>가 도는 동안 참. 밴드 적용의 구체 삽입(이전 핀·이전 서피스 뒤)은 활성화된 적 있는 창에서
     /// "자기 IME 창 바로 아래"로 도착해 상승 요청과 구별할 수 없다 (통합 테스트 실측: flags=0x13 insertAfter=IME(owner=self)).
     /// 그 삽입은 의도된 것이므로 요청 단계 훅이 손대지 않는다 — 앵커로 돌리면 핀끼리·서피스끼리의 순서가 뒤집혀 사후 검증이 헛돈다.
-    /// UI 스레드 전용이다.
+    /// UI 스레드 전용이다. 억제 판정은 <see cref="AnchorBelowRules.RedirectTarget"/>, 설정·복원은
+    /// <see cref="ApplyZBand(IReadOnlyList{nint}, Func{nint, nint, bool})"/>의 헤드리스 증인(<c>WindowStylingZBandTests</c>)이 잠근다 (74단계).
     /// </summary>
     private static bool _applyingBand;
+
+    /// <summary><see cref="_applyingBand"/> 읽기 창구 — 헤드리스 증인(<c>WindowStylingZBandTests</c>)용 (74단계 A7-2).</summary>
+    internal static bool IsApplyingBand => _applyingBand;
 
     /// <summary>소유자 조회 (<c>GW_OWNER</c>) — <see cref="AnchorBelowRules"/>에 주입한다.</summary>
     public static nint OwnerOf(nint hwnd) => NativeMethods.GetWindow(hwnd, NativeMethods.GW_OWNER);
@@ -237,11 +242,32 @@ public static class WindowStyling
 
     /// <summary>
     /// z-밴드 재적용. 목록은 위→아래 순서의 HWND. 첫 창을 톱모스트 최상단에 올린 뒤
-    /// 나머지를 순서대로 그 아래에 삽입한다.
+    /// 나머지를 순서대로 그 아래에 삽입한다. 배치는 <c>SetWindowPos</c>(이동·크기·활성화 없음)이고, 실패하면 경고 로그를 남긴다 —
+    /// 루프 규칙은 <see cref="ApplyZBand(IReadOnlyList{nint}, Func{nint, nint, bool})"/>가 가진다.
     /// </summary>
-    public static void ApplyZBand(IReadOnlyList<nint> topToBottom)
+    public static void ApplyZBand(IReadOnlyList<nint> topToBottom) =>
+        ApplyZBand(topToBottom, static (hwnd, insertAfter) =>
+        {
+            const uint flags = NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE;
+            bool ok = NativeMethods.SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0, flags);
+            if (!ok)
+            {
+                // 실패는 조용히 지나가면 "가끔 툴바가 안 눌림"으로만 드러난다 — 원인(낡은 HWND 등)을 남긴다 (54단계 L5).
+                // 오류 코드는 SetWindowPos 바로 뒤에서 읽는다.
+                Diagnostics.Log.Warn(
+                    $"z-밴드 적용 실패: hwnd=0x{hwnd:X} insertAfter=0x{insertAfter:X} 오류={Marshal.GetLastWin32Error()}");
+            }
+            return ok;
+        });
+
+    /// <summary>
+    /// <see cref="ApplyZBand(IReadOnlyList{nint})"/>의 루프 — 배치(<paramref name="place"/>, 성공 여부를 돌려준다)를 주입받는 이음매 (74단계 A7-2).
+    /// 규칙 (54단계 L5): 0 항목은 건너뛴다. 첫 성공 전까지는 <c>HWND_TOPMOST</c>에, 그 뒤로는 <b>마지막으로 성공한</b> 창 뒤에 삽입한다 —
+    /// 실패한 항목은 건너뛰고 다음 항목이 그 자리를 잇는다. 도는 동안 <see cref="_applyingBand"/>가 참이고(요청 단계 억제, AGENTS L15),
+    /// 끝나면 — 예외로 끝나도 — 들어올 때의 값으로 복원한다(중첩 호출 안전). UI 스레드 전용이다.
+    /// </summary>
+    internal static void ApplyZBand(IReadOnlyList<nint> topToBottom, Func<nint, nint, bool> place)
     {
-        const uint flags = NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE;
         bool wasApplying = _applyingBand;
         _applyingBand = true;
         try
@@ -254,11 +280,8 @@ public static class WindowStyling
                     continue;
                 }
                 nint insertAfter = previous == 0 ? NativeMethods.HWND_TOPMOST : previous;
-                if (!NativeMethods.SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0, flags))
+                if (!place(hwnd, insertAfter))
                 {
-                    // 실패는 조용히 지나가면 "가끔 툴바가 안 눌림"으로만 드러난다 — 원인(낡은 HWND 등)을 남긴다 (54단계 L5).
-                    Diagnostics.Log.Warn(
-                        $"z-밴드 적용 실패: hwnd=0x{hwnd:X} insertAfter=0x{insertAfter:X} 오류={Marshal.GetLastWin32Error()}");
                     continue;
                 }
                 previous = hwnd;
