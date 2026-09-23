@@ -32,7 +32,10 @@ public static class DestructiveActionRules
     /// 사용자가 누른 실행취소가 그 이전의 무관한 조작을 되살린다. 판서를 지운 경우의 문구는 예전과 바이트까지 같다.
     /// </summary>
     /// <param name="clearedInk"><c>LedgerCommands.ClearAll</c>이 돌려준, 실제로 지운 판서 요소 수.</param>
-    /// <param name="closedPins">함께 닫은 핀 수.</param>
+    /// <param name="closedPins">
+    /// 함께 <b>실제로</b> 닫은 핀 수 (<c>LedgerCommands.ClearAll</c>의 결과). 확인 전에 읽은 <see cref="ClearAllPrompt.PinCount"/>를
+    /// 넘기지 말 것 — 모달이 떠 있는 동안 핀이 닫히거나 생기면 알림이 실제와 어긋난다 (100단계, FINAL-REVIEW-DONENOTICE-COUNT).
+    /// </param>
     /// <param name="undoCombo">실행취소 단축키 표기. 해제돼 있으면 null.</param>
     /// <returns>알릴 문구. 지운 것도 닫은 것도 없으면 null(무동작은 말을 걸지 않는다).</returns>
     public static string? DoneNotice(int clearedInk, int closedPins, string? undoCombo)

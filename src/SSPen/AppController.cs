@@ -81,7 +81,7 @@ public sealed class AppController : IShellActions, ISettingsHost
             ownerOf: OwnerOf,
             flushPendingTransforms: FlushAllPendingTransforms,
             transferSurfaces: TransferSurfaces,
-            closePins: () => _pins?.CloseAll());
+            closePins: () => _pins?.CloseAll() ?? 0);
         _fading = new FadingInkController(_fadeCore);
         // 공유 렌더 틱 정책은 RenderTickController가 소유한다 (45단계). 서피스 조회·후광 팬아웃·커서 폴링은 루트의 델리게이트다.
         _renderTick = new RenderTickController(
@@ -592,10 +592,12 @@ public sealed class AppController : IShellActions, ISettingsHost
             }
         }
         // 지운 개수를 버리지 않는다 — 판서 0개(핀만 닫힘)면 원장 항목이 없으므로 되돌리기 안내를 빼야 한다 (85단계, A1-3).
-        int cleared = _commands.ClearAll();
+        // 알림의 핀 수도 ClearAll이 실제로 닫은 값이다. prompt.PinCount는 모달 전에 읽어, 확인 상자가 떠 있는 동안
+        // 핀이 Esc·더블클릭으로 닫히거나 새로 생기면 실제와 어긋난다 (100단계, FINAL-REVIEW-DONENOTICE-COUNT).
+        var result = _commands.ClearAll();
         // 지운 직후가 되돌리는 법을 알려 줄 유일한 시점이다 (핀은 그 대상이 아니라는 것은 확인 대화상자가 이미 말했다).
         string? undoCombo = _shellHotkeys?.HotkeyLabel("undo");
-        if (DestructiveActionRules.DoneNotice(cleared, prompt.PinCount, undoCombo) is { } text)
+        if (DestructiveActionRules.DoneNotice(result.ClearedInk, result.ClosedPins, undoCombo) is { } text)
         {
             _toasts?.Show(new ToastRequest(ToastKind.Info, text));
         }

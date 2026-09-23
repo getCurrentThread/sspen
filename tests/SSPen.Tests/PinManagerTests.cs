@@ -105,6 +105,35 @@ public class PinManagerTests
         Assert.Equal(1, changed);
     });
 
+    /// <summary>
+    /// CloseAll은 자기가 닫은 핀 수를 돌려준다 (100단계, FINAL-REVIEW-DONENOTICE-COUNT). 전체 지우기 확인 상자가 떠 있는 동안
+    /// 사용자가 핀 하나를 Esc로 닫으면 그 핀은 PinClosed로 곧바로 목록에서 빠진다 — 확인 전에 읽은 2가 아니라 1이 실제로 닫은 수다.
+    /// </summary>
+    [Fact]
+    public void CloseAll_PinClosedAfterCountWasRead_ReturnsOnlyPinsItClosed() => RunSta(() =>
+    {
+        var (mgr, _) = NewManager();
+        var first = NewPin();
+        mgr.Adopt(first);
+        mgr.Adopt(NewPin());
+        int countAtPrompt = mgr.Pins.Count;
+        first.ClosePin();
+
+        int closed = mgr.CloseAll();
+
+        Assert.Equal(2, countAtPrompt);
+        Assert.Equal(1, closed);
+        Assert.Empty(mgr.Pins);
+    });
+
+    [Fact]
+    public void CloseAll_NoPins_ReturnsZero() => RunSta(() =>
+    {
+        var (mgr, _) = NewManager();
+
+        Assert.Equal(0, mgr.CloseAll());
+    });
+
     private static (PinManager Manager, FakeHookInstaller Fake) NewManager()
     {
         var fake = new FakeHookInstaller();

@@ -529,7 +529,7 @@ public class SurfaceCancelOrderTests
                 ownerOf: element => Document.Elements.Contains(element) ? Document : null,
                 flushPendingTransforms: Controller.FlushPendingTransforms,
                 transferSurfaces: () => [],
-                closePins: () => { });
+                closePins: () => 0);
         }
 
         public LedgerCommands Commands { get; }

@@ -22,6 +22,10 @@ public class LedgerCommandsTests
         public List<string> Trace { get; } = [];
         public List<TransferSurface> Surfaces { get; } = [];
         public int TransferQueries { get; private set; }
+
+        /// <summary>핀 닫기 델리게이트가 닫을 "열린 핀" 수 — 닫으면 0이 된다 (PinManager.CloseAll 흉내, 100단계).</summary>
+        public int OpenPins { get; set; }
+
         public LedgerCommands Commands { get; }
 
         public Rig()
@@ -46,7 +50,13 @@ public class LedgerCommandsTests
                     TransferQueries++;
                     return Surfaces;
                 },
-                closePins: () => Trace.Add("close-pins"));
+                closePins: () =>
+                {
+                    Trace.Add("close-pins");
+                    int closed = OpenPins;
+                    OpenPins = 0;
+                    return closed;
+                });
         }
 
         public AnnotationDocument? OwnerOf(AnnotationElement element) =>
@@ -331,7 +341,7 @@ public class LedgerCommandsTests
         r.AddStroke(0, 30, 10);
         r.AddStroke(1, 10, 10);
 
-        Assert.Equal(3, r.Commands.ClearAll());
+        Assert.Equal(3, r.Commands.ClearAll().ClearedInk);
     }
 
     /// <summary>
@@ -349,7 +359,7 @@ public class LedgerCommandsTests
         int before = r.Ledger.Count;
         r.Trace.Clear();
 
-        int cleared = r.Commands.ClearAll();
+        int cleared = r.Commands.ClearAll().ClearedInk;
 
         Assert.Equal(0, cleared);
         Assert.Equal(before, r.Ledger.Count);
@@ -367,7 +377,29 @@ public class LedgerCommandsTests
         int expected = r.Commands.ClearableCount();
         Assert.Equal(2, expected);
         Assert.Equal(2, r.Commands.ClearableCount()); // 두 번 물어도 값이 같다 (부작용 없음)
-        Assert.Equal(expected, r.Commands.ClearAll());
+        Assert.Equal(expected, r.Commands.ClearAll().ClearedInk);
         Assert.Equal(0, r.Commands.ClearableCount());
+    }
+
+    /// <summary>
+    /// 전체 지우기는 핀 닫기 델리게이트가 <b>실제로</b> 닫은 핀 수를 돌려준다 (100단계, FINAL-REVIEW-DONENOTICE-COUNT).
+    /// 루트는 확인 상자를 띄우기 <b>전에</b> 핀 수를 읽는데, 모달이 떠 있는 동안 핀이 Esc·더블클릭으로 닫히거나 새로 생길 수 있다 —
+    /// 완료 알림이 그 낡은 값을 쓰면 "고정된 캡처 2개를 닫았습니다"가 실제로는 1개를 닫은 뒤에 뜬다.
+    /// </summary>
+    [Theory]
+    [InlineData(2, 1)] // 모달 중 하나를 닫았다
+    [InlineData(1, 3)] // 모달 중 둘이 새로 생겼다
+    [InlineData(2, 0)] // 모달 중 전부 닫혔다
+    public void ClearAll_PinSetChangedWhileConfirming_ReportsPinsActuallyClosed(int pinsAtPrompt, int pinsAtClear)
+    {
+        var r = new Rig { OpenPins = pinsAtPrompt };
+        r.AddStroke(0, 10, 10);
+        r.OpenPins = pinsAtClear;
+
+        var result = r.Commands.ClearAll();
+
+        Assert.Equal(pinsAtClear, result.ClosedPins);
+        Assert.Equal(1, result.ClearedInk);
+        Assert.Equal(0, r.OpenPins);
     }
 }

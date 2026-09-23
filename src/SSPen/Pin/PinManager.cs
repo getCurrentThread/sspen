@@ -80,12 +80,20 @@ public sealed class PinManager
 
     public void NotifyClickThroughChanged() => _monitor.Refresh();
 
-    public void CloseAll()
+    /// <summary>열린 핀을 모두 닫는다.</summary>
+    /// <returns>
+    /// 이 호출이 닫은 핀 수 (100단계, FINAL-REVIEW-DONENOTICE-COUNT). 전체 지우기 완료 알림의 근거다 — 확인 상자 전에 읽은
+    /// <see cref="Pins"/> 수는 모달 중에 낡는다. 이미 닫히는 중인 핀은 여기 없다: <see cref="PinWindow.ClosePin"/>이
+    /// <see cref="PinWindow.PinClosed"/>를 동기로 올려 <see cref="OnPinClosed"/>가 곧바로 목록에서 뺀다.
+    /// </returns>
+    public int CloseAll()
     {
-        foreach (var pin in _pins.ToArray())
+        var open = _pins.ToArray();
+        foreach (var pin in open)
         {
             pin.ClosePin();
         }
+        return open.Length;
     }
 
     public void Dispose()

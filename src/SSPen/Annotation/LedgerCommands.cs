@@ -3,6 +3,12 @@ using SSPen.Diagnostics;
 namespace SSPen.Annotation;
 
 /// <summary>
+/// 전체 지우기가 <b>실제로</b> 한 일: 지운 판서 요소 수와 닫은 핀 수 (100단계, FINAL-REVIEW-DONENOTICE-COUNT).
+/// 셸의 완료 알림은 이 값만 쓴다 — 확인 상자 전에 읽은 핀 수는 모달이 떠 있는 동안(Esc·더블클릭 닫기, 새 캡처) 낡는다.
+/// </summary>
+public readonly record struct ClearAllResult(int ClearedInk, int ClosedPins);
+
+/// <summary>
 /// 원장 명령의 <b>단일 소유자</b> (47단계 — R5, R7(c), SEL-12/SEL-13, f3, CRIT-06): 실행취소·전체 지우기·선택 삭제·클릭 통과 전환·
 /// ESC 해제·변형 확정(이관 포함). 합성 루트(<c>AppController</c>)에 흩어져 있던 여섯 진입점을 옮긴 것으로, 창·핀·서피스 목록을
 /// 모른다 — 서피스가 있어야 답할 수 있는 질문은 전부 델리게이트다:
@@ -11,7 +17,7 @@ namespace SSPen.Annotation;
 ///   <item><c>ownerOf</c> — 요소의 <b>현재</b> 소유 문서 (이관 뒤에도 유효; <see cref="UndoLedger"/>와 같은 술어).</item>
 ///   <item><c>flushPendingTransforms</c> — R7(c): 원장에 싣거나 소비하는 진입점 <b>선두</b>의 휠 세션 확정 팬아웃 (전 서피스).</item>
 ///   <item><c>transferSurfaces</c> — 이관 후보 투사 (<see cref="SurfaceProjection"/>); 놓은 지점이 있을 때만 평가한다.</item>
-///   <item><c>closePins</c> — 전체 지우기의 핀 닫기. <b>실행취소 대상이 아니다</b> (원장은 판서 문서만 다룬다).</item>
+///   <item><c>closePins</c> — 전체 지우기의 핀 닫기. 실제로 닫은 핀 수를 돌려준다 (100단계). <b>실행취소 대상이 아니다</b> (원장은 판서 문서만 다룬다).</item>
 /// </list>
 /// 이름이 <c>EditingCommands</c>가 아닌 이유: WPF <c>System.Windows.Documents.EditingCommands</c>와 충돌한다.
 /// <see cref="SelectionModel.SelectionChanged"/>는 구독하지 않는다 (R5) — 클릭 통과 전환은 제스처(제자리 클릭·ESC·삭제 완료)에만
@@ -25,7 +31,7 @@ public sealed class LedgerCommands(
     Func<AnnotationElement, AnnotationDocument?> ownerOf,
     Action flushPendingTransforms,
     Func<IReadOnlyList<TransferSurface>> transferSurfaces,
-    Action closePins)
+    Func<int> closePins)
 {
     /// <summary>
     /// 가장 최근 조작 취소 (전역 시간순 원장). 플러시가 <b>먼저</b>다 — 없으면 확대 직후 실행취소가 확대가 아니라
@@ -48,8 +54,11 @@ public sealed class LedgerCommands(
     /// 깨끗이 비우는 동작이라고 기대하는데 핀만 남으면 다시 하나씩 닫아야 했다.
     /// <b>핀 닫기는 실행취소 대상이 아니다</b> — 원장은 판서 문서만 다룬다.
     /// </summary>
-    /// <returns>지운 판서 요소 수. 셸이 "무엇을 지웠는지" 알려 줄 때와 무동작을 판별할 때 쓴다.</returns>
-    public int ClearAll()
+    /// <returns>
+    /// 지운 판서 요소 수와 <b>실제로</b> 닫은 핀 수. 셸이 "무엇을 지웠는지" 알려 줄 때와 무동작을 판별할 때 쓴다 —
+    /// 핀 수는 확인 상자 전에 읽은 값이 아니라 닫는 순간의 값이다 (100단계).
+    /// </returns>
+    public ClearAllResult ClearAll()
     {
         flushPendingTransforms();
         var cleared = documents()
@@ -58,8 +67,8 @@ public sealed class LedgerCommands(
         ledger.RecordClearAll(cleared);
         // R10: 장식은 선택집합을 따라가므로 해제하지 않으면 빈 화면에 핸들만 남는다.
         selection.Clear();
-        closePins();
-        return cleared.Sum(entry => entry.Snapshot.Count);
+        int closedPins = closePins();
+        return new ClearAllResult(cleared.Sum(entry => entry.Snapshot.Count), closedPins);
     }
 
     /// <summary>
