@@ -7,7 +7,8 @@ namespace SSPen.Annotation;
 /// 히트테스트(<see cref="TableElement"/>)가 <b>같은 분할선 목록</b>을 쓴다 — 두 벌로 계산하면 "그려진 선 ≠ 맞는 선"이
 /// 표현 가능해진다 (<see cref="ShapeGeometry"/>의 ARrowHead와 같은 이유).
 ///
-/// 외곽 4변은 여기 없다: 렌더는 닫힌 figure(Miter 모서리)로, 히트는 Rect 4변으로 각자 조립한다 — 외곽을 열린 선분 4개로
+/// 외곽 4변은 여기 없다: 렌더는 닫힌 figure(Miter 모서리)로, 히트는 Rectangle 도형과 같은
+/// <c>AnnotationElement.DistanceToRectOutline</c>(89단계, A4-2 — 퇴화 가드 없음)으로 각자 조립한다 — 외곽을 열린 선분 4개로
 /// 공유하면 모서리가 Flat 캡 노치로 바뀌는 시각 회귀가 난다 (심사 지적). 내부 분할선만 공유한다.
 /// </summary>
 public static class TableGeometry

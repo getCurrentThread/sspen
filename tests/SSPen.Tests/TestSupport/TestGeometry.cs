@@ -51,6 +51,35 @@ internal static class TestGeometry
     }
 
     /// <summary>
+    /// AnnotationVisualFactoryTests 출신: 평탄화했거나 원래 직선뿐인 지오메트리의 모든 꼭짓점(figure 시작점 + 선분 끝점).
+    /// 89단계(A4-2)에서 TableGeometryTests의 퇴화 표 증인이 함께 쓰게 되어 올렸다. 곡선 세그먼트가 남아 있으면 던진다.
+    /// </summary>
+    public static IEnumerable<Point> FlattenedVertices(PathGeometry geometry)
+    {
+        foreach (var figure in geometry.Figures)
+        {
+            yield return figure.StartPoint;
+            foreach (var segment in figure.Segments)
+            {
+                switch (segment)
+                {
+                    case LineSegment line:
+                        yield return line.Point;
+                        break;
+                    case PolyLineSegment poly:
+                        foreach (var p in poly.Points)
+                        {
+                            yield return p;
+                        }
+                        break;
+                    default:
+                        throw new InvalidOperationException($"평탄화 뒤 남은 곡선 세그먼트: {segment.GetType().Name}");
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// NaN은 범위 어서트를 조용히 통과하므로 좌표 비교 전에 반드시 먼저 배제한다 (R16).
     /// 세 파일(SelectionGroupTests·TransformMathTests·SelectionRedTeamTests)의 사본은 판정이 같았다 —
     /// NaN 선배제 뒤 양끝 포함 ±tolerance (<c>Assert.InRange</c>와 동치). 실패 메시지가 가장 자세한

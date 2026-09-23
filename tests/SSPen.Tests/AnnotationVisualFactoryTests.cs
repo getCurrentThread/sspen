@@ -168,31 +168,6 @@ public class AnnotationVisualFactoryTests
             () => AnnotationVisualFactory.CreateShapeGeometry((ShapeKind)99, new Point(0, 0), new Point(10, 10)));
     }
 
-    private static IEnumerable<Point> FlattenedVertices(PathGeometry geometry)
-    {
-        foreach (var figure in geometry.Figures)
-        {
-            yield return figure.StartPoint;
-            foreach (var segment in figure.Segments)
-            {
-                switch (segment)
-                {
-                    case LineSegment line:
-                        yield return line.Point;
-                        break;
-                    case PolyLineSegment poly:
-                        foreach (var p in poly.Points)
-                        {
-                            yield return p;
-                        }
-                        break;
-                    default:
-                        throw new InvalidOperationException($"평탄화 뒤 남은 곡선 세그먼트: {segment.GetType().Name}");
-                }
-            }
-        }
-    }
-
     private static TextElement MakeText(Point origin) =>
         new(origin, "가나다", Colors.Black, fontSize: 20, measuredSize: new Size(60, 24));
 }

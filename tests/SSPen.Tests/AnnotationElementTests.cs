@@ -146,4 +146,61 @@ public class AnnotationElementTests
         // 셀 내부 빈 공간 (x=25, y=25) -> 거리가 약 25라 false
         Assert.False(table.HitTest(new Point(25, 25), tolerance: 2));
     }
+
+    /// <summary>
+    /// 89단계(A4-2): 정확히 수평으로 끈 표는 높이 0으로 확정되고(커밋 판정은 드래그 길이 3px뿐) 화면에는 폭 전체의 선이
+    /// 그려진다. 예전에는 표 분기에만 있던 퇴화 가드가 시작점까지의 거리(여기서 50)를 돌려줘 지우개가 시작점 근처에서만 맞았다.
+    /// </summary>
+    [Fact]
+    public void TableElement_ZeroHeight_HitsAlongDrawnLine()
+    {
+        var table = new TableElement(new Point(0, 0), new Point(100, 0), 3, 3, Colors.Black, 2);
+
+        Assert.True(table.HitTest(new Point(50, 0), tolerance: 2));
+    }
+
+    /// <summary>89단계(A4-2): 정확히 수직으로 끈(폭 0) 표도 그려진 선 전체에서 맞는다.</summary>
+    [Fact]
+    public void TableElement_ZeroWidth_HitsAlongDrawnLine()
+    {
+        var table = new TableElement(new Point(0, 0), new Point(0, 100), 3, 3, Colors.Black, 2);
+
+        Assert.True(table.HitTest(new Point(0, 50), tolerance: 2));
+    }
+
+    /// <summary>
+    /// 사각형 외곽 거리는 한 벌이다 (89단계, A4-2 — <c>AnnotationElement.DistanceToRectOutline</c>). 분할선이 없는 1×1 표와
+    /// 같은 사각형의 Rectangle 도형은 어느 점에서든 화면 거리가 비트 단위로 같아야 한다. 정상 크기와 영길이(Start==End)
+    /// 행은 수정 전후 값이 같다는 특성화이고, 폭·높이 0 행은 표 분기에만 있던 퇴화 가드의 드리프트를 잡는다.
+    /// </summary>
+    [Theory]
+    [InlineData(10, 20, 210, 120)]  // 정상 크기
+    [InlineData(210, 120, 10, 20)]  // 정상 크기, 역방향 드래그
+    [InlineData(10, 20, 210, 20)]   // 높이 0
+    [InlineData(210, 20, 10, 20)]   // 높이 0, 역방향 드래그
+    [InlineData(10, 20, 10, 120)]   // 폭 0
+    [InlineData(60, 70, 60, 70)]    // 영길이 (Start == End)
+    public void RectangleShapeAndOneCellTable_SameRect_ScreenDistanceAgree(double x1, double y1, double x2, double y2)
+    {
+        var start = new Point(x1, y1);
+        var end = new Point(x2, y2);
+        var rectangle = new ShapeElement(ShapeKind.Rectangle, start, end, Colors.Black, 2);
+        var table = new TableElement(start, end, rows: 1, columns: 1, Colors.Black, 2);
+
+        var samples = SamplePoints().ToList();
+
+        Assert.Equal(20, samples.Count);
+        foreach (var p in samples)
+        {
+            Assert.Equal(rectangle.ScreenDistanceTo(p), table.ScreenDistanceTo(p));
+        }
+    }
+
+    /// <summary>외곽 안·밖·위와 꼭짓점을 섞은 결정적 샘플 20개 (x 5개 × y 4개).</summary>
+    private static IEnumerable<Point> SamplePoints()
+    {
+        double[] xs = [-10, 10, 110, 210, 230];
+        double[] ys = [0, 20, 70, 120];
+        return from x in xs from y in ys select new Point(x, y);
+    }
 }

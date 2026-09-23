@@ -4,6 +4,7 @@ using System.Windows.Shapes;
 using SSPen.Annotation;
 using Xunit;
 using static SSPen.Tests.StaThread;
+using static SSPen.Tests.TestGeometry;
 
 namespace SSPen.Tests;
 
@@ -83,6 +84,32 @@ public class TableGeometryTests
         Assert.Equal(1 + (rows - 1) + (columns - 1), figures.Count);
         Assert.True(figures[0].IsClosed); // 외곽은 닫힌 figure — Miter 모서리
         Assert.All(figures.Skip(1), f => Assert.False(f.IsClosed));
+    }
+
+    /// <summary>
+    /// 폭이나 높이가 0인 표도 그려진 것 == 맞는 것 (89단계, A4-2). 커밋 판정은 드래그 길이 3px뿐이라 정확히 수평·수직으로
+    /// 끈 표도 확정되고, 렌더는 선 전체를 그린다. 예전 히트는 표 분기에만 있던 퇴화 가드가 시작점까지의 거리만 재서
+    /// 선의 나머지를 놓쳤다 — 그려진 모든 꼭짓점(외곽 4점 + 분할선 끝점)이 요소에 맞아야 한다. Geometry라 MTA에서 돈다.
+    /// <c>GetFlattenedPathGeometry</c>는 쓰지 않는다: 넓이 0인 지오메트리에서는 figure를 전부 버려 빈 목록이 나온다(실측) —
+    /// 증인이 공허해진다. 표는 직선뿐이라 평탄화가 필요 없으므로 <c>PathGeometry.CreateFromGeometry</c>로 figure를 그대로 편다.
+    /// </summary>
+    [Theory]
+    [InlineData(10, 20, 210, 20)]  // 높이 0
+    [InlineData(210, 20, 10, 20)]  // 높이 0, 역방향 드래그
+    [InlineData(10, 20, 10, 120)]  // 폭 0
+    [InlineData(10, 120, 10, 20)]  // 폭 0, 역방향 드래그
+    public void CreateTableGeometry_Degenerate_EveryDrawnVertexHitsTableElement(double x1, double y1, double x2, double y2)
+    {
+        var start = new Point(x1, y1);
+        var end = new Point(x2, y2);
+        var table = new TableElement(start, end, rows: 3, columns: 4, Colors.Black, 2);
+
+        var drawn = PathGeometry.CreateFromGeometry(
+            AnnotationVisualFactory.CreateTableGeometry(start, end, table.Rows, table.Columns));
+
+        Assert.Equal(1 + (table.Rows - 1) + (table.Columns - 1), drawn.Figures.Count);
+        var vertices = FlattenedVertices(drawn).ToList();
+        Assert.All(vertices, v => Assert.True(table.HitTest(v, tolerance: 0.5), $"꼭짓점 {v}"));
     }
 
     /// <summary>미리보기(드래그 중)와 커밋(요소 시각물)이 같은 CreateTableGeometry를 쓴다 — 획의 '미리보기와 커밋이 같은 Create' 규약과 동형.</summary>

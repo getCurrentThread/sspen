@@ -110,6 +110,23 @@ public abstract class AnnotationElement
         var proj = new Point(a.X + t * dx, a.Y + t * dy);
         return (p - proj).Length;
     }
+
+    /// <summary>
+    /// 점에서 사각형 외곽 4변(좌상→우상→우하→좌하)까지의 최소 거리 (89단계, A4-2). Rectangle 도형과 표가 함께 쓰는 한 벌이다 —
+    /// 두 요소에 같은 공식을 복사해 두었더니 표 쪽에만 퇴화 가드가 붙어 폭이나 높이가 0인 표가 시작점 근처에서만 맞았다.
+    /// 퇴화 사각형에 가드가 필요 없다: <see cref="DistanceToSegment"/>가 길이 0 선분까지 처리하므로 높이 0이면 그려진 선분,
+    /// 영길이면 그 한 점까지의 거리가 그대로 나온다.
+    /// </summary>
+    protected static double DistanceToRectOutline(Point p, Rect r)
+    {
+        var tl = r.TopLeft;
+        var tr = r.TopRight;
+        var br = r.BottomRight;
+        var bl = r.BottomLeft;
+        return Math.Min(
+            Math.Min(DistanceToSegment(p, tl, tr), DistanceToSegment(p, tr, br)),
+            Math.Min(DistanceToSegment(p, br, bl), DistanceToSegment(p, bl, tl)));
+    }
 }
 
 /// <summary>자유 획 (펜 / 형광펜, 필압 지원).</summary>
@@ -234,16 +251,7 @@ public sealed class ShapeElement : AnnotationElement
             }
 
             case ShapeKind.Rectangle:
-            {
-                var r = Bounds;
-                var tl = r.TopLeft;
-                var tr = r.TopRight;
-                var br = r.BottomRight;
-                var bl = r.BottomLeft;
-                return Math.Min(
-                    Math.Min(DistanceToSegment(p, tl, tr), DistanceToSegment(p, tr, br)),
-                    Math.Min(DistanceToSegment(p, br, bl), DistanceToSegment(p, bl, tl)));
-            }
+                return DistanceToRectOutline(p, Bounds);
 
             case ShapeKind.Ellipse:
             {
@@ -335,21 +343,10 @@ public sealed class TableElement : AnnotationElement
     protected override double ModelDistanceTo(Point p)
     {
         var b = Bounds;
-        if (b.IsEmpty || b.Width < double.Epsilon || b.Height < double.Epsilon)
-        {
-            return (p - Start).Length;
-        }
 
-        // 4개 외곽선
-        var tl = b.TopLeft;
-        var tr = b.TopRight;
-        var br = b.BottomRight;
-        var bl = b.BottomLeft;
-
-        double min = DistanceToSegment(p, tl, tr);
-        min = Math.Min(min, DistanceToSegment(p, tr, br));
-        min = Math.Min(min, DistanceToSegment(p, br, bl));
-        min = Math.Min(min, DistanceToSegment(p, bl, tl));
+        // 외곽 4변 — Rectangle 도형과 같은 한 벌 (89단계, A4-2). 예전 퇴화 가드(폭이나 높이가 0이면 시작점까지의 거리)는
+        // 지운다: 수평·수직으로 끈 표도 커밋되고 렌더는 선 전체를 그리는데, 가드는 그 선의 시작점 근처만 맞게 했다.
+        double min = DistanceToRectOutline(p, b);
 
         // 내부 분할선 — 렌더(AnnotationVisualFactory.CreateTableGeometry)와 같은 목록 (29단계, TableGeometry).
         foreach (var (a, c) in TableGeometry.Dividers(b, Rows, Columns))
