@@ -334,6 +334,28 @@ public class LedgerCommandsTests
         Assert.Equal(3, r.Commands.ClearAll());
     }
 
+    /// <summary>
+    /// 판서 0개(핀만 있는 상태)의 전체 지우기는 0을 돌려주고 원장 항목을 만들지 않는다 — 핀은 여전히 닫는다 (85단계, A1-3).
+    /// 셸은 이 0을 보고 되돌리기 안내를 빼야 한다: 그 안내를 믿고 실행취소를 누르면 그 이전의 무관한 조작
+    /// (여기서는 지우개로 지운 옛 잉크)이 되살아난다.
+    /// </summary>
+    [Fact]
+    public void ClearAll_NoInk_ReturnsZero_AndLedgerCountUnchanged()
+    {
+        var r = new Rig();
+        var old = r.AddStroke(0, 10, 10);
+        r.Documents[0].Remove(old);
+        r.Ledger.RecordErase(r.Documents[0], old, 0);
+        int before = r.Ledger.Count;
+        r.Trace.Clear();
+
+        int cleared = r.Commands.ClearAll();
+
+        Assert.Equal(0, cleared);
+        Assert.Equal(before, r.Ledger.Count);
+        Assert.Equal(["flush", "close-pins"], r.Trace);
+    }
+
     /// <summary>확인 대화상자는 지우기 <b>전에</b> 물어야 하므로 상태를 바꾸지 않는 조회가 따로 있다.</summary>
     [Fact]
     public void ClearableCount_DoesNotMutate_AndMatchesWhatClearAllWouldRemove()

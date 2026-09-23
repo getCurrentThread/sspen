@@ -12,6 +12,7 @@ public readonly record struct ClearAllPrompt(bool NeedsConfirm, bool HasAnything
 /// 사용자는 곧 읽지 않고 누르게 되고, 정작 되돌릴 수 없는 경우의 경고도 같이 무력해진다.
 ///
 /// 지울 것이 하나도 없으면 확인도 알림도 없다: 아무 일도 하지 않은 조작은 말을 걸지 않는다.
+/// 완료 알림(<see cref="DoneNotice"/>)도 같은 기준을 따른다 — 되돌리기 안내는 실제로 지운 판서가 있을 때만 붙는다 (85단계, A1-3).
 /// </summary>
 public static class DestructiveActionRules
 {
@@ -23,5 +24,23 @@ public static class DestructiveActionRules
             NeedsConfirm: pins > 0,
             HasAnything: hasAnything,
             PinCount: pins);
+    }
+
+    /// <summary>
+    /// 전체 지우기 완료 알림 문구 (85단계, A1-3). 되돌리기 안내는 <b>지운 판서가 있을 때만</b> 붙인다 —
+    /// 원장은 판서가 1개 이상일 때만 항목을 만들므로(<c>UndoLedger.RecordClearAll</c>), 핀만 닫힌 경우에 안내를 붙이면
+    /// 사용자가 누른 실행취소가 그 이전의 무관한 조작을 되살린다. 판서를 지운 경우의 문구는 예전과 바이트까지 같다.
+    /// </summary>
+    /// <param name="clearedInk"><c>LedgerCommands.ClearAll</c>이 돌려준, 실제로 지운 판서 요소 수.</param>
+    /// <param name="closedPins">함께 닫은 핀 수.</param>
+    /// <param name="undoCombo">실행취소 단축키 표기. 해제돼 있으면 null.</param>
+    /// <returns>알릴 문구. 지운 것도 닫은 것도 없으면 null(무동작은 말을 걸지 않는다).</returns>
+    public static string? DoneNotice(int clearedInk, int closedPins, string? undoCombo)
+    {
+        if (clearedInk > 0)
+        {
+            return undoCombo is null ? Strings.ClearAllDone : Strings.ClearAllDoneWithUndo(undoCombo);
+        }
+        return closedPins > 0 ? Strings.ClearAllPinsClosed(closedPins) : null;
     }
 }

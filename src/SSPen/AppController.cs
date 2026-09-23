@@ -377,22 +377,22 @@ public sealed class AppController : IShellActions, ISettingsHost
     /// </summary>
     private void CheckForUpdates(bool isManual) => _updateFlow.Run(isManual);
 
+    /// <summary>수동 확인 안내창 — owner 선택은 <see cref="ShowShellMessage"/>가 한다 (77단계, A1-2).</summary>
+    private void ShowUpdateMessage(string text, MessageBoxImage image) =>
+        ShowShellMessage(text, Strings.AppName, MessageBoxButton.OK, image);
+
     /// <summary>
-    /// 수동 확인 안내창. 앱 창은 전부 Topmost라 owner 없는 MessageBox는 그 밑으로 숨어 설정창의 "지금 확인"이 먹통처럼
+    /// 합성 루트가 띄우는 안내·확인 상자의 유일한 표시 지점(설정창·UpdateDialog 안의 상자는 그 창이 직접 띄운다). 앱 창은 전부 Topmost라 owner 없는 MessageBox는 그 밑으로 숨어 먹통처럼
     /// 보인다 — 설정창(없으면 보이는 툴바)을 owner로 물려 같은 최상단 층에 올린다 (UpdateDialog의 실패 상자와 같은 방식).
     /// 숨겨진 툴바는 owner로 못 쓴다 — 그 판정은 <see cref="DialogOwnerRules"/>다 (77단계, A1-2).
+    /// 업데이트 안내와 전체 지우기 확인이 이 분기 하나를 쓴다 (85단계, A1-4). owner가 없으면 예전과 똑같이 뜬다.
     /// </summary>
-    private void ShowUpdateMessage(string text, MessageBoxImage image)
+    private MessageBoxResult ShowShellMessage(string text, string title, MessageBoxButton buttons, MessageBoxImage image)
     {
         var owner = DialogOwnerWindow();
-        if (owner is null)
-        {
-            MessageBox.Show(text, Strings.AppName, MessageBoxButton.OK, image);
-        }
-        else
-        {
-            MessageBox.Show(owner, text, Strings.AppName, MessageBoxButton.OK, image);
-        }
+        return owner is null
+            ? MessageBox.Show(text, title, buttons, image)
+            : MessageBox.Show(owner, text, title, buttons, image);
     }
 
     /// <summary><see cref="DialogOwnerRules.Choose"/>의 판정을 실제 창으로 옮긴다 — 설정창 &gt; 보이는 툴바 &gt; 없음 (77단계, A1-2).</summary>
@@ -540,8 +540,10 @@ public sealed class AppController : IShellActions, ISettingsHost
 
     /// <summary>
     /// Alt+Shift+7: 모든 서피스 전체 지우기 + 핀 닫기 — 본문은 <see cref="LedgerCommands.ClearAll"/>.
-    /// 마찰 판정은 <see cref="DestructiveActionRules"/>가 소유하고 여기는 대화상자·알림 실행만 한다:
+    /// 마찰·알림 판정은 <see cref="DestructiveActionRules"/>가 소유하고 여기는 대화상자·알림 실행만 한다:
     /// 판서는 실행취소 1회로 돌아오지만 함께 닫히는 핀은 원장 밖이라 되돌릴 수 없다.
+    /// 확인 상자는 <see cref="ShowShellMessage"/>로 띄운다 — 핫키 경로에는 활성 창이 없어 owner 없는 상자가 톱모스트
+    /// 서피스 밑에 숨고, 펜 도구가 켜져 있으면 보이는데도 클릭을 서피스가 삼킨다 (85단계, A1-4).
     /// </summary>
     public void ClearAll()
     {
@@ -552,7 +554,7 @@ public sealed class AppController : IShellActions, ISettingsHost
         }
         if (prompt.NeedsConfirm)
         {
-            var answer = MessageBox.Show(
+            var answer = ShowShellMessage(
                 Strings.ClearAllConfirm(prompt.PinCount),
                 Strings.ClearAllConfirmTitle,
                 MessageBoxButton.YesNo,
@@ -562,12 +564,14 @@ public sealed class AppController : IShellActions, ISettingsHost
                 return;
             }
         }
-        _commands.ClearAll();
+        // 지운 개수를 버리지 않는다 — 판서 0개(핀만 닫힘)면 원장 항목이 없으므로 되돌리기 안내를 빼야 한다 (85단계, A1-3).
+        int cleared = _commands.ClearAll();
         // 지운 직후가 되돌리는 법을 알려 줄 유일한 시점이다 (핀은 그 대상이 아니라는 것은 확인 대화상자가 이미 말했다).
         string? undoCombo = _shellHotkeys?.HotkeyLabel("undo");
-        _toasts?.Show(new ToastRequest(
-            ToastKind.Info,
-            undoCombo is null ? Strings.ClearAllDone : Strings.ClearAllDoneWithUndo(undoCombo)));
+        if (DestructiveActionRules.DoneNotice(cleared, prompt.PinCount, undoCombo) is { } text)
+        {
+            _toasts?.Show(new ToastRequest(ToastKind.Info, text));
+        }
     }
 
     /// <summary>Alt+Shift+D: 선택 요소 전부 삭제 (SEL-13) — 본문은 <see cref="LedgerCommands.DeleteSelection"/>. E2E 액터가 직접 부른다.</summary>

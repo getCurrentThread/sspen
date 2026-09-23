@@ -188,6 +188,12 @@ public static class Strings
     /// <summary>실행취소 조합키를 함께 알린다 — 지운 직후가 되돌리는 법을 알려 줄 유일한 시점이다.</summary>
     public static string ClearAllDoneWithUndo(string undoCombo) => $"{ClearAllDone} (되돌리기: {undoCombo})";
 
+    /// <summary>
+    /// 판서 없이 핀만 닫았을 때의 완료 알림 (85단계, A1-3). 핀 닫기는 원장 밖이라 되돌리기 안내를 붙이지 않는다 —
+    /// 붙이면 실행취소가 그 이전의 무관한 조작을 되살린다.
+    /// </summary>
+    public static string ClearAllPinsClosed(int pinCount) => $"고정된 캡처 {pinCount}개를 닫았습니다";
+
     // 상태 리드아웃 (AC-20): 도구·굵기·색은 툴바 스트립에만 인코딩돼 있어 툴바를 숨기거나
     // 휠로 조용히 바뀌면 확인할 방법이 없었다. 1단계 토스트로 띄운다 — 새 창이 아니다.
     public const string StatusNoTool = "도구 없음";
