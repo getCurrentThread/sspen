@@ -234,8 +234,9 @@ public sealed class UpdateDialog : Window
     /// 닫기를 거부했지만, 본문 읽기는 <c>HttpClient.Timeout</c>(헤더까지만)이 지켜 주지 않아 네트워크가 멈추면 Topmost·NoResize 창을
     /// 닫을 길이 트레이 종료뿐이었다. 이제 닫기는 <see cref="UpdateService.CancelDownload"/>를 부르고 그대로 닫힌다 — 멈춘 Read는
     /// 서비스가 스트림을 닫아 깨우고, 받던 파일은 지운다. 이중 다운로드 방지는 서비스의 <see cref="UpdateService.IsDownloading"/>(취소된
-    /// 결과가 전달될 때까지 참)을 확인 흐름이 읽는 쪽이 맡는다. 앱 종료(<c>Application.Shutdown</c> — 설치 체인의 종료 포함)도 여기를
-    /// 지나지만, 그때는 완료가 이미 전달돼 진행 중인 다운로드가 없으므로 취소 요청은 아무것도 하지 않는다.
+    /// 결과가 전달될 때까지 참)을 확인 흐름이 읽는 쪽이 맡는다. 앱 종료(<c>Application.Shutdown</c>)도 여기를 지난다 — 설치 체인이 띄운
+    /// 종료는 완료가 이미 전달된 뒤라 취소 요청이 아무것도 하지 않고, 다운로드 중의 트레이 종료는 실제로 취소해 받던 파일을 지운다(디스패처가
+    /// 내려가는 중이라 취소 결과 콜백은 오지 않는다).
     /// </summary>
     protected override void OnClosing(CancelEventArgs e)
     {
