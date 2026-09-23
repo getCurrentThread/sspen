@@ -40,14 +40,19 @@ public static class E2EAppFixture
                 });
 
                 // 3. AppController 기동 (실제 컴포지션 루트 실행 - 테스트 격리 설정 주입)
+                // A8-2: 격리 누수 두 가지를 막는다. (a) 시작 시 업데이트 확인은 3초 뒤 실제 GitHub API를 부르므로
+                // CheckUpdateOnStart=false를 미리 저장해 둔다(나머지 필드는 기본값 — 파일이 없을 때 Load가 주는 값과 같다).
+                // (b) 로그인 시 시작 반영은 HKCU Run 값을 지우므로 기록 람다로 대체한다.
                 string tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SSPenE2E_" + Guid.NewGuid().ToString("N"));
                 var settingsService = new Settings.SettingsService(tempDir);
-                var app = new AppController(settingsService);
+                settingsService.Save(new Settings.AppSettings { CheckUpdateOnStart = false });
+                var runAtLoginCalls = new List<bool>();
+                var app = new AppController(settingsService, applyRunAtLogin: runAtLoginCalls.Add);
                 app.Start();
                 PumpMessages();
 
                 // 4. VirtualUserActor 생성 및 시나리오 실행
-                var actor = new VirtualUserActor(app);
+                var actor = new VirtualUserActor(app, runAtLoginCalls);
                 testAction(actor);
 
                 // 5. AppController 안전 종료

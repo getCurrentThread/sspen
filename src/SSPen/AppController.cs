@@ -54,8 +54,18 @@ public sealed class AppController : IShellActions, ISettingsHost
     private bool _zBandSubscribed;
     private bool _shuttingDown;
 
-    public AppController(SettingsService? settingsService = null)
+    // A8-2: 로그인 시 시작(HKCU Run) 반영은 이 델리게이트 하나로만 나간다. 기본값은 RunAtLogin.Apply(프로덕션),
+    // E2E 픽스처는 기록 람다를 주입해 개발자 PC의 실제 레지스트리 값을 건드리지 않는다.
+    private readonly Action<bool> _applyRunAtLogin;
+
+    /// <param name="settingsService">설정 영속화 위치. null이면 %APPDATA%\SS Pen (프로덕션).</param>
+    /// <param name="applyRunAtLogin">
+    /// 로그인 시 시작 값을 반영하는 이음매 (A8-2). null이면 <see cref="RunAtLogin.Apply"/> — App.xaml.cs는 넘기지 않는다.
+    /// 호출 지점은 Start와 ApplyGeneralSettings 두 곳뿐이다.
+    /// </param>
+    public AppController(SettingsService? settingsService = null, Action<bool>? applyRunAtLogin = null)
     {
+        _applyRunAtLogin = applyRunAtLogin ?? RunAtLogin.Apply;
         // LD-2: 원장은 문서를 잡지 않고 undo 시점에 현재 소유자를 조회한다 — 이관을 몇 번 거치든 안전하다.
         // 비용은 undo 1회마다 전 서피스 O(n) 선형 주사다 (R20, 현 규모에서 수용).
         _ledger = new UndoLedger(OwnerOf, _selection);
@@ -187,7 +197,7 @@ public sealed class AppController : IShellActions, ISettingsHost
         _tray.WarnHotkeyConflicts(_hotkeys.FailedBindings);
         _hotkeys.RegistrationFailuresChanged += failed => _tray?.WarnHotkeyConflicts(failed);
 
-        RunAtLogin.Apply(_settingsBinder.Settings.RunAtLogin);
+        _applyRunAtLogin(_settingsBinder.Settings.RunAtLogin);
 
         // R3/R4: 맨 ESC/Delete/Backspace는 서피스가 받을 수 없으므로 조건부 저수준 훅이 담당한다.
         // 게이트는 상태와 선택집합 양쪽에서 바뀌므로 두 이벤트 모두 구독한다.
@@ -391,7 +401,7 @@ public sealed class AppController : IShellActions, ISettingsHost
     public void ApplyGeneralSettings(AppSettings updated)
     {
         _settingsBinder.Replace(updated);
-        RunAtLogin.Apply(_settingsBinder.Settings.RunAtLogin);
+        _applyRunAtLogin(_settingsBinder.Settings.RunAtLogin);
         SyncSurfacesWithSettings();
         ApplyZBand();
         Log.Info("일반 설정 적용");

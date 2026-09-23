@@ -29,6 +29,26 @@ public class SettingsAndPersistenceE2ETests
     });
 
     [Fact]
+    public void ApplyGeneralSettings_RoutesRunAtLoginThroughSeam_LeavesRegistryUntouched()
+    {
+        // A8-2: 픽스처가 주입한 이음매가 Start와 ApplyGeneralSettings 두 호출을 모두 받아야 한다.
+        // 기본값(RunAtLogin=false)이 실제 RunAtLogin.Apply로 새면 HKCU Run의 "SS Pen" 값이 지워진다 —
+        // 설치본에서 로그인 시 시작을 켜 둔 개발자 PC라면 before=true가 false로 바뀌어 여기서 잡힌다.
+        bool before = RunAtLogin.IsEnabled();
+        IReadOnlyList<bool> calls = [];
+
+        E2EAppFixture.Run(actor =>
+        {
+            actor.App.ApplyGeneralSettings(new AppSettings { CheckUpdateOnStart = false });
+            actor.Pump();
+            calls = [.. actor.RunAtLoginCalls];
+        });
+
+        Assert.Equal([false, false], calls);
+        Assert.Equal(before, RunAtLogin.IsEnabled());
+    }
+
+    [Fact]
     public void OpenSettingsWindow_CreatesAndActivatesWindow() => E2EAppFixture.Run(actor =>
     {
         actor.OpenSettings();

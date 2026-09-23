@@ -12,10 +12,12 @@ namespace SSPen.E2ETests;
 public sealed class VirtualUserActor
 {
     private readonly AppController _app;
+    private readonly IReadOnlyList<bool> _runAtLoginCalls;
 
-    public VirtualUserActor(AppController app)
+    public VirtualUserActor(AppController app, IReadOnlyList<bool> runAtLoginCalls)
     {
         _app = app;
+        _runAtLoginCalls = runAtLoginCalls;
     }
 
     public AppController App => _app;
@@ -23,6 +25,9 @@ public sealed class VirtualUserActor
     public SelectionModel Selection => _app.Selection;
     public UndoLedger Ledger => _app.Ledger;
     public IReadOnlyList<ContentSurfaceWindow> Surfaces => _app.Surfaces;
+
+    /// <summary>AppController가 로그인 시 시작 이음매로 보낸 값의 호출 순서 기록 (A8-2). 실제 레지스트리 대신 여기로 온다.</summary>
+    public IReadOnlyList<bool> RunAtLoginCalls => _runAtLoginCalls;
 
     public ContentSurfaceWindow Surface(int monitorIndex = 1) => _app.Surfaces[monitorIndex];
     public AnnotationDocument Document(int monitorIndex = 1) => _app.Surfaces[monitorIndex].Document;
