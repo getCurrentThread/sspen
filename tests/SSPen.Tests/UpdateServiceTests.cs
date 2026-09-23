@@ -10,7 +10,7 @@ namespace SSPen.Tests;
 
 /// <summary>
 /// <see cref="UpdateService"/>의 증인 (77단계, A1-8·A9-7) — 앱의 유일한 네트워크 코드에 처음 세우는 헤드리스 테스트다.
-/// 네트워크는 실제로 부르지 않는다: <see cref="StubHandler"/>가 동기 <c>Send</c>만 구현하고 <c>SendAsync</c>는 던지므로,
+/// 네트워크는 실제로 부르지 않는다: <see cref="SyncStubHandler"/>가 동기 <c>Send</c>만 구현하고 <c>SendAsync</c>는 던지므로,
 /// 확인·다운로드 두 경로가 모두 동기 <see cref="HttpClient.Send(HttpRequestMessage, HttpCompletionOption)"/>로만 지나간다는 것이
 /// 그 자체로 증인이 된다(업데이트 계층도 no-async 규칙). 설치 실행은 <c>launchInstaller</c> 이음매로 기록만 한다 — cmd.exe도 앱 종료도 없다.
 /// 작업은 스레드풀에서 돌고 결과는 디스패처로 돌아오므로 RunSta 안에서 <see cref="DispatcherPump.Drain"/>을 기한까지 반복한다.
@@ -25,7 +25,7 @@ public class UpdateServiceTests
     {
         RunSta(() =>
         {
-            var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            var handler = new SyncStubHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
             {
                 ReasonPhrase = "Service Unavailable",
             });
@@ -60,7 +60,7 @@ public class UpdateServiceTests
               ]
             }
             """;
-            var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) });
+            var handler = new SyncStubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) });
             using var client = new HttpClient(handler);
             var dispatcher = Dispatcher.CurrentDispatcher;
             var service = new UpdateService(dispatcher, exitApp: () => { }, apiUrl: ApiUrl, httpClient: client);
@@ -91,7 +91,7 @@ public class UpdateServiceTests
             {
                 body[i] = (byte)(i % 251);
             }
-            var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) });
+            var handler = new SyncStubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) });
             using var client = new HttpClient(handler);
             var dispatcher = Dispatcher.CurrentDispatcher;
             var events = new List<string>();
@@ -145,7 +145,7 @@ public class UpdateServiceTests
     {
         RunSta(() =>
         {
-            var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+            var handler = new SyncStubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
             using var client = new HttpClient(handler);
             var dispatcher = Dispatcher.CurrentDispatcher;
             var events = new List<string>();
@@ -186,7 +186,7 @@ public class UpdateServiceTests
     {
         RunSta(() =>
         {
-            var handler = new StubHandler(_ => throw new InvalidOperationException("요청이 나가면 안 된다"));
+            var handler = new SyncStubHandler(_ => throw new InvalidOperationException("요청이 나가면 안 된다"));
             using var client = new HttpClient(handler);
             var launched = false;
             var service = new UpdateService(
@@ -224,35 +224,219 @@ public class UpdateServiceTests
         }
     }
 
-    /// <summary>
-    /// 동기 <c>Send</c>만 응답하는 가짜 처리기. <c>SendAsync</c>는 추상 멤버라 재정의가 필요하지만 던지기만 한다 —
-    /// Task 경로로 들어오면 테스트가 깨지는 것이 목적이다.
-    /// </summary>
-    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    /// <summary>200 OK에 <paramref name="body"/>를 스트림 본문으로 싣는다. 길이를 알리면 진행률도 게시된다.</summary>
+    private static HttpResponseMessage OkWithStream(Stream body, long declaredLength)
     {
-        private readonly List<string> _requests = [];
+        var content = new StreamContent(body);
+        content.Headers.ContentLength = declaredLength;
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+    }
 
-        public IReadOnlyList<string> Requests
+    private static string InstallerPath(string tag) => Path.Combine(Path.GetTempPath(), "SSPen-Update", $"SSPen-Setup-{tag}.exe");
+
+    /// <summary>
+    /// 정리용 삭제 — 수정 전(빨강)에는 멈춘 작업 스레드가 파일을 쥐고 있어 공유 위반이, 작업 스레드의 삭제와 겹치면 삭제 대기 중인
+    /// 파일의 접근 거부가 날 수 있다. 그때는 이름이 겹치지 않는 파일 하나가 남을 뿐이라 테스트 결과를 가리지 않도록 삼킨다.
+    /// </summary>
+    private static void TryDelete(string path)
+    {
+        try
         {
-            get
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    // ---- 103단계 (FINAL-REVIEW-UPDATE-CANCEL): 다운로드 취소 ----
+
+    private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// 103단계 회귀 증인: 본문 읽기가 네트워크에서 멈추면(<c>HttpClient.Timeout</c>은 헤더까지만 걸린다) 예전에는 작업을 끝낼 길이 없었다.
+    /// <see cref="UpdateService.CancelDownload"/>가 진행 중 스트림을 닫아 멈춘 Read를 몇 초 안에 깨우고, 결과는 실패가 아니라 취소다 —
+    /// 완료 콜백은 <see cref="OperationCanceledException"/>으로 한 번, 설치 실행·앱 종료 없음, 부분 파일 없음, 진행 중 상태 해제.
+    /// </summary>
+    [Fact]
+    public void DownloadAndInstallSilently_CancelWhileBodyStalls_EndsPromptly_WithoutLaunchOrPartialFile()
+    {
+        RunSta(() =>
+        {
+            using var body = new FakeBodyStream(length: 4096, stallAfterBody: true);
+            var handler = new SyncStubHandler(_ => OkWithStream(body, declaredLength: 1_000_000));
+            using var client = new HttpClient(handler);
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            var events = new List<string>();
+            var completions = new List<Exception?>();
+            var service = new UpdateService(
+                dispatcher, exitApp: () => events.Add("exit"), apiUrl: ApiUrl, httpClient: client,
+                launchInstaller: _ => events.Add("launch"));
+            var tag = UniqueTag();
+            var expectedPath = InstallerPath(tag);
+
+            try
             {
-                lock (_requests)
+                service.DownloadAndInstallSilently(Release(tag, DownloadUrl), onProgress: _ => { }, onCompleted: completions.Add);
+                Assert.True(body.WaitUntilStalled(Deadline), "전제: 작업 스레드가 멈춘 본문 읽기에 들어서지 않았다.");
+                Assert.True(File.Exists(expectedPath), "전제: 부분 파일이 생겼다.");
+                Assert.True(service.IsDownloading);
+
+                service.CancelDownload();
+
+                Assert.True(body.WaitUntilDisposed(Deadline), "취소가 멈춘 본문 스트림을 닫아 Read를 깨우지 않았다.");
+                PumpUntil(dispatcher, () => completions.Count > 0);
+                DispatcherPump.Drain(dispatcher);
+
+                Assert.IsType<OperationCanceledException>(Assert.Single(completions));
+                Assert.Empty(events);
+                Assert.False(File.Exists(expectedPath));
+                Assert.False(service.IsDownloading);
+            }
+            finally
+            {
+                TryDelete(expectedPath);
+            }
+        });
+    }
+
+    /// <summary>
+    /// 진행 중 상태는 작업 스레드가 끝난 뒤에도 취소 결과가 디스패처로 <b>전달될 때까지</b> 참이다 — 루트의 확인 흐름이 이 값을 읽어,
+    /// 닫힌 대화상자의 작업이 정리되는 그 짧은 구간에 새 대화상자가 같은 설치 파일 경로로 두 번째 다운로드를 시작하지 못하게 한다
+    /// (98단계 이중 다운로드 방지의 새 설계). 작업 스레드는 부분 파일을 지운 뒤에 결과를 게시하므로, 파일이 사라졌다는 것은 작업이 끝났다는 뜻이다.
+    /// </summary>
+    [Fact]
+    public void IsDownloading_AfterCancel_StaysTrueUntilOutcomeDelivered()
+    {
+        RunSta(() =>
+        {
+            using var body = new FakeBodyStream(length: 4096, stallAfterBody: true);
+            var handler = new SyncStubHandler(_ => OkWithStream(body, declaredLength: 1_000_000));
+            using var client = new HttpClient(handler);
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            var completions = new List<Exception?>();
+            var service = new UpdateService(
+                dispatcher, exitApp: () => { }, apiUrl: ApiUrl, httpClient: client, launchInstaller: _ => { });
+            var tag = UniqueTag();
+            var expectedPath = InstallerPath(tag);
+
+            try
+            {
+                service.DownloadAndInstallSilently(Release(tag, DownloadUrl), onProgress: _ => { }, onCompleted: completions.Add);
+                Assert.True(body.WaitUntilStalled(Deadline), "전제: 작업 스레드가 멈춘 본문 읽기에 들어서지 않았다.");
+
+                service.CancelDownload();
+                WaitUntil(() => !File.Exists(expectedPath), "취소된 작업 스레드가 부분 파일을 지우지 않았다.");
+
+                Assert.True(service.IsDownloading); // 작업은 끝났지만 결과가 아직 디스패처에 전달되지 않았다.
+                Assert.Empty(completions);
+
+                PumpUntil(dispatcher, () => completions.Count > 0);
+
+                Assert.False(service.IsDownloading);
+            }
+            finally
+            {
+                TryDelete(expectedPath);
+            }
+        });
+    }
+
+    /// <summary>
+    /// 경합 증인: 작업 스레드가 본문을 다 받고 완료를 게시한 뒤, 그 완료가 UI 스레드에서 돌기 전에 대화상자가 닫혀 취소가 요청됐다.
+    /// 취소가 이긴다 — 설치 체인을 실행하지 않고(닫은 창 뒤로 앱이 설치·종료되면 안 된다), 다 받은 파일도 지우고, 취소로 한 번 알린다.
+    /// 본문 스트림이 닫혔다는 것은 작업 스레드가 파일을 닫고 응답까지 해제했다는 뜻이다(완료 게시 직전·직후).
+    /// </summary>
+    [Fact]
+    public void DownloadAndInstallSilently_CancelAfterBodyCompletes_BeforeDelivery_DoesNotLaunch()
+    {
+        RunSta(() =>
+        {
+            using var body = new FakeBodyStream(length: 50_000, stallAfterBody: false);
+            var handler = new SyncStubHandler(_ => OkWithStream(body, declaredLength: 50_000));
+            using var client = new HttpClient(handler);
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            var events = new List<string>();
+            var completions = new List<Exception?>();
+            var service = new UpdateService(
+                dispatcher, exitApp: () => events.Add("exit"), apiUrl: ApiUrl, httpClient: client,
+                launchInstaller: _ => events.Add("launch"));
+            var tag = UniqueTag();
+            var expectedPath = InstallerPath(tag);
+
+            try
+            {
+                service.DownloadAndInstallSilently(Release(tag, DownloadUrl), onProgress: _ => { }, onCompleted: completions.Add);
+                Assert.True(body.WaitUntilDisposed(Deadline), "전제: 작업 스레드가 본문을 끝까지 받고 응답을 닫지 않았다.");
+                Assert.Empty(completions); // 전제: 완료는 아직 UI 스레드에서 돌지 않았다(펌프 전).
+
+                service.CancelDownload();
+                PumpUntil(dispatcher, () => completions.Count > 0);
+                DispatcherPump.Drain(dispatcher);
+
+                Assert.IsType<OperationCanceledException>(Assert.Single(completions));
+                Assert.Empty(events);
+                Assert.False(File.Exists(expectedPath));
+                Assert.False(service.IsDownloading);
+            }
+            finally
+            {
+                TryDelete(expectedPath);
+            }
+        });
+    }
+
+    /// <summary>
+    /// 앱 종료 경로의 무해함: 설치 실행 이음매 안에서(프로덕션은 체인을 띄우고 <c>Application.Shutdown</c> → 대화상자 OnClosing →
+    /// 취소 요청) 취소가 불려도 이미 전달된 완료에는 아무 영향이 없다 — 설치 체인이 쓸 파일을 지우지 않는다.
+    /// </summary>
+    [Fact]
+    public void CancelDownload_DuringInstallerLaunch_ShutdownPath_KeepsInstallerFile()
+    {
+        RunSta(() =>
+        {
+            var handler = new SyncStubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[10_000]) });
+            using var client = new HttpClient(handler);
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            var events = new List<string>();
+            var completions = new List<Exception?>();
+            UpdateService? service = null;
+            service = new UpdateService(
+                dispatcher, exitApp: () => events.Add("exit"), apiUrl: ApiUrl, httpClient: client,
+                launchInstaller: _ =>
                 {
-                    return [.. _requests];
-                }
-            }
-        }
+                    events.Add("launch");
+                    service!.CancelDownload();
+                });
+            var tag = UniqueTag();
+            var expectedPath = InstallerPath(tag);
 
-        protected override HttpResponseMessage Send(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            lock (_requests)
+            try
             {
-                _requests.Add($"{request.Method} {request.RequestUri}");
-            }
-            return respond(request);
-        }
+                service.DownloadAndInstallSilently(Release(tag, DownloadUrl), onProgress: _ => { }, onCompleted: completions.Add);
+                PumpUntil(dispatcher, () => events.Contains("launch"));
+                DispatcherPump.Drain(dispatcher);
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            throw new NotSupportedException("업데이트 계층은 동기 Send만 쓴다 (77단계, A1-8) — SendAsync 경로에 들어오면 안 된다.");
+                Assert.Null(Assert.Single(completions));
+                Assert.Equal(["launch"], events);
+                Assert.True(File.Exists(expectedPath));
+                Assert.False(service.IsDownloading);
+            }
+            finally
+            {
+                TryDelete(expectedPath);
+            }
+        });
+    }
+
+    /// <summary>디스패처 없이 작업 스레드의 흔적(파일 등)을 기다린다 — 5초 기한.</summary>
+    private static void WaitUntil(Func<bool> done, string failure)
+    {
+        var deadline = DateTime.UtcNow + Deadline;
+        while (!done())
+        {
+            Assert.True(DateTime.UtcNow < deadline, failure);
+            Thread.Sleep(5);
+        }
     }
 }

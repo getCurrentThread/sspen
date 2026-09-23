@@ -19,10 +19,14 @@ public class UpdateCheckFlowTests
 
     /// <summary>
     /// 루트의 <c>_updateDialog</c> 필드를 흉내 낸다 (86단계, C-4): <c>showRelease</c>가 창을 열고, 닫히면(<see cref="Close"/>) 비운다.
+    /// <see cref="Downloading"/>은 서비스의 진행 중 상태(<c>UpdateService.IsDownloading</c>, 103단계)다 — 다운로드 중 닫힌 창의 작업은
+    /// 결과가 전달될 때까지 참으로 남는다.
     /// </summary>
     private sealed class DialogSlot
     {
         public bool Open { get; private set; }
+
+        public bool Downloading { get; set; }
 
         public void Show() => Open = true;
 
@@ -49,6 +53,7 @@ public class UpdateCheckFlowTests
                 slot.Show();
             },
             dialogOpen: () => slot.Open,
+            downloading: () => slot.Downloading,
             focusDialog: () => calls.Add("focus"),
             showMessage: (text, image) => calls.Add($"message:{image}:{text}"));
         return (flow, calls);
@@ -159,6 +164,7 @@ public class UpdateCheckFlowTests
             logWarn: text => calls.Add("warn:" + text),
             showRelease: info => calls.Add("release:" + info.TagName),
             dialogOpen: () => false,
+            downloading: () => false,
             focusDialog: () => calls.Add("focus"),
             showMessage: (text, image) => calls.Add($"message:{image}:{text}"));
 
@@ -226,6 +232,7 @@ public class UpdateCheckFlowTests
                 dialog.Show();
             },
             dialogOpen: () => dialog.Open,
+            downloading: () => dialog.Downloading,
             focusDialog: () => calls.Add("focus"),
             showMessage: (text, image) => calls.Add($"message:{image}:{text}"));
 
@@ -266,5 +273,54 @@ public class UpdateCheckFlowTests
 
         Assert.Equal($"message:{MessageBoxImage.Warning}:boom", calls[^1]);
         Assert.DoesNotContain("focus", calls);
+    }
+
+    /// <summary>
+    /// 103단계 증인 (FINAL-REVIEW-UPDATE-CANCEL): 다운로드 중에 닫힌 대화상자의 작업이 아직 정리 중일 때 온 새 버전 판정은 창을 열지도,
+    /// (없는) 창을 앞으로 가져오지도 않고 로그 한 줄만 남긴다 — 그 구간에 새 창의 '지금 업데이트'가 같은 설치 파일 경로로 두 번째 다운로드를
+    /// 시작하지 못한다. 자동·수동 모두 같다.
+    /// </summary>
+    [Theory]
+    [InlineData(true, "수동")]
+    [InlineData(false, "자동")]
+    public void Run_NewVersionWhileClosedDialogsDownloadWindsDown_LogsOnly(bool isManual, string origin)
+    {
+        var dialog = new DialogSlot { Downloading = true };
+        var (flow, calls) = Rig(new UpdateCheckResult(true, true, Release), dialog);
+
+        flow.Run(isManual);
+
+        Assert.Equal(
+            [
+                $"info:업데이트 확인 시작 (현재 1.3.5, {origin})",
+                "check",
+                "info:업데이트 확인: 현재 1.3.5 / 원격 v9.9.9 → 새 버전 있음",
+                "info:업데이트 다운로드가 아직 정리 중 — 새 버전 대화상자를 열지 않는다",
+            ],
+            calls);
+    }
+
+    /// <summary>
+    /// 98단계 이중 다운로드 방지의 새 설계 증인: 열린 채 내려받는 동안은 열린 창을 앞으로(86단계), 다운로드 중 닫힌 뒤 작업이 정리되는
+    /// 동안은 아무 창도 열지 않고, 정리가 끝나면(결과 전달 — <c>IsDownloading</c> 거짓) 다음 확인이 평소대로 새 창을 연다.
+    /// </summary>
+    [Fact]
+    public void Run_AcrossCancelledDownload_FocusesThenHoldsThenShowsReleaseAgain()
+    {
+        var dialog = new DialogSlot();
+        var (flow, calls) = Rig(new UpdateCheckResult(true, true, Release), dialog);
+
+        flow.Run(isManual: false);          // 창이 뜬다
+        dialog.Downloading = true;          // '지금 업데이트'
+        flow.Run(isManual: true);           // 열린 채 내려받는 중 → 앞으로
+        dialog.Close();                     // 다운로드 중 닫기 = 취소 요청, 작업은 아직 정리 중
+        flow.Run(isManual: true);           // 새 창을 열지 않는다
+        dialog.Downloading = false;         // 취소 결과 전달
+        flow.Run(isManual: true);           // 다시 연다
+
+        // 시작·확인·요약 줄을 걷어 내면 판정별 표시만 남는다.
+        Assert.Equal(
+            ["release:v9.9.9", "focus", "info:업데이트 다운로드가 아직 정리 중 — 새 버전 대화상자를 열지 않는다", "release:v9.9.9"],
+            calls.Where(c => c != "check" && !c.StartsWith("info:업데이트 확인", StringComparison.Ordinal)));
     }
 }

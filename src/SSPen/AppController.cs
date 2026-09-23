@@ -123,6 +123,8 @@ public sealed class AppController : IShellActions, ISettingsHost
                 dialog.Activate();
             },
             dialogOpen: () => _updateDialog is not null,
+            // 103단계: 다운로드 중 닫기는 '취소 후 닫기'라 창이 닫혀도 작업이 정리될 때까지는 새 창을 열지 않는다(같은 설치 파일 경로).
+            downloading: () => _updateService.IsDownloading,
             focusDialog: () => _updateDialog?.Activate(),
             showMessage: ShowUpdateMessage);
         // z-밴드 검증기 (72단계): 생성은 OS를 건드리지 않는다 — 훅 설치는 Start의 Install이다. BandOrder는 호출 시점에

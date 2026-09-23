@@ -6,6 +6,7 @@ namespace SSPen.Tests;
 /// <summary>
 /// <see cref="UpdateCheckPresentation"/>의 증인 (35단계, WI-16). 5갈래 진리표. <c>ReleaseInfo</c> null 폴백은 오늘 동작 보존(_Today).
 /// 86단계(C-4)가 여섯째 갈래 <see cref="UpdateCheckOutcome.FocusExistingDialog"/>(새 버전 + 열린 대화상자)를 더했다.
+/// 103단계(FINAL-REVIEW-UPDATE-CANCEL)가 일곱째 갈래 <see cref="UpdateCheckOutcome.DownloadInProgress"/>(새 버전 + 창 없음 + 다운로드 정리 중)를 더했다.
 /// </summary>
 public class UpdateCheckPresentationTests
 {
@@ -98,7 +99,40 @@ public class UpdateCheckPresentationTests
 
         Assert.Equal(expected, UpdateCheckPresentation.Decide(result, isManual));
         Assert.Equal(expected, UpdateCheckPresentation.Decide(result, isManual, dialogOpen: false));
+        Assert.Equal(expected, UpdateCheckPresentation.Decide(result, isManual, dialogOpen: false, downloading: false));
     }
+
+    /// <summary>
+    /// 103단계 증인 (FINAL-REVIEW-UPDATE-CANCEL): 다운로드 중에 닫힌 대화상자의 작업이 아직 정리 중이면(창 없음 + 다운로드 중) 새 버전 판정은
+    /// 창을 열지 않는다 — 그 구간에 새 창을 열면 '지금 업데이트'가 끝나 가는 작업과 같은 설치 파일 경로를 두고 다툰다. 자동·수동 모두 같다.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Decide_NewVersion_DownloadingWithoutDialog_ReturnsDownloadInProgress(bool isManual) =>
+        Assert.Equal(UpdateCheckOutcome.DownloadInProgress,
+            UpdateCheckPresentation.Decide(new UpdateCheckResult(true, true, Release), isManual, dialogOpen: false, downloading: true));
+
+    /// <summary>열린 채 내려받는 평소 상태에서는 열린 창을 앞으로 가져오는 86단계 판정이 먼저다.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Decide_NewVersion_DialogOpenWhileDownloading_FocusesExisting(bool isManual) =>
+        Assert.Equal(UpdateCheckOutcome.FocusExistingDialog,
+            UpdateCheckPresentation.Decide(new UpdateCheckResult(true, true, Release), isManual, dialogOpen: true, downloading: true));
+
+    /// <summary>진행 중 다운로드도 새 버전 판정에만 끼어든다 — 실패·최신·ReleaseInfo 없음 폴백은 기존 결과다.</summary>
+    [Theory]
+    [InlineData(false, false, false, true, UpdateCheckOutcome.ShowErrorDialog)]
+    [InlineData(false, false, false, false, UpdateCheckOutcome.LogError)]
+    [InlineData(true, false, false, true, UpdateCheckOutcome.ShowUpToDate)]
+    [InlineData(true, false, false, false, UpdateCheckOutcome.Silent)]
+    [InlineData(true, true, false, true, UpdateCheckOutcome.ShowUpToDate)]
+    public void Decide_Downloading_DoesNotAffectFailureOrUpToDate(
+        bool success, bool hasUpdate, bool hasRelease, bool isManual, UpdateCheckOutcome expected) =>
+        Assert.Equal(expected,
+            UpdateCheckPresentation.Decide(
+                new UpdateCheckResult(success, hasUpdate, hasRelease ? Release : null), isManual, dialogOpen: false, downloading: true));
 
     private static readonly Version Current = new(1, 3, 5);
 

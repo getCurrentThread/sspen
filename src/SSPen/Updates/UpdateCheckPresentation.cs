@@ -23,6 +23,13 @@ public enum UpdateCheckOutcome
     /// 같은 설치 파일 경로에 동시에 내려받아 한쪽은 공유 위반 오류, 다른 쪽은 설치·종료로 끝난다.
     /// </summary>
     FocusExistingDialog,
+
+    /// <summary>
+    /// 새 버전 + 대화상자는 닫혔지만 그 다운로드가 아직 취소 정리 중 — 로그만 남기고 아무것도 띄우지 않는다 (103단계,
+    /// FINAL-REVIEW-UPDATE-CANCEL). 다운로드 중 닫기가 '취소 후 닫기'가 되면서 '다운로드 중 ⇒ 열림'이 깨졌다: 그 짧은 구간에 새 창을
+    /// 열면 '지금 업데이트'가 끝나 가는 작업과 같은 설치 파일 경로를 두고 다툰다. 작업의 결과가 전달되면 다음 확인은 평소대로 창을 연다.
+    /// </summary>
+    DownloadInProgress,
 }
 
 /// <summary>
@@ -38,11 +45,20 @@ public static class UpdateCheckPresentation
     /// 새 버전 대화상자가 이미 열려 있는지 (86단계, C-4). 새 버전 판정만 <see cref="UpdateCheckOutcome.FocusExistingDialog"/>로
     /// 바꾸고, 실패·최신 판정에는 끼어들지 않는다. 기본값 false면 35단계 5갈래 표와 같다.
     /// </param>
-    public static UpdateCheckOutcome Decide(UpdateCheckResult result, bool isManual, bool dialogOpen = false)
+    /// <param name="downloading">
+    /// 설치 파일 다운로드가 아직 진행 중인지 (103단계 — <c>UpdateService.IsDownloading</c>, 취소된 작업도 결과가 전달될 때까지 참).
+    /// 열린 창이 있으면 그 창을 앞으로 가져오는 것이 먼저이고(열린 채 내려받는 평소 상태), 창이 없을 때만
+    /// <see cref="UpdateCheckOutcome.DownloadInProgress"/>가 된다. 새 버전 판정에만 끼어든다. 기본값 false면 86단계 표와 같다.
+    /// </param>
+    public static UpdateCheckOutcome Decide(UpdateCheckResult result, bool isManual, bool dialogOpen = false, bool downloading = false)
     {
         if (result.Success && result.HasUpdate && result.ReleaseInfo is not null)
         {
-            return dialogOpen ? UpdateCheckOutcome.FocusExistingDialog : UpdateCheckOutcome.ShowDialog;
+            if (dialogOpen)
+            {
+                return UpdateCheckOutcome.FocusExistingDialog;
+            }
+            return downloading ? UpdateCheckOutcome.DownloadInProgress : UpdateCheckOutcome.ShowDialog;
         }
         if (!result.Success)
         {

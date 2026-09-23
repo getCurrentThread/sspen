@@ -23,6 +23,9 @@ public sealed class UpdateDialog : Window
     private readonly Button _laterButton;
     private bool _isUpdating;
 
+    // 103단계: 닫기가 확정됐다 — 그 뒤에 도착하는 진행·완료 콜백(취소 결과, 취소 전에 게시된 진행률)은 닫힌 창을 건드리지 않는다.
+    private bool _closed;
+
     public UpdateDialog(UpdateReleaseInfo info, UpdateService updateService)
     {
         _info = info;
@@ -175,11 +178,20 @@ public sealed class UpdateDialog : Window
                 info,
                 onProgress: p =>
                 {
+                    if (_closed)
+                    {
+                        return;
+                    }
                     _progressBar.Value = p * 100.0;
                     _statusText.Text = UpdateProgressText.For(p);
                 },
                 onCompleted: ex =>
                 {
+                    // 닫힌 뒤의 결과는 이 창이 청한 취소다(OperationCanceledException) — 오류 상자를 닫힌 창 위에 띄우지 않는다.
+                    if (_closed)
+                    {
+                        return;
+                    }
                     if (ex is not null)
                     {
                         _isUpdating = false;
@@ -218,20 +230,26 @@ public sealed class UpdateDialog : Window
     }
 
     /// <summary>
-    /// 다운로드 중에는 닫기를 취소한다 (98단계, FINAL-REVIEW-UPDATE-DOWNLOADING). '나중에'는 진행 중 비활성이지만 제목 표시줄 X·Alt+F4는
-    /// 막혀 있지 않았다 — 닫히면 루트의 <c>_updateDialog</c>가 비어 다음 자동·수동 확인이 새 대화상자를 열고, 같은 설치 파일 경로로
-    /// 두 번째 다운로드를 시작할 수 있었다(86단계 단일 인스턴스 판정은 '열림'만 본다). 여기서 막으면 '다운로드 중 ⇒ 열림'이 성립한다.
-    /// 실패 콜백이 <c>_isUpdating</c>을 내린 뒤에는 예전처럼 닫힌다. 앱 종료(<c>Application.Shutdown</c> — 설치 체인의 종료 포함)는
-    /// WPF가 취소를 무시하고 창을 닫으므로 막히지 않는다.
+    /// 다운로드 중에 닫으면 다운로드를 취소하고 닫는다 (103단계, FINAL-REVIEW-UPDATE-CANCEL). 98단계는 이중 다운로드를 막으려고 여기서
+    /// 닫기를 거부했지만, 본문 읽기는 <c>HttpClient.Timeout</c>(헤더까지만)이 지켜 주지 않아 네트워크가 멈추면 Topmost·NoResize 창을
+    /// 닫을 길이 트레이 종료뿐이었다. 이제 닫기는 <see cref="UpdateService.CancelDownload"/>를 부르고 그대로 닫힌다 — 멈춘 Read는
+    /// 서비스가 스트림을 닫아 깨우고, 받던 파일은 지운다. 이중 다운로드 방지는 서비스의 <see cref="UpdateService.IsDownloading"/>(취소된
+    /// 결과가 전달될 때까지 참)을 확인 흐름이 읽는 쪽이 맡는다. 앱 종료(<c>Application.Shutdown</c> — 설치 체인의 종료 포함)도 여기를
+    /// 지나지만, 그때는 완료가 이미 전달돼 진행 중인 다운로드가 없으므로 취소 요청은 아무것도 하지 않는다.
     /// </summary>
     protected override void OnClosing(CancelEventArgs e)
     {
+        base.OnClosing(e);
+        if (e.Cancel)
+        {
+            return;
+        }
+
+        _closed = true;
         if (_isUpdating)
         {
-            e.Cancel = true;
-            Log.Info("업데이트 다운로드 중 — 대화상자 닫기를 취소했다");
+            _updateService.CancelDownload();
         }
-        base.OnClosing(e);
     }
 
     private void OpenWebReleasePage()

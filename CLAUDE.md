@@ -38,7 +38,7 @@ dotnet run --project src/SSPen
 # projects, which open real fullscreen topmost windows and take over the physical screen.
 dotnet test SSPen.sln
 
-# unit & simulation tests (headless-safe, fast) — the default for everyday work (2161 cases, ~1 s)
+# unit & simulation tests (headless-safe, fast) — the default for everyday work (2177 cases, ~1 s)
 dotnet test tests/SSPen.Tests/SSPen.Tests.csproj
 dotnet test tests/SSPen.Tests/SSPen.Tests.csproj --filter "FullyQualifiedName~HitTestTests"
 
