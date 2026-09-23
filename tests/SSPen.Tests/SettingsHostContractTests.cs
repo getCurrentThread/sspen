@@ -1,4 +1,5 @@
 using System.Reflection;
+using SSPen.Settings;
 using SSPen.Shell;
 using Xunit;
 
@@ -18,5 +19,22 @@ public class SettingsHostContractTests
         var method = typeof(ISettingsHost).GetMethod("ExitApp", BindingFlags.Public | BindingFlags.Instance);
 
         Assert.Null(method);
+    }
+
+    /// <summary>
+    /// 재지정 반영은 일괄 한 건이다 (79단계, A6-3). 건별 <c>RemapHotkey(id, def)</c>가 되살아나면 창이 다시 보류분마다 부르게 되고,
+    /// 건마다 저장·전체 재등록이 따라오며 맞바꾸기의 중간 충돌이 가짜 트레이 경고를 띄운다.
+    /// </summary>
+    [Fact]
+    public void ISettingsHost_RemapsAsOneBatch_NoPerItemMember()
+    {
+        var perItem = typeof(ISettingsHost).GetMethod("RemapHotkey", BindingFlags.Public | BindingFlags.Instance);
+        var batch = typeof(ISettingsHost).GetMethod("RemapHotkeys", BindingFlags.Public | BindingFlags.Instance);
+
+        Assert.Null(perItem);
+        Assert.NotNull(batch);
+        Assert.Equal(
+            [typeof(IReadOnlyList<(string Id, HotkeyDef Def)>)],
+            batch.GetParameters().Select(parameter => parameter.ParameterType));
     }
 }

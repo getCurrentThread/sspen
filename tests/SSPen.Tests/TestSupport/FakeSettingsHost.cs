@@ -14,7 +14,9 @@ internal sealed class FakeSettingsHost : ISettingsHost
 
     public IReadOnlyList<(string Id, string Name, HotkeyDef Effective)> RemappableHotkeys { get; init; } = [];
 
-    public void RemapHotkey(string id, HotkeyDef def) => Calls.Add($"Remap:{id}:{def.Modifiers}+{def.VirtualKey}");
+    /// <summary>일괄 반영 1회 = 기록 1줄 (79단계, A6-3): "RemapBatch:id1,id2,…" (스테이징 순서).</summary>
+    public void RemapHotkeys(IReadOnlyList<(string Id, HotkeyDef Def)> batch) =>
+        Calls.Add($"RemapBatch:{string.Join(',', batch.Select(entry => entry.Id))}");
 
     public void SuppressHotkeys() => Calls.Add("Suppress");
 

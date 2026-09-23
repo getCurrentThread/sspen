@@ -357,13 +357,13 @@ public sealed class AppController : IShellActions, ISettingsHost
     public IReadOnlyList<(string Id, string Name, HotkeyDef Effective)> RemappableHotkeys =>
         _shellHotkeys?.RemappableHotkeys ?? [];
 
-    public void RemapHotkey(string id, HotkeyDef def)
-    {
-        _settingsBinder.Settings.Hotkeys[id] = def;
-        _settingsBinder.SaveNow();
-        _hotkeys?.SetBindings(_shellHotkeys?.BuildHotkeyMap() ?? []); // 즉시 반영 (AC-23)
-        Log.Info($"핫키 재지정: {id} → {HotkeyFormatting.Format(def)}");
-    }
+    /// <summary>보류분 일괄 반영 — 전부 쓴 뒤 저장 1회·재등록 1회. 순서는 <see cref="HotkeyRemapFlow.ApplyBatch"/>가 소유한다 (79단계, A6-3).</summary>
+    public void RemapHotkeys(IReadOnlyList<(string Id, HotkeyDef Def)> batch) =>
+        HotkeyRemapFlow.ApplyBatch(
+            batch,
+            _settingsBinder.Settings.Hotkeys,
+            save: _settingsBinder.SaveNow,
+            rebind: () => _hotkeys?.SetBindings(_shellHotkeys?.BuildHotkeyMap() ?? [])); // 최종 표로 한 번 (AC-23)
 
     public void SuppressHotkeys() => _hotkeys?.Suppress();
 

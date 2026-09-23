@@ -131,7 +131,7 @@ public class HotkeyDraftTests
 
     /// <summary>
     /// 창의 충돌 검사를 통과한 스테이징만으로 맞바꾸기(임시 조합 경유)를 하면 최종 표에 중복 조합이 없다 —
-    /// 보류분을 <b>한꺼번에</b> 적용하면 안전하다는 증인 (78단계 A6-3의 전제).
+    /// 보류분을 <b>한꺼번에</b> 적용하면 안전하다는 증인 (79단계 A6-3 일괄 적용의 전제 — HotkeyRemapFlow.ApplyBatch).
     /// </summary>
     [Fact]
     public void Overlay_AfterAcceptedSwapViaTemp_HasNoDuplicateCombos()
@@ -152,7 +152,8 @@ public class HotkeyDraftTests
 
     /// <summary>
     /// 특성화(A6-3): 같은 맞바꾸기의 Drain을 라이브 표에 <b>한 건씩</b> 쓰면 첫 건 직후 두 항목이 같은 조합이 된다 —
-    /// 오늘의 순차 RemapHotkey가 그 순간 RegisterHotKey 하나를 실패시켜 가짜 트레이 경고를 띄우는 이유다.
+    /// 78단계까지의 건별 RemapHotkey가 그 순간 RegisterHotKey 하나를 실패시켜 가짜 트레이 경고를 띄운 이유다.
+    /// 79단계부터는 한꺼번에 적용하므로 이 중간 상태가 등록에 닿지 않는다 (HotkeyRemapFlowTests.ApplyBatch_SwapViaTemp_NeverReportsRegistrationFailure).
     /// </summary>
     [Fact]
     public void SequentialApplyOfDrain_FirstLeg_ProducesDuplicate()

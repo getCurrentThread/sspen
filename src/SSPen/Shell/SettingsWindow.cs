@@ -472,11 +472,11 @@ public sealed class SettingsWindow : Window
 
         var updated = _host.Settings;
         var result = SettingsFormRules.ApplyTo(updated, values, Capture.CaptureFileNaming.DefaultSaveFolder());
-        // 보류 중인 재지정을 여기서 반영한다 — 즉시 재등록(AC-23)은 RemapHotkey 안에서 그대로 일어난다.
-        // 스테이징 순서·건수 그대로 한 건씩 부른다 (일괄 적용은 78단계 A6-3).
-        foreach (var (id, def) in _draft.Drain())
+        // 보류 중인 재지정을 여기서 한 번에 반영한다 — 전부 쓴 뒤 저장·재등록 1회 (AC-23; 79단계, A6-3).
+        // 한 건씩 부르면 맞바꾸기 도중의 중간 충돌이 가짜 트레이 경고를 띄운다. 보류분이 없으면 부르지 않는다(예전 0회 루프와 같다).
+        if (!_draft.IsEmpty)
         {
-            _host.RemapHotkey(id, def);
+            _host.RemapHotkeys(_draft.Drain());
         }
         _host.ApplyGeneralSettings(updated);
         if (result.KeepsWindowOpen && result.RestoredDeviceName is { } device)

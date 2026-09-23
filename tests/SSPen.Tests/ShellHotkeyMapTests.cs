@@ -118,6 +118,24 @@ public class ShellHotkeyMapTests
         Assert.DoesNotContain(map, b => b.Modifiers == AltShift && b.VirtualKey == VirtualKeys.D6);
     }
 
+    /// <summary>
+    /// 펜과 지우개를 맞바꾼 두 값을 <b>한꺼번에</b> 설정에 넣은 뒤 만든 맵에는 중복 조합이 없다 (79단계, A6-3) —
+    /// 일괄 적용이 재등록 한 번으로 끝나도 RegisterHotKey가 서로 부딪히지 않는다는 표 쪽 증인이다.
+    /// </summary>
+    [Fact]
+    public void BuildHotkeyMap_AfterBatchSwap_HasDistinctCombos()
+    {
+        var settings = new AppSettings();
+        settings.Hotkeys["pen"] = new HotkeyDef(AltShift, VirtualKeys.D5);
+        settings.Hotkeys["eraser"] = new HotkeyDef(AltShift, VirtualKeys.D3);
+
+        var combos = CreateSut(settings).BuildHotkeyMap().Select(b => (b.Modifiers, b.VirtualKey)).ToList();
+
+        Assert.Equal(combos.Count, combos.Distinct().Count());
+        Assert.Contains((AltShift, VirtualKeys.D5), combos);
+        Assert.Contains((AltShift, VirtualKeys.D3), combos);
+    }
+
     [Fact]
     public void BuildHotkeyMap_RepeatedIndependentConstruction_StaysStable()
     {

@@ -43,7 +43,11 @@ public sealed class HotkeyDraft
         int quickColorSlots) =>
         HotkeyConflictRules.Find(Overlay(live), editingId, candidate, quickColorSlots);
 
-    /// <summary>보류분을 스테이징 순서대로 복사해 돌려주고 비운다.</summary>
+    /// <summary>
+    /// 보류분을 스테이징 순서대로 복사해 돌려주고 비운다. 결과는 통째로 <see cref="ISettingsHost.RemapHotkeys"/>에 한 번 넘어간다 (79단계, A6-3).
+    /// 적용 전에 먼저 비우는 것은 의도다(67단계 리뷰의 미결 사항을 79단계에 결정): 일괄 적용(<see cref="HotkeyRemapFlow.ApplyBatch"/>)은
+    /// 저장·재등록보다 먼저 모든 건을 설정 사전에 쓰므로, 그 뒤에 예외가 나도 보류분은 설정에 남아 있다 — 되돌려 쌓을 것이 없다.
+    /// </summary>
     public IReadOnlyList<(string Id, HotkeyDef Def)> Drain()
     {
         var drained = _staged.Select(pair => (pair.Key, pair.Value)).ToList();

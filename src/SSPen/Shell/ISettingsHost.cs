@@ -10,8 +10,12 @@ public interface ISettingsHost
 
     IReadOnlyList<(string Id, string Name, HotkeyDef Effective)> RemappableHotkeys { get; }
 
-    /// <summary>설정 창 확인 버튼에서 보류분마다 호출 — 저장 + 즉시 재등록 (AC-23).</summary>
-    void RemapHotkey(string id, HotkeyDef def);
+    /// <summary>
+    /// 설정 창 확인 시 보류분 일괄 반영 — 전부 쓴 뒤 저장·재등록 1회 (AC-23; 79단계, A6-3). 순서의 본체는
+    /// <see cref="HotkeyRemapFlow.ApplyBatch"/>다. 건별로 부르면 맞바꾸기 도중의 중간 충돌이 가짜 트레이 경고를 띄우고
+    /// 저장·재등록이 N회 따라온다. 빈 묶음은 무동작이다.
+    /// </summary>
+    void RemapHotkeys(IReadOnlyList<(string Id, HotkeyDef Def)> batch);
 
     void SuppressHotkeys();
 
