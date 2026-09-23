@@ -77,7 +77,8 @@ installer and a portable zip to a GitHub release.
 반드시 `Stop-Process -Name SSPen -Force`로 기존 인스턴스를 종료하고, `Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait`로 설치 완료를 대기한 후, `$env:LOCALAPPDATA\Programs\SSPen\SSPen.exe`를 실행하여 새 버전을 즉시 띄운다.
 
 `build/publish.ps1` is the only supported path: it publishes, then *proves* self-containment twice
-(publish-folder assertions plus a launch with `DOTNET_ROOT` masked to an empty dir), then compiles
+(publish-folder assertions in `build/assert-selfcontained.ps1` — the one copy `verify.ps1`, `ci.yml` and
+`release.yml` also call — plus a launch with `DOTNET_ROOT` masked to an empty dir), then compiles
 `installer/SSPen.iss`. `publish/` and `artifacts/` are gitignored, so a deploy produces nothing to commit.
 
 Two facts about the installer that are not visible from the `.iss` source alone:
@@ -93,7 +94,8 @@ Two facts about the installer that are not visible from the `.iss` source alone:
 
 The installed `SSPen.exe` carries the source commit in its `ProductVersion` (`<Version>+<sha>`); use that
 to confirm which build is actually installed. The version number itself lives in two places that must be
-bumped together: `<Version>` in `src/SSPen/SSPen.csproj` and `MyAppVersion` in `installer/SSPen.iss`.
+bumped together: `<Version>` in `src/SSPen/SSPen.csproj` and `MyAppVersion` in `installer/SSPen.iss`
+(the unit test `VersionSyncTests` fails while they differ).
 
 ## Where things live at runtime
 

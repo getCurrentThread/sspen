@@ -9,7 +9,8 @@
     <IsPackable>false</IsPackable>
     <!--
       머신 바운드 (CRIT-2 하니스 계약): 대상 PC(3x 1920x1080, 원점 -1920,0)의
-      대화형 세션에서만 실행한다. 헤드리스 CI에서는 제외.
+      대화형 세션에서 실행하는 것이 기준이다. CI(ci.yml)에서는 continue-on-error로
+      실행한다 — 초록이 통과를 뜻하지 않으니 그 단계 로그를 읽는다(93단계, A8-8).
     -->
   </PropertyGroup>
 

@@ -11,21 +11,8 @@ dotnet publish $project -c Release -r win-x64 --self-contained true -o $publishD
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed (exit $LASTEXITCODE)" }
 
 Write-Host '=== 2) AC-24 Deterministic Validation 1: Publish Directory Assertions (CRIT-3) ==='
-$required = @('SSPen.exe', 'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'wpfgfx_cor3.dll')
-foreach ($file in $required) {
-    if (-not (Test-Path (Join-Path $publishDir $file))) {
-        throw "Missing $file in publish folder"
-    }
-}
-$runtimeConfig = Get-Content (Join-Path $publishDir 'SSPen.runtimeconfig.json') -Raw | ConvertFrom-Json
-if ($runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'framework' -or
-    $runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'frameworks') {
-    throw 'runtimeconfig contains framework dependencies'
-}
-if ($runtimeConfig.runtimeOptions.PSObject.Properties.Name -notcontains 'includedFrameworks') {
-    throw 'runtimeconfig missing includedFrameworks'
-}
-Write-Host 'Publish integrity verified.'
+# 폴더 단언은 verify.ps1·ci.yml·release.yml과 한 벌을 공유한다(93단계, A8-8).
+& (Join-Path $PSScriptRoot 'assert-selfcontained.ps1') -PublishDir $publishDir
 
 Write-Host '=== 3) AC-24 Deterministic Validation 2: DOTNET_ROOT Masking Startup Test (CRIT-3) ==='
 # 이 검증은 "게시본이 시스템 런타임 없이 뜨는가"를 프로세스가 살아 있는지로 판정한다.

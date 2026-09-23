@@ -47,16 +47,11 @@ jobs:
           -c Release -r win-x64 --self-contained true
           -o publish/win-x64
 
+      # 폴더 단언은 build/assert-selfcontained.ps1 한 벌을 publish.ps1·verify.ps1·ci.yml과 공유한다(93단계, A8-8).
+      # 예전 사본은 hostpolicy.dll·wpfgfx_cor3.dll·framework(s) 부재 검사가 빠져 태그 릴리스만 느슨하게 검사받았다.
       - name: 자체 포함 검증
         shell: pwsh
-        run: |
-          $cfg = Get-Content publish/win-x64/SSPen.runtimeconfig.json -Raw | ConvertFrom-Json
-          if ($cfg.runtimeOptions.PSObject.Properties.Name -notcontains 'includedFrameworks') {
-              throw 'self-contained 게시가 아닙니다 (includedFrameworks 없음)'
-          }
-          foreach ($f in 'SSPen.exe', 'coreclr.dll', 'hostfxr.dll') {
-              if (-not (Test-Path (Join-Path 'publish/win-x64' $f))) { throw "게시 산출물 누락: $f" }
-          }
+        run: ./build/assert-selfcontained.ps1 -PublishDir publish/win-x64
 
       - name: Inno Setup 6 확보
         shell: pwsh

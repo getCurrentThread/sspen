@@ -40,25 +40,10 @@ jobs:
       - name: Publish Self-Contained Win-x64
         run: dotnet publish src/SSPen/SSPen.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64 -v minimal -nologo
 
+      # 폴더 단언은 build/assert-selfcontained.ps1 한 벌을 publish.ps1·verify.ps1·release.yml과 공유한다(93단계, A8-8).
       - name: Verify Self-Contained Integrity
         shell: pwsh
-        run: |
-          $publishDir = "publish/win-x64"
-          $required = @('SSPen.exe', 'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'wpfgfx_cor3.dll')
-          foreach ($file in $required) {
-              if (-not (Test-Path (Join-Path $publishDir $file))) {
-                  throw "Self-contained publish missing required file: $file"
-              }
-          }
-          $runtimeConfig = Get-Content (Join-Path $publishDir 'SSPen.runtimeconfig.json') -Raw | ConvertFrom-Json
-          if ($runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'framework' -or
-              $runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'frameworks') {
-              throw 'runtimeconfig contains framework-dependent references'
-          }
-          if ($runtimeConfig.runtimeOptions.PSObject.Properties.Name -notcontains 'includedFrameworks') {
-              throw 'runtimeconfig missing includedFrameworks'
-          }
-          Write-Host "Self-contained publish verification passed successfully."
+        run: ./build/assert-selfcontained.ps1 -PublishDir publish/win-x64
 
       - name: Setup Inno Setup 6
         shell: pwsh

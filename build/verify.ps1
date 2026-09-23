@@ -1,4 +1,4 @@
-# SS Pen All-in-One Local Verification and Packaging Pipeline
+﻿# SS Pen All-in-One Local Verification and Packaging Pipeline
 # Run: powershell -ExecutionPolicy Bypass -File build/verify.ps1
 #Requires -Version 5
 $ErrorActionPreference = 'Stop'
@@ -61,20 +61,8 @@ Write-Success "Self-contained publish completed ($publishDir)"
 
 # 6. Publish Integrity Assertion
 Write-Step '6) Publish Integrity Assertions'
-$required = @('SSPen.exe', 'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'wpfgfx_cor3.dll')
-foreach ($file in $required) {
-    if (-not (Test-Path (Join-Path $publishDir $file))) {
-        throw "Missing required file in self-contained publish folder: $file"
-    }
-}
-$runtimeConfig = Get-Content (Join-Path $publishDir 'SSPen.runtimeconfig.json') -Raw | ConvertFrom-Json
-if ($runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'framework' -or
-    $runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'frameworks') {
-    throw 'runtimeconfig contains framework-dependent references'
-}
-if ($runtimeConfig.runtimeOptions.PSObject.Properties.Name -notcontains 'includedFrameworks') {
-    throw 'runtimeconfig missing includedFrameworks'
-}
+# 폴더 단언은 publish.ps1·ci.yml·release.yml과 한 벌을 공유한다(93단계, A8-8).
+& (Join-Path $PSScriptRoot 'assert-selfcontained.ps1') -PublishDir $publishDir
 Write-Success 'Self-contained publish integrity verified'
 
 # 7. DOTNET_ROOT Masking Startup Test (CRIT-3)
