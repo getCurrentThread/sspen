@@ -284,19 +284,22 @@ public sealed class AppController : IShellActions, ISettingsHost
         _toasts?.Close();
     }
 
-    public void ExitApp()
-    {
-        Log.Info("종료 요청 (트레이/업데이트)");
-        Application.Current.Shutdown();
-    }
+    /// <summary>트레이 "종료"와 업데이트 재시작 경로 — 합성 루트가 메서드 그룹으로 직접 배선한다 (ISettingsHost 경유 아님).</summary>
+    public void ExitApp() => ShutdownApplication("트레이/업데이트");
 
     /// <summary>
     /// 툴바 설정 메뉴의 "프로그램 종료" (55단계). 확인 없이 바로 종료한다 — <see cref="ExitApp"/>과 동작은 같고,
     /// 종료 경로(툴바 메뉴)를 로그에 구분해 남기려고 분리해 둔다.
     /// </summary>
-    public void RequestExit()
+    public void RequestExit() => ShutdownApplication("툴바 설정 메뉴");
+
+    /// <summary>
+    /// 앱 종료의 단일 지점 (57단계, A1-5). <c>Application.Current</c>가 남은 유일한 곳이다 (LD-4/R24 — AGENTS L48).
+    /// 로그 문구는 합치기 전 두 경로와 바이트 동일하다: "종료 요청 (트레이/업데이트)" / "종료 요청 (툴바 설정 메뉴)".
+    /// </summary>
+    private static void ShutdownApplication(string origin)
     {
-        Log.Info("종료 요청 (툴바 설정 메뉴)");
+        Log.Info($"종료 요청 ({origin})");
         Application.Current.Shutdown();
     }
 

@@ -18,7 +18,7 @@ public class HotkeyRemapFlowTests
     {
         var host = new FakeSettingsHost();
 
-        var result = HotkeyRemapFlow.Run(host, "undo", () => { host.Calls.Add("Dialog"); return Captured; });
+        var result = HotkeyRemapFlow.Run(host, () => { host.Calls.Add("Dialog"); return Captured; });
 
         Assert.Equal(Captured, result);
         Assert.Equal(["Suppress", "Dialog", "Restore"], host.Calls);
@@ -30,7 +30,7 @@ public class HotkeyRemapFlowTests
     {
         var host = new FakeSettingsHost();
 
-        HotkeyRemapFlow.Run(host, "undo", () => Captured);
+        HotkeyRemapFlow.Run(host, () => Captured);
 
         Assert.DoesNotContain(host.Calls, call => call.StartsWith("Remap", StringComparison.Ordinal));
         Assert.Empty(host.Settings.Hotkeys);
@@ -41,7 +41,7 @@ public class HotkeyRemapFlowTests
     {
         var host = new FakeSettingsHost();
 
-        var result = HotkeyRemapFlow.Run(host, "undo", () => null);
+        var result = HotkeyRemapFlow.Run(host, () => null);
 
         Assert.Null(result);
         Assert.Equal(["Suppress", "Restore"], host.Calls);
@@ -53,7 +53,7 @@ public class HotkeyRemapFlowTests
         var host = new FakeSettingsHost();
 
         Assert.Throws<InvalidOperationException>(() =>
-            HotkeyRemapFlow.Run(host, "undo", () => throw new InvalidOperationException("boom")));
+            HotkeyRemapFlow.Run(host, () => throw new InvalidOperationException("boom")));
 
         Assert.Equal(["Suppress", "Restore"], host.Calls);
     }

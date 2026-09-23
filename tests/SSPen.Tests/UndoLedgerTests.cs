@@ -145,7 +145,6 @@ public class UndoLedgerTests
         var rig = Setup();
         var controller = new FadingInkController(new FadeSchedulerCore())
         {
-            Active = true,
             Duration = TimeSpan.FromSeconds(3),
         };
         rig.Ledger.ElementRemovedByUndo += controller.OnElementRemoved;
@@ -153,7 +152,7 @@ public class UndoLedgerTests
         var stroke = NewStroke();
         rig.D1.Add(stroke);
         rig.Ledger.RecordAdd(stroke);
-        controller.OnElementCommitted(stroke, DateTime.UtcNow);
+        controller.OnElementCommitted(stroke, DateTime.UtcNow, fade: true);
         Assert.Equal(1, controller.Core.PendingCount);
 
         // undo → 문서에서 제거 + 보류 페이드 취소 (CRIT-1 상호작용).

@@ -92,9 +92,6 @@ public sealed class SettingsBinder
         _settings.DefaultBoardIsBlack = _state.DefaultBoard == BoardMode.Black;
         _settings.HighlightCursor = _state.HaloActive;
         _settings.QuickColors = [.. _state.QuickColors.Select(ColorPalette.ToHex)];
-        // 페이딩 잉크는 그리기 도구에 업히는 토글 (사용자 요청 17차):
-        // 토글이 켜져 있고 현재 도구가 그리기 도구일 때만 커밋 획이 페이드 대상이다.
-        _fading.Active = _state.FadingApplies;
         ScheduleSave();
     }
 

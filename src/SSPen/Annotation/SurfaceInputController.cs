@@ -124,7 +124,12 @@ public sealed class SurfaceInputController(
         }
     }
 
-    public void OnMouseMove(MouseEventArgs e, float pressure = StrokeGeometry.DefaultPressure)
+    /// <summary>
+    /// StylusFeedPolicy: 이 어댑터는 실제 마우스 전용이라 필압을 싣지 않는다 — 스타일러스 패킷(필압 포함)은
+    /// 창의 OnStylusMove 채널로만 들어온다 (54단계, 1.3.3). 필압 인자를 되살리면 승격 이동으로 패킷을 다시 넣는
+    /// P1..Pn 역주행 경로가 API 차원에서 열리므로 57단계에 지웠다 (A2-7, 리플렉션 트립와이어가 잠근다).
+    /// </summary>
+    public void OnMouseMove(MouseEventArgs e)
     {
         // 눌리지 않은 이동을 여기서 끊는다 — 호버 이동마다 GetPosition/GetAsyncKeyState를
         // 부르지 않기 위해서다. 판정의 주인은 아래 PointerMove의 leftPressed 가드다.
@@ -132,7 +137,7 @@ public sealed class SurfaceInputController(
         {
             return;
         }
-        PointerMove(e.GetPosition(inkCanvas), KeyboardState.Shift, leftPressed: true, pressure);
+        PointerMove(e.GetPosition(inkCanvas), KeyboardState.Shift, leftPressed: true);
     }
 
     public void OnMouseLeftButtonUp(MouseButtonEventArgs e) =>

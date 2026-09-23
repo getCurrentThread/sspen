@@ -107,7 +107,7 @@ public sealed class SettingsWindow : Window
         var curVer = Updates.UpdateService.CurrentVersion;
         var versionLabel = new TextBlock
         {
-            Text = $"(v{curVer})",
+            Text = Strings.SettingsVersionLabel(curVer.ToString()),
             Foreground = Brushes.Gray,
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
@@ -391,7 +391,7 @@ public sealed class SettingsWindow : Window
         comboButton.Click += (_, _) =>
         {
             // ARCH-8 순서(억제 → 모달 → 반드시 복원)는 HotkeyRemapFlow가 소유한다 (40단계). 창은 대화상자와 라벨만.
-            var captured = HotkeyRemapFlow.Run(_host, id, () =>
+            var captured = HotkeyRemapFlow.Run(_host, () =>
             {
                 var dialog = new HotkeyCaptureDialog(effective) { Owner = this, Topmost = true };
                 return dialog.ShowDialog() == true ? dialog.Captured : null;

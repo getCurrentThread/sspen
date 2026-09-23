@@ -15,7 +15,8 @@ namespace SSPen.Shell;
 public static class HotkeyRemapFlow
 {
     /// <returns>확정된 조합, 취소면 null. 호출자가 보류 목록에 담았다가 확인 시 적용한다.</returns>
-    public static HotkeyDef? Run(ISettingsHost host, string id, Func<HotkeyDef?> showDialog)
+    /// <remarks>핫키 id는 받지 않는다 (57단계, A6-8): 이 흐름은 재지정을 쓰지 않으므로 id를 쓸 곳이 없다 — 보류 목록의 키는 호출자가 쥔다.</remarks>
+    public static HotkeyDef? Run(ISettingsHost host, Func<HotkeyDef?> showDialog)
     {
         host.SuppressHotkeys();
         try

@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
 using SSPen.Annotation;
@@ -60,26 +61,28 @@ public class FadeSchedulerTests
     }
 
     [Fact]
-    public void Controller_InactiveDoesNotSchedule()
+    public void Controller_FadeFalse_DoesNotSchedule()
     {
-        var controller = new FadingInkController(new FadeSchedulerCore()) { Active = false };
+        var controller = new FadingInkController(new FadeSchedulerCore());
         var stroke = NewStroke();
-        Assert.False(controller.OnElementCommitted(stroke, T0));
+        Assert.False(controller.OnElementCommitted(stroke, T0, fade: false));
         Assert.False(stroke.IsFading);
         Assert.Equal(0, controller.Core.PendingCount);
     }
 
+    /// <summary>
+    /// 페이드 여부는 커밋마다 넘겨받은 스냅샷(제스처 시작 시점, AGENTS L92)이 정한다 — 컨트롤러는 자기 상태로 판정하지 않는다.
+    /// 예전 '활성화 이후 획만' 증인은 커밋 시점 Active를 읽는 구 경로(57단계에 삭제, C-1)를 통해 같은 것을 확인했다.
+    /// </summary>
     [Fact]
-    public void Controller_OnlyStrokesAfterActivationFade()
+    public void Controller_FadeFlag_DecidesPerCommit()
     {
-        var controller = new FadingInkController(new FadeSchedulerCore());
+        var controller = new FadingInkController(new FadeSchedulerCore()) { Duration = TimeSpan.FromSeconds(3) };
         var before = NewStroke();
-        controller.OnElementCommitted(before, T0); // 활성화 이전
-
-        controller.Active = true;
-        controller.Duration = TimeSpan.FromSeconds(3);
         var after = NewStroke();
-        controller.OnElementCommitted(after, T0);  // 활성화 이후
+
+        Assert.False(controller.OnElementCommitted(before, T0, fade: false)); // 토글 켜기 전에 시작한 제스처
+        Assert.True(controller.OnElementCommitted(after, T0, fade: true));    // 토글 켠 뒤 시작한 제스처
 
         Assert.False(before.IsFading);
         Assert.True(after.IsFading);
@@ -95,11 +98,10 @@ public class FadeSchedulerTests
     {
         var controller = new FadingInkController(new FadeSchedulerCore())
         {
-            Active = true,
             Duration = TimeSpan.FromSeconds(seconds),
         };
         var stroke = NewStroke();
-        controller.OnElementCommitted(stroke, T0);
+        controller.OnElementCommitted(stroke, T0, fade: true);
 
         Assert.Empty(controller.Core.Due(T0 + TimeSpan.FromSeconds(seconds) - TimeSpan.FromMilliseconds(1)));
         Assert.Equal(new AnnotationElement[] { stroke }, controller.Core.Due(T0 + TimeSpan.FromSeconds(seconds)));
@@ -110,13 +112,31 @@ public class FadeSchedulerTests
     {
         var controller = new FadingInkController(new FadeSchedulerCore())
         {
-            Active = true,
             Duration = TimeSpan.FromSeconds(3),
         };
         var stroke = NewStroke();
-        controller.OnElementCommitted(stroke, T0);
+        controller.OnElementCommitted(stroke, T0, fade: true);
         controller.OnElementRemoved(stroke); // 지우개/undo/전체 지우기 경로
         Assert.Empty(controller.Core.Due(T0 + TimeSpan.FromSeconds(10)));
+    }
+
+    /// <summary>
+    /// 트립와이어 (57단계, C-1): 커밋 시점 상태로 페이드를 판정하는 공개 경로가 되살아나면 안 된다. 새 호출부가 그것을 부르면
+    /// 드래그 도중 토글할 때 진행 중 요소가 재분류되는 결함(AGENTS L92가 막는 것)이 컴파일러 경고 없이 돌아온다.
+    /// </summary>
+    [Fact]
+    public void FadingInkController_HasNoCommitTimeActiveFlag_ByReflection()
+    {
+        var type = typeof(FadingInkController);
+
+        Assert.Null(type.GetProperty("Active", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance));
+        var commits = type.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .Where(m => m.Name == nameof(FadingInkController.OnElementCommitted))
+            .ToArray();
+        var only = Assert.Single(commits);
+        Assert.Equal(
+            [typeof(AnnotationElement), typeof(DateTime), typeof(bool)],
+            only.GetParameters().Select(p => p.ParameterType).ToArray());
     }
 
     [Fact]

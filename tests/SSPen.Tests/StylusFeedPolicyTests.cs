@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using SSPen.Annotation;
 using Xunit;
 
@@ -33,5 +34,20 @@ public class StylusFeedPolicyTests
             .Count(c => StylusFeedPolicy.Feeds(c, stylusBacked, contact: true));
 
         Assert.Equal(1, feeding);
+    }
+
+    /// <summary>
+    /// 트립와이어 (57단계, A2-7): 승격 마우스 채널 어댑터는 필압을 싣지 않는다. 스타일러스 패킷의 유일한 채널은 창의
+    /// OnStylusMove이고(54단계 단일 채널), 이 어댑터에 필압 인자를 되살리면 승격 이동으로 같은 배치를 다시 넣던
+    /// 1.3.3 역주행 경로가 API 차원에서 다시 열린다.
+    /// </summary>
+    [Fact]
+    public void OnMouseMove_TakesOnlyMouseEventArgs_ByReflection()
+    {
+        var method = typeof(SurfaceInputController).GetMethod(nameof(SurfaceInputController.OnMouseMove));
+
+        Assert.NotNull(method);
+        var parameter = Assert.Single(method!.GetParameters());
+        Assert.Equal(typeof(MouseEventArgs), parameter.ParameterType);
     }
 }

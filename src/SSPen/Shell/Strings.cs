@@ -40,11 +40,6 @@ public static class Strings
     public static string TableBadge(int rows, int columns) => $"{rows} × {columns} {ShapeTable}";
     public const string ShapeText = "텍스트";
 
-    // 굵기 플라이아웃
-    public const string ThicknessSmall = "작게";
-    public const string ThicknessMedium = "보통";
-    public const string ThicknessLarge = "크게";
-
     // 핫키 표시명 (툴팁과 다른 항목만 별도 상수 — 클리너 B3: 표시명은 이 테이블에서만 나온다)
     public const string HotkeyVisibility = "표시 토글";
     public const string HotkeyToolbar = "툴바 토글";
@@ -122,7 +117,9 @@ public static class Strings
     public const string SettingsCancel = "취소";
     public const string SettingsExitApp = "프로그램 종료";
     public const string SettingsCheckUpdateNow = "지금 확인";
-    public const string SettingsCurrentVersion = "현재 버전";
+
+    /// <summary>설정 창 업데이트 줄의 현재 버전 표기: "(v1.3.6)". 57단계에 창의 인라인 서식을 여기로 옮겼다 (A6-8).</summary>
+    public static string SettingsVersionLabel(string version) => $"(v{version})";
 
     // 업데이트
     public const string UpdateTitle = "SS Pen 업데이트";
@@ -139,7 +136,6 @@ public static class Strings
     public const string UpdateFailedTitle = "업데이트 오류";
     public const string UpdateFailedMessage = "업데이트를 다운로드하거나 설치하지 못했습니다.\n웹페이지에서 직접 다운로드하시겠습니까?\n\n오류: ";
     public const string UpdateLatestAlready = "현재 최신 버전을 사용 중입니다.";
-    public const string UpdateChecking = "업데이트를 확인하는 중...";
     public const string TrayCheckUpdate = "업데이트 확인";
 
     // 캡처 결과 알림 (토스트). 이전에는 저장·복사 성공이 전부 침묵이었고 실패는 일반 치명적 대화상자로 샜다.

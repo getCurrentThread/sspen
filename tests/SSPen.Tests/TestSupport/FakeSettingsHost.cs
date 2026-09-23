@@ -23,6 +23,4 @@ internal sealed class FakeSettingsHost : ISettingsHost
     public void ApplyGeneralSettings(AppSettings updated) => Calls.Add("Apply");
 
     public void CheckForUpdates() => Calls.Add("CheckForUpdates");
-
-    public void ExitApp() => Calls.Add("Exit");
 }

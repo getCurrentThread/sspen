@@ -82,35 +82,6 @@ public class FadingDurationsTests
     }
 
     [Fact]
-    public void Next_AdvancesOneStep()
-    {
-        Assert.Equal(0.5, FadingDurations.Next(0.1));
-        Assert.Equal(1.0, FadingDurations.Next(0.5));
-    }
-
-    [Fact]
-    public void Next_AtLastStep_WrapsToFirst()
-    {
-        // 버튼 재클릭 로테이션이 상한에서 막히면 되돌아갈 방법이 없다.
-        Assert.Equal(FadingDurations.Min, FadingDurations.Next(FadingDurations.Max));
-    }
-
-    [Fact]
-    public void Next_VisitsEveryStepExactlyOncePerCycle()
-    {
-        var visited = new List<double>();
-        double current = FadingDurations.Steps[0];
-        for (int i = 0; i < FadingDurations.Steps.Length; i++)
-        {
-            visited.Add(current);
-            current = FadingDurations.Next(current);
-        }
-
-        Assert.Equal(FadingDurations.Steps, visited);
-        Assert.Equal(FadingDurations.Steps[0], current); // 한 바퀴 후 제자리
-    }
-
-    [Fact]
     public void Same_TreatsFloatingPointNoiseAsEqual()
     {
         // 0.1 + 0.2 == 0.30000000000000004. 정확 비교로는 플라이아웃 강조가 사라진다.

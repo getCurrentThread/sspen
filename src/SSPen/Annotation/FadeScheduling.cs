@@ -49,7 +49,7 @@ public sealed class FadeSchedulerCore
 ///
 /// 범위는 <see cref="Min"/>~<see cref="Max"/>초다 (사용자 요청 16차: 이전 3/6/12초 체계에서 재조정).
 /// 보관 값은 범위 안 <b>임의의 실수</b>를 허용하고(손으로 편집한 settings.json 존중),
-/// <see cref="Steps"/>는 UI 프리셋과 버튼 로테이션에만 쓴다.
+/// <see cref="Steps"/>는 UI 프리셋과 휠 사다리 이동에만 쓴다 (버튼 재클릭 로테이션 <c>Next</c>는 폐기돼 57단계에 지웠다, C-1).
 /// </summary>
 public static class FadingDurations
 {
@@ -84,10 +84,6 @@ public static class FadingDurations
         return best;
     }
 
-    /// <summary>페이딩 버튼 재클릭 로테이션: 다음 사다리 칸으로, 끝에서는 처음으로 돌아간다.</summary>
-    public static double Next(double current) =>
-        Steps[(NearestIndex(current) + 1) % Steps.Length];
-
     /// <summary>휠 스크롤에 따른 지속 시간 사다리 이동 (delta > 0 길게/위쪽, delta < 0 짧게/아래쪽).</summary>
     public static double StepByWheel(double current, int delta)
     {
@@ -119,17 +115,15 @@ public sealed class FadingInkController
         Duration = TimeSpan.FromSeconds(FadingDurations.Default);
     }
 
-    public bool Active { get; set; }
-
     public TimeSpan Duration { get; set; }
 
     public FadeSchedulerCore Core => _core;
 
-    /// <summary>획 커밋 시 호출 (구 경로): 현재 Active 상태로 판정.</summary>
-    public bool OnElementCommitted(AnnotationElement element, DateTime now) =>
-        OnElementCommitted(element, now, Active);
-
-    /// <summary>획 커밋: fade는 획 시작 시점 판정 (아키텍트 자문 — 드래그 중 전환 오분류 방지).</summary>
+    /// <summary>
+    /// 획 커밋: <paramref name="fade"/>는 제스처 시작 시점 스냅샷(<see cref="GestureStyleSnapshot"/>)이다 — Fading ink 규약
+    /// (AGENTS L92, 아키텍트 자문: 드래그 중 전환 오분류 방지). 커밋 시점 상태로 판정하던 '구 경로'(Active 속성 + 2인자 오버로드)는
+    /// 이 규약을 컴파일러 경고 없이 우회할 수 있어 57단계에 지웠다 (C-1).
+    /// </summary>
     public bool OnElementCommitted(AnnotationElement element, DateTime now, bool fade)
     {
         if (!fade)

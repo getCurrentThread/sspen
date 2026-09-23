@@ -10,7 +10,7 @@ public interface ISettingsHost
 
     IReadOnlyList<(string Id, string Name, HotkeyDef Effective)> RemappableHotkeys { get; }
 
-    /// <summary>모달 확인 즉시 재등록 (AC-23).</summary>
+    /// <summary>설정 창 확인 버튼에서 보류분마다 호출 — 저장 + 즉시 재등록 (AC-23).</summary>
     void RemapHotkey(string id, HotkeyDef def);
 
     void SuppressHotkeys();
@@ -22,7 +22,4 @@ public interface ISettingsHost
 
     /// <summary>업데이트 확인 및 안내 대화상자 표시.</summary>
     void CheckForUpdates();
-
-    /// <summary>프로그램 종료.</summary>
-    void ExitApp();
 }

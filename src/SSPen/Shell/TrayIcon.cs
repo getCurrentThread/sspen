@@ -92,8 +92,8 @@ public sealed class TrayIcon : IDisposable
         }
     }
 
-    /// <summary>일반 경고 풍선 (클리너 B1: 클립보드 실패 등 사용자 가시 알림 경로).</summary>
-    public void ShowWarning(string message) =>
+    /// <summary>핫키 등록 실패 경고 풍선 (<see cref="WarnHotkeyConflicts"/> 전용 — 클립보드 실패 등 캡처 알림은 토스트로 옮겨 갔다, 57단계 A6-8).</summary>
+    private void ShowWarning(string message) =>
         _icon.ShowBalloonTip(5000, Strings.AppName, message, ToolTipIcon.Warning);
 
     public void Dispose()
