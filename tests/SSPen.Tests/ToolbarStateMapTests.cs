@@ -151,6 +151,92 @@ public class ToolbarStateMapTests
         Assert.Equal(Icons.EyeOff, collapsed);
     }
 
+    // ── 도구 글리프 단일 표 (69단계, A5-2) ─────────────────────────────────────────────────────────────────
+
+    public static IEnumerable<object[]> GroupCycleTools() =>
+        ToolbarStateMap.ShapeCycle.Select(tool => new object[] { tool, ToolbarButtonId.Shapes })
+            .Concat(ToolbarStateMap.PenCycle.Select(tool => new object[] { tool, ToolbarButtonId.Pen }));
+
+    /// <summary>그룹 버튼 글리프와 플라이아웃 항목 글리프는 같은 표(ToolIcon)를 읽는다 — 순환의 모든 도구에서 둘이 같다.</summary>
+    [Theory]
+    [MemberData(nameof(GroupCycleTools))]
+    public void ToolIcon_EveryCycleTool_MatchesIconForGroupButton(ToolKind tool, ToolbarButtonId group)
+    {
+        var state = new AppState { ActiveTool = tool };
+
+        var icon = ToolbarStateMap.IconFor(state, group, menuCollapsed: false, fallback: Icons.Eye);
+        var toolIcon = ToolbarStateMap.ToolIcon(tool);
+
+        Assert.True(toolIcon.HasValue, $"{tool}은(는) 그룹 순환에 있는데 ToolIcon이 null이다");
+        Assert.Equal(toolIcon.Value, icon);
+    }
+
+    [Theory]
+    [InlineData(ToolKind.Select)]
+    [InlineData(ToolKind.Eraser)]
+    [InlineData(ToolKind.None)]
+    public void ToolIcon_NonGroupTools_IsNull(ToolKind tool)
+    {
+        Assert.Null(ToolbarStateMap.ToolIcon(tool));
+    }
+
+    /// <summary>
+    /// 69단계 이전 IconFor 안 switch 두 개와 도형·펜 플라이아웃 항목 인자가 적던 값 그대로다 — 표를 하나로 모으며 글리프가
+    /// 바뀌지 않았다는 특성화 증인 (위 Theory는 IconFor와 ToolIcon이 서로 같다는 것만 본다).
+    /// </summary>
+    [Fact]
+    public void ToolIcon_EachGroupTool_KeepsItsLegacyGlyph()
+    {
+        Assert.Equal(Icons.Pen, ToolbarStateMap.ToolIcon(ToolKind.Pen));
+        Assert.Equal(Icons.Highlight, ToolbarStateMap.ToolIcon(ToolKind.Highlighter));
+        Assert.Equal(Icons.TextT, ToolbarStateMap.ToolIcon(ToolKind.Text));
+        Assert.Equal(Icons.Line, ToolbarStateMap.ToolIcon(ToolKind.Line));
+        Assert.Equal(Icons.ArrowUpRight, ToolbarStateMap.ToolIcon(ToolKind.Arrow));
+        Assert.Equal(Icons.Square, ToolbarStateMap.ToolIcon(ToolKind.Rectangle));
+        Assert.Equal(Icons.Circle, ToolbarStateMap.ToolIcon(ToolKind.Ellipse));
+        Assert.Equal(Icons.Table, ToolbarStateMap.ToolIcon(ToolKind.Table));
+    }
+
+    /// <summary>
+    /// 그룹 밖 도구가 활성이면 그룹 대표 글리프로 돌아간다 — 다른 그룹의 도구도 마찬가지다(도형 도구가 활성인데 펜 버튼이
+    /// 도형 글리프를 그리면 안 된다). IconFor의 순환 소속 가드가 빠지면 Line/Pen 행이 빨간불이다.
+    /// </summary>
+    [Theory]
+    [InlineData(ToolKind.None)]
+    [InlineData(ToolKind.Select)]
+    [InlineData(ToolKind.Eraser)]
+    [InlineData(ToolKind.Line)]
+    [InlineData(ToolKind.Pen)]
+    public void IconFor_GroupButton_ToolOutsideGroup_FallsBackToGroupGlyph(ToolKind tool)
+    {
+        var state = new AppState { ActiveTool = tool };
+
+        var pen = ToolbarStateMap.IconFor(state, ToolbarButtonId.Pen, menuCollapsed: false, fallback: Icons.Eye);
+        var shapes = ToolbarStateMap.IconFor(state, ToolbarButtonId.Shapes, menuCollapsed: false, fallback: Icons.Eye);
+
+        if (!ToolbarStateMap.PenCycle.Contains(tool))
+        {
+            Assert.Equal(Icons.Pen, pen);
+        }
+        if (!ToolbarStateMap.ShapeCycle.Contains(tool))
+        {
+            Assert.Equal(Icons.Shapes, shapes);
+        }
+    }
+
+    // ── 굵기 휠 방향 (69단계, A5-6) ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>delta 0 → -1(가늘게)은 특성화다 — 보존이지 승인이 아니다 (다른 휠 판정은 delta 0이면 제자리다).</summary>
+    [Theory]
+    [InlineData(120, 1)]
+    [InlineData(-120, -1)]
+    [InlineData(0, -1)]
+    [InlineData(1, 1)]
+    public void ThicknessDirectionByWheel_Table(int delta, int expected)
+    {
+        Assert.Equal(expected, ToolbarStateMap.ThicknessDirectionByWheel(delta));
+    }
+
     [Fact]
     public void BadgeGroupFor_PenButton_FollowsActiveSubTool()
     {

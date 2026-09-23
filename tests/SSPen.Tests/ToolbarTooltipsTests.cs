@@ -60,6 +60,19 @@ public class ToolbarTooltipsTests
         Assert.Equal(0, actions.LabelCalls);
     });
 
+    /// <summary>제목 줄은 본문 크기, 단축키 줄은 보조 크기다 — 타입 스케일 토큰 (69단계, A5-7; 값은 치환 전 리터럴 12/11 그대로).</summary>
+    [Fact]
+    public void Attach_TitleAndComboLine_UseTypeScaleTokens() => RunSta(() =>
+    {
+        var target = new Border();
+
+        ToolbarTooltips.Attach(new FakeShellActions(), target, "펜", "pen", _ => { });
+
+        var panel = Assert.IsType<StackPanel>(((ToolTip)target.ToolTip).Content);
+        Assert.Equal(ShellMetrics.FontBody, Assert.IsType<TextBlock>(panel.Children[0]).FontSize);
+        Assert.Equal(ShellMetrics.FontCaption, Assert.IsType<TextBlock>(panel.Children[1]).FontSize);
+    });
+
     [Fact]
     public void ComboLine_Label_ParenthesizedAndVisible()
     {

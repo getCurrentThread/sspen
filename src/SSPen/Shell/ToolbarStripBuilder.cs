@@ -189,8 +189,9 @@ public static class ToolbarStripBuilder
             host.Children.Add(previewDot);
             var button = new Border
             {
-                Width = 30,
-                Height = 30,
+                // 스트립 버튼과 같은 토큰 (69단계, A5-7) — ButtonSize를 바꾸면 미리보기도 함께 따라가 스트립 열이 어긋나지 않는다.
+                Width = ShellMetrics.ButtonSize,
+                Height = ShellMetrics.ButtonSize,
                 Background = Brushes.Transparent,
                 Child = host,
             };
@@ -200,12 +201,11 @@ public static class ToolbarStripBuilder
             host.Children.Add(ToolbarTheme.FlyoutMark());
             button.MouseEnter += (_, _) => button.Background = ToolbarTheme.ButtonHoverBrush;
             button.MouseLeave += (_, _) => button.Background = Brushes.Transparent;
-            button.MouseLeftButtonUp += (_, _) => flyouts.ToggleThicknessFlyout();
+            button.MouseLeftButtonUp += (_, _) => flyouts.ToggleFlyout(flyouts.ThicknessFlyout);
+            // 굵기 플라이아웃 휠과 같은 경로 (69단계, A5-6) — 두 휠이 한 규칙으로 움직인다.
             button.MouseWheel += (_, e) =>
             {
-                int direction = e.Delta > 0 ? 1 : -1;
-                state.StepThickness(direction);
-                flyouts.HighlightThicknessSelection();
+                flyouts.StepThicknessByWheel(e.Delta);
                 e.Handled = true;
             };
             parts!.PreviewDot = previewDot;
@@ -237,7 +237,7 @@ public static class ToolbarStripBuilder
                     Child = swatch,
                 };
                 ToolbarTooltips.Attach(actions, ring, Strings.QuickColors, QuickColorHotkeys.TooltipId(slot), flyouts.RegisterTooltip);
-                // 클릭 시점에 색을 읽는다 — 설정에서 바뀌면 바뀜 색이 추서된다.
+                // 클릭 시점에 색을 읽는다 — 설정에서 칸 색을 바꾸면 바뀐 색이 곧바로 적용된다 (빌드 시점에 붙잡으면 옛 팔레트에 묶인다).
                 ring.MouseLeftButtonUp += (_, _) => state.CurrentColor = state.QuickColors[slot];
                 quickSwatches.Add((swatch, ring, slot));
                 grid.Children.Add(ring);
@@ -265,10 +265,8 @@ public static class ToolbarStripBuilder
             var paletteTooltip = new ToolTip { Content = Strings.QuickColorsExtended };
             currentColorSwatch.ToolTip = paletteTooltip;
             flyouts.RegisterTooltip(paletteTooltip);
-            currentColorSwatch.MouseLeftButtonUp += (_, _) =>
-            {
-                if (flyouts.PaletteFlyout.IsOpen) { flyouts.CloseFlyoutsExcept(null); } else { flyouts.OpenFlyout(flyouts.PaletteFlyout); }
-            };
+            // 여닫기는 굵기 미리보기·설정 메뉴와 같은 ToggleFlyout 한 곳이다 (69단계, A5-6).
+            currentColorSwatch.MouseLeftButtonUp += (_, _) => flyouts.ToggleFlyout(flyouts.PaletteFlyout);
             flyouts.PaletteFlyout.PlacementTarget = currentColorSwatch;
             parts!.CurrentColorSwatch = currentColorSwatch;
 
@@ -314,11 +312,10 @@ public static class ToolbarStripBuilder
                             AttachToolCycleWheel(button, ToolbarStateMap.PenCycle);
                             break;
                         case ToolbarWheel.FadingDuration:
+                            // 페이딩 플라이아웃 휠과 같은 경로 (69단계, A5-6). 상태 리드아웃은 버튼 쪽에만 있는 의도된 차이다.
                             button.MouseWheel += (_, e) =>
                             {
-                                double nextSec = FadingDurations.StepByWheel(actions.FadingSeconds, e.Delta);
-                                actions.SetFadingDuration(nextSec);
-                                flyouts.HighlightFadingSelection();
+                                flyouts.StepFadingByWheel(e.Delta);
                                 // 플라이아웃이 아직 열리지 않았다면(호버 지연) 강조는 아무 데도 보이지 않는다.
                                 actions.ShowStatusReadout();
                                 e.Handled = true;

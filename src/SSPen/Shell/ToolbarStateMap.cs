@@ -118,28 +118,44 @@ public static class ToolbarStateMap
     public static bool GlyphFontIsFilled((string Regular, string Filled) icon, bool active) =>
         active && !string.Equals(icon.Regular, icon.Filled, StringComparison.Ordinal);
 
-    /// <summary>상태 연동 아이콘: 눈(접힘↔펼침), 펜 그룹(현재 선택 도구 반영).</summary>
+    /// <summary>
+    /// 도구 → 글리프 쌍의 단일 표 (69단계, A5-2). 그룹 버튼 글리프(<see cref="IconFor"/>)와 도형·펜 플라이아웃 항목
+    /// (<c>ToolbarFlyouts.ToolFlyout</c>)이 같은 표를 읽는다 — 예전에는 IconFor 안의 switch 두 개와 플라이아웃의 항목 인자가
+    /// 같은 사실을 따로 적고 있었다. 그룹 순환(<see cref="ShapeCycle"/>/<see cref="PenCycle"/>) 밖의 도구(선택·지우개·없음)는 null이다.
+    /// </summary>
+    public static (string Regular, string Filled)? ToolIcon(ToolKind tool) => tool switch
+    {
+        ToolKind.Pen => Icons.Pen,
+        ToolKind.Highlighter => Icons.Highlight,
+        ToolKind.Text => Icons.TextT,
+        ToolKind.Line => Icons.Line,
+        ToolKind.Arrow => Icons.ArrowUpRight,
+        ToolKind.Rectangle => Icons.Square,
+        ToolKind.Ellipse => Icons.Circle,
+        ToolKind.Table => Icons.Table,
+        _ => null,
+    };
+
+    /// <summary>
+    /// 상태 연동 아이콘: 눈(접힘↔펼침), 펜·도형 그룹(현재 선택 도구 반영). 그룹 밖 도구가 활성이면 그룹 대표 글리프
+    /// (<c>Icons.Pen</c>/<c>Icons.Shapes</c>)로 돌아간다. 도구별 글리프는 <see cref="ToolIcon"/>이 소유한다 (69단계, A5-2).
+    /// </summary>
     public static (string Regular, string Filled) IconFor(AppState state, ToolbarButtonId id, bool menuCollapsed, (string Regular, string Filled) fallback) => id switch
     {
         ToolbarButtonId.Visibility => menuCollapsed ? Icons.EyeOff : Icons.Eye,
-        ToolbarButtonId.Pen => state.ActiveTool switch
-        {
-            ToolKind.Highlighter => Icons.Highlight,
-            ToolKind.Text => Icons.TextT,
-            _ => Icons.Pen,
-        },
+        ToolbarButtonId.Pen => PenCycle.Contains(state.ActiveTool) ? ToolIcon(state.ActiveTool)!.Value : Icons.Pen,
         // 사용자 조타 14차: 도형 그룹 버튼도 펜 그룹처럼 현재 선택 도형을 글리프로 반영.
-        ToolbarButtonId.Shapes => state.ActiveTool switch
-        {
-            ToolKind.Line => Icons.Line,
-            ToolKind.Arrow => Icons.ArrowUpRight,
-            ToolKind.Rectangle => Icons.Square,
-            ToolKind.Ellipse => Icons.Circle,
-            ToolKind.Table => Icons.Table,
-            _ => Icons.Shapes,
-        },
+        ToolbarButtonId.Shapes => ShapeCycle.Contains(state.ActiveTool) ? ToolIcon(state.ActiveTool)!.Value : Icons.Shapes,
         _ => fallback,
     };
+
+    /// <summary>
+    /// 굵기 휠 방향 (69단계, A5-6): delta &gt; 0이면 +1(굵게), 아니면 -1(가늘게). 스트립 미리보기와 굵기 플라이아웃이
+    /// <c>ToolbarFlyouts.StepThicknessByWheel</c> 한 곳을 거쳐 이 판정을 쓴다 — 예전에는 두 어댑터에 같은 삼항식이 있었다.
+    /// delta 0 → -1(가늘게)은 특성화다. 보존이지 승인이 아니다 — <see cref="NextInCycle(ToolKind[], ToolKind, int)"/>·
+    /// <see cref="NextQuickColorSlotByWheel"/>·<c>FadingDurations.StepByWheel</c>는 delta 0이면 값을 바꾸지 않는다.
+    /// </summary>
+    public static int ThicknessDirectionByWheel(int delta) => delta > 0 ? 1 : -1;
 
     /// <summary>펜 그룹 버튼의 배지 그룹: 현재 선택 도구의 스타일 그룹 (개별 색 유지).</summary>
     public static ToolStyleGroup BadgeGroupFor(AppState state, ToolbarButtonId id, ToolStyleGroup fallback) => id == ToolbarButtonId.Pen

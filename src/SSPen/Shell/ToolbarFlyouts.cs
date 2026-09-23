@@ -76,8 +76,9 @@ public sealed class ToolbarFlyouts
     /// <summary>
     /// 등록된 툴팁 레지스트리의 읽기 전용 보기 (59단계, A5-4). 헤드리스 증인이 "트리의 모든 ToolTip == 레지스트리"를
     /// 확인하려고 연다 — <see cref="CloseTooltips"/>가 닫을 수 있는 것은 여기 든 것뿐이다 (AGENTS L89).
+    /// 내부 List를 그대로 내보내지 않고 읽기 전용 래퍼로 감싼다 (69단계) — 호출자가 List로 되캐스팅해 등록을 우회·삭제할 수 없게.
     /// </summary>
-    internal IReadOnlyList<ToolTip> RegisteredTooltips => _tooltips;
+    internal IReadOnlyList<ToolTip> RegisteredTooltips => _tooltips.AsReadOnly();
 
     /// <summary>열려 있는 툴팁을 전부 닫는다 (툴바 숨김 시).</summary>
     public void CloseTooltips()
@@ -215,33 +216,61 @@ public sealed class ToolbarFlyouts
         }
     }
 
-    /// <summary>클릭으로 여닫는 플라이아웃 (굵기 미리보기·설정 메뉴): 열려 있으면 모두 닫고, 아니면 이것만 연다.</summary>
+    /// <summary>
+    /// 클릭으로 여닫는 플라이아웃 (굵기 미리보기·현재 색 스와치·설정 메뉴): 열려 있으면 모두 닫고, 아니면 이것만 연다.
+    /// 세 호출자가 이 한 메서드를 쓴다 (69단계, A5-6 — 스와치의 인라인 사본과 굵기 전용 래퍼를 걷어냈다).
+    /// </summary>
     public void ToggleFlyout(Popup flyout)
     {
         if (flyout.IsOpen) { CloseFlyoutsExcept(null); } else { OpenFlyout(flyout); }
     }
 
-    public void ToggleThicknessFlyout() => ToggleFlyout(ThicknessFlyout);
-
-    private void BuildShapesFlyout()
+    /// <summary>
+    /// 굵기 휠 한 칸 (69단계, A5-6): 스트립 미리보기와 굵기 플라이아웃이 같은 이 경로를 쓴다 — 한쪽만 고쳐 두 휠이 다른 규칙으로
+    /// 움직이는 일이 없게. 방향 판정은 <see cref="ToolbarStateMap.ThicknessDirectionByWheel"/>. 이벤트 소비(Handled)는 호출자 몫이다.
+    /// </summary>
+    public void StepThicknessByWheel(int delta)
     {
-        var panel = FlyoutPanel();
-        panel.Children.Add(FlyoutItem(Strings.ShapeLine, Icons.Line, () => SelectTool(ToolKind.Line), "line"));
-        panel.Children.Add(FlyoutItem(Strings.ShapeArrow, Icons.ArrowUpRight, () => SelectTool(ToolKind.Arrow), "arrow"));
-        panel.Children.Add(FlyoutItem(Strings.ShapeRectangle, Icons.Square, () => SelectTool(ToolKind.Rectangle), "rectangle"));
-        panel.Children.Add(FlyoutItem(Strings.ShapeEllipse, Icons.Circle, () => SelectTool(ToolKind.Ellipse), "ellipse"));
-        panel.Children.Add(FlyoutItem(Strings.ShapeTable, Icons.Table, () => SelectTool(ToolKind.Table), "table"));
-        ShapesFlyout.Child = FlyoutBorder(panel);
+        _state.StepThickness(ToolbarStateMap.ThicknessDirectionByWheel(delta));
+        HighlightThicknessSelection();
     }
+
+    /// <summary>
+    /// 페이딩 지속 시간 휠 한 칸 (69단계, A5-6): 페이딩 버튼과 페이딩 플라이아웃이 같은 이 경로를 쓴다. 사다리 이동은
+    /// <see cref="FadingDurations.StepByWheel"/>. 상태 리드아웃은 버튼 쪽만 따로 띄운다(플라이아웃이 아직 안 열렸을 때의 흔적).
+    /// </summary>
+    public void StepFadingByWheel(int delta)
+    {
+        _actions.SetFadingDuration(FadingDurations.StepByWheel(_actions.FadingSeconds, delta));
+        HighlightFadingSelection();
+    }
+
+    private void BuildShapesFlyout() => ShapesFlyout.Child = ToolFlyout(ToolbarStateMap.ShapeCycle);
 
     private void BuildPenFlyout()
     {
         // 펜 그룹 (사용자 조타): 펜/형광펜/텍스트 — Epic Pen의 펜+A 하위 목록 대응.
+        PenFlyout.Child = ToolFlyout(ToolbarStateMap.PenCycle);
+    }
+
+    /// <summary>
+    /// 도구 그룹 플라이아웃 (69단계, A5-2): 항목을 그룹 순환(<see cref="ToolbarStateMap.ShapeCycle"/>/<see cref="ToolbarStateMap.PenCycle"/>)에서
+    /// 파생한다 — 순서는 재클릭·휠 순환과, 라벨은 <see cref="StatusReadout.ToolName"/>, 글리프는 <see cref="ToolbarStateMap.ToolIcon"/>,
+    /// 툴팁 단축키 id는 <see cref="ShellHotkeys.ToolHotkeyIds"/>와 같은 출처다. 핫키가 없는 도구(표)는 id가 null이라 툴팁에 둘째 줄이 없다
+    /// (예전의 "table"은 해석되지 않는 id라 늘 숨겨지는 빈 줄을 만들었다).
+    /// </summary>
+    private UIElement ToolFlyout(IReadOnlyList<ToolKind> cycle)
+    {
         var panel = FlyoutPanel();
-        panel.Children.Add(FlyoutItem(Strings.Pen, Icons.Pen, () => SelectTool(ToolKind.Pen), "pen"));
-        panel.Children.Add(FlyoutItem(Strings.Highlighter, Icons.Highlight, () => SelectTool(ToolKind.Highlighter), "highlighter"));
-        panel.Children.Add(FlyoutItem(Strings.ShapeText, Icons.TextT, () => SelectTool(ToolKind.Text), "text"));
-        PenFlyout.Child = FlyoutBorder(panel);
+        foreach (var tool in cycle)
+        {
+            panel.Children.Add(FlyoutItem(
+                StatusReadout.ToolName(tool),
+                ToolbarStateMap.ToolIcon(tool),
+                () => SelectTool(tool),
+                ShellHotkeys.ToolHotkeyIds.GetValueOrDefault(tool)));
+        }
+        return FlyoutBorder(panel);
     }
 
     /// <summary>
@@ -278,9 +307,7 @@ public sealed class ToolbarFlyouts
         var border = FlyoutBorder(panel);
         border.MouseWheel += (_, e) =>
         {
-            int direction = e.Delta > 0 ? 1 : -1;
-            _state.StepThickness(direction);
-            HighlightThicknessSelection();
+            StepThicknessByWheel(e.Delta);
             e.Handled = true;
         };
         ThicknessFlyout.Child = border;
@@ -327,7 +354,7 @@ public sealed class ToolbarFlyouts
         var panel = FlyoutPanel();
         _fadingItems.Clear();
         // 사다리는 FadingDurations가 단독 소유한다 — 여기서 숫자를 재열거하면
-        // 버튼 로테이션과 설정 콤보가 서로 다른 목록을 가질 수 있다.
+        // 이 목록과 휠 사다리 이동(StepByWheel)·설정 콤보가 서로 다른 목록을 가질 수 있다.
         foreach (double seconds in FadingDurations.Steps)
         {
             panel.Children.Add(FadingItem(seconds));
@@ -335,13 +362,11 @@ public sealed class ToolbarFlyouts
         var border = FlyoutBorder(panel);
         border.MouseWheel += (_, e) =>
         {
-            double nextSec = FadingDurations.StepByWheel(_actions.FadingSeconds, e.Delta);
-            _actions.SetFadingDuration(nextSec);
-            HighlightFadingSelection();
+            StepFadingByWheel(e.Delta);
             e.Handled = true;
         };
         FadingFlyout.Child = border;
-        // 열 때마다 현재 지속 시간 강조 (로테이션 시에도 재사용).
+        // 열 때마다 현재 지속 시간 강조 (휠 이동·페이딩 토글 때도 HighlightFadingSelection을 재사용한다).
         FadingFlyout.Opened += (_, _) => HighlightFadingSelection();
     }
 
@@ -363,7 +388,7 @@ public sealed class ToolbarFlyouts
         {
             Text = Strings.FadingDuration(seconds),
             Foreground = ToolbarTheme.IconBrush,
-            FontSize = 11,
+            FontSize = ShellMetrics.FontCaption,
             HorizontalAlignment = HorizontalAlignment.Center,
             TextAlignment = TextAlignment.Center,
             Margin = new Thickness(6, 4, 6, 4),
@@ -409,7 +434,7 @@ public sealed class ToolbarFlyouts
         {
             Text = label,
             Foreground = ToolbarTheme.IconBrush,
-            FontSize = 11,
+            FontSize = ShellMetrics.FontCaption,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
         var stack = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(4, 2, 4, 2) };
@@ -476,7 +501,7 @@ public sealed class ToolbarFlyouts
             {
                 Text = icon.Value.Regular,
                 FontFamily = Icons.Regular,
-                FontSize = 18,
+                FontSize = ShellMetrics.FlyoutGlyphSize,
                 Foreground = ToolbarTheme.IconBrush,
                 HorizontalAlignment = HorizontalAlignment.Center,
             });
@@ -485,7 +510,7 @@ public sealed class ToolbarFlyouts
         {
             Text = label,
             Foreground = ToolbarTheme.IconBrush,
-            FontSize = 11,
+            FontSize = ShellMetrics.FontCaption,
             HorizontalAlignment = HorizontalAlignment.Center,
         });
         var item = new Border { Background = Brushes.Transparent, Child = stack, Padding = new Thickness(2) };
@@ -508,7 +533,7 @@ public sealed class ToolbarFlyouts
         {
             Text = icon.Regular,
             FontFamily = Icons.Regular,
-            FontSize = 16,
+            FontSize = ShellMetrics.MenuGlyphSize,
             Foreground = ToolbarTheme.IconBrush,
             VerticalAlignment = VerticalAlignment.Center,
             Width = 22,
@@ -517,7 +542,7 @@ public sealed class ToolbarFlyouts
         {
             Text = label,
             Foreground = ToolbarTheme.IconBrush,
-            FontSize = 12,
+            FontSize = ShellMetrics.FontBody,
             VerticalAlignment = VerticalAlignment.Center,
         });
         var item = new Border { Background = Brushes.Transparent, Child = row, Padding = new Thickness(2) };
@@ -541,7 +566,7 @@ public sealed class ToolbarFlyouts
             Background = ToolbarTheme.StripBrush,
             BorderBrush = ToolbarTheme.StripBorderBrush,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = new CornerRadius(ShellMetrics.CardRadius),
             Padding = new Thickness(2),
             Margin = new Thickness(0, 4, 12, 12),
             Child = child,

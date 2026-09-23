@@ -23,7 +23,7 @@ internal static class ToolbarTooltips
         {
             Text = label,
             FontWeight = FontWeights.SemiBold,
-            FontSize = 12,
+            FontSize = ShellMetrics.FontBody,
             Foreground = ToolbarTheme.IconBrush,
         };
         var panel = new StackPanel();
@@ -31,7 +31,7 @@ internal static class ToolbarTooltips
         TextBlock? combo = null;
         if (hotkeyId is not null)
         {
-            combo = new TextBlock { FontSize = 11, Foreground = ToolbarTheme.TooltipComboBrush };
+            combo = new TextBlock { FontSize = ShellMetrics.FontCaption, Foreground = ToolbarTheme.TooltipComboBrush };
             panel.Children.Add(combo);
         }
         var tooltip = new ToolTip { Content = panel };

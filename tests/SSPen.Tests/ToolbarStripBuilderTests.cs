@@ -238,12 +238,16 @@ public class ToolbarStripBuilderTests
     /// </summary>
     private static bool IsOpenRequested(Popup popup) => popup.ReadLocalValue(Popup.IsOpenProperty) is true;
 
+    /// <summary>플라이아웃 카드 — FlyoutBorder가 만든 Grid의 첫 자식 Border.</summary>
+    private static Border FlyoutCard(Popup flyout) =>
+        Assert.IsType<Border>(Assert.IsType<Grid>(flyout.Child).Children[0]);
+
+    /// <summary>StackPanel 카드 안의 항목들 — FlyoutBorder(Grid → 카드 Border) → StackPanel(가로 타일 또는 세로 메뉴).</summary>
+    private static List<Border> FlyoutItems(Popup flyout) =>
+        Assert.IsType<StackPanel>(FlyoutCard(flyout).Child).Children.Cast<Border>().ToList();
+
     /// <summary>설정 메뉴 카드 안의 행들 — FlyoutBorder(Grid → 카드 Border) → 세로 StackPanel.</summary>
-    private static List<Border> SettingsMenuRows(Strip strip)
-    {
-        var card = Assert.IsType<Border>(Assert.IsType<Grid>(strip.Flyouts.SettingsFlyout.Child).Children[0]);
-        return Assert.IsType<StackPanel>(card.Child).Children.Cast<Border>().ToList();
-    }
+    private static List<Border> SettingsMenuRows(Strip strip) => FlyoutItems(strip.Flyouts.SettingsFlyout);
 
     private static string RowLabel(Border row) =>
         Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(row.Child).Children[1]).Text;
@@ -481,5 +485,268 @@ public class ToolbarStripBuilderTests
         Assert.Equal(1.0, strip.Actions.FadingSeconds);
         Assert.Empty(strip.Actions.Calls);
         Assert.False(handled);
+    });
+
+    // ── 휠·토글 배선 통합 (69단계, A5-6) ─────────────────────────────────────────────────────────────────────
+    // 스트립과 플라이아웃에 두 벌씩 있던 굵기·페이딩 휠과 팔레트 토글이 ToolbarFlyouts 한 곳으로 모였다. 여기서는 두 진입점이
+    // 같은 결과를 내는지(한쪽만 고쳐 갈라지면 빨간불), 그리고 버튼 쪽에만 있는 의도된 차이(상태 리드아웃)가 남았는지를 본다.
+
+    /// <summary>굵기 플라이아웃의 현재 단계 강조 — 강조색으로 칠해진 점의 단계 목록.</summary>
+    private static List<ThicknessStep> HighlightedThicknessSteps(Strip strip) =>
+        FlyoutItems(strip.Flyouts.ThicknessFlyout)
+            .Select((item, i) => (Dot: Assert.IsType<Ellipse>(Assert.IsType<Grid>(item.Child).Children[0]), Step: (ThicknessStep)i))
+            .Where(x => ReferenceEquals(x.Dot.Fill, ToolbarTheme.AccentBrush))
+            .Select(x => x.Step)
+            .ToList();
+
+    /// <summary>delta 0 행은 특성화다 — 두 경로 모두 가늘게 간다(ThicknessDirectionByWheel). 보존이지 승인이 아니다.</summary>
+    [Theory]
+    [InlineData(120, ThicknessStep.Large)]
+    [InlineData(-120, ThicknessStep.Small)]
+    [InlineData(0, ThicknessStep.Small)]
+    public void Build_PreviewWheel_And_ThicknessFlyoutWheel_StepIdentically(int delta, ThicknessStep expected) => RunSta(() =>
+    {
+        var viaPreview = BuildStrip();
+        var viaFlyout = BuildStrip();
+        Assert.Equal(ThicknessStep.Medium, viaPreview.State.Thickness);
+        Assert.Equal(ThicknessStep.Medium, viaFlyout.State.Thickness);
+
+        bool previewHandled = Wheel(PreviewButton(viaPreview), delta);
+        bool flyoutHandled = Wheel(viaFlyout.Flyouts.ThicknessFlyout.Child, delta);
+
+        Assert.Equal(expected, viaPreview.State.Thickness);
+        Assert.Equal(expected, viaFlyout.State.Thickness);
+        Assert.Equal([expected], HighlightedThicknessSteps(viaPreview)); // 두 경로 모두 플라이아웃 강조를 갱신한다
+        Assert.Equal([expected], HighlightedThicknessSteps(viaFlyout));
+        Assert.True(previewHandled);
+        Assert.True(flyoutHandled);
+        Assert.Empty(viaPreview.Actions.Calls);
+        Assert.Empty(viaFlyout.Actions.Calls);
+    });
+
+    /// <summary>
+    /// 페이딩 휠 두 경로는 같은 사다리 이동이고, 상태 리드아웃은 버튼 쪽에만 있다 — 플라이아웃이 열려 있으면 강조가 곧 흔적이지만
+    /// 버튼 휠은 플라이아웃이 아직 안 열렸을 수 있다(호버 지연). 플라이아웃 휠 쪽 강조 갱신도 함께 본다.
+    /// </summary>
+    [Fact]
+    public void Build_FadingButtonWheel_ShowsReadout_FlyoutWheelDoesNot() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        double start = strip.Actions.FadingSeconds;
+        double afterFlyout = FadingDurations.StepByWheel(start, 120);
+        double afterButton = FadingDurations.StepByWheel(afterFlyout, 120);
+        Assert.True(start < afterFlyout && afterFlyout < afterButton); // 두 칸 모두 실제로 움직인다 — 제자리 기대값이면 증인이 비어 버린다
+
+        bool flyoutHandled = Wheel(strip.Flyouts.FadingFlyout.Child, 120);
+
+        Assert.Equal([$"fading:{afterFlyout}"], strip.Actions.Calls);
+        Assert.True(flyoutHandled);
+        var selected = FlyoutItems(strip.Flyouts.FadingFlyout)
+            .Select(item => Assert.IsType<TextBlock>(item.Child))
+            .Where(label => ReferenceEquals(label.Foreground, ToolbarTheme.AccentBrush))
+            .Select(label => label.Text);
+        Assert.Equal([Strings.FadingDuration(afterFlyout)], selected);
+
+        strip.Actions.Calls.Clear();
+        bool buttonHandled = Wheel(strip.Parts.Buttons[ToolbarButtonId.Fading].Root, 120);
+
+        Assert.Equal([$"fading:{afterButton}", "status"], strip.Actions.Calls);
+        Assert.True(buttonHandled);
+    });
+
+    /// <summary>퀵컬러 항목의 실현 요소 — [모자이크 UniformGrid, 현재 색 대형 스와치].</summary>
+    private static StackPanel QuickColorsPanel(Strip strip)
+    {
+        int index = ToolbarLayout.Menu.ToList().FindIndex(e => e is ToolbarQuickColorsEntry);
+        return Assert.IsType<StackPanel>(MenuPanel(strip.Host).Children[index]);
+    }
+
+    /// <summary>현재 색 스와치 뗌은 ToggleFlyout(PaletteFlyout)으로 팔레트를 연다 — 인라인 사본을 걷어낸 뒤에도 같은 팝업을 연다.</summary>
+    [Fact]
+    public void Build_CurrentColorSwatchRelease_RequestsPaletteOpen() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        var swatch = Assert.IsType<Border>(QuickColorsPanel(strip).Children[1]);
+        Assert.Same(strip.Flyouts.PaletteFlyout.PlacementTarget, swatch);
+
+        Release(swatch);
+
+        Assert.True(IsOpenRequested(strip.Flyouts.PaletteFlyout));
+        Assert.All(strip.Flyouts.AllFlyouts.Where(p => !ReferenceEquals(p, strip.Flyouts.PaletteFlyout)),
+            p => Assert.False(IsOpenRequested(p)));
+        Assert.Empty(strip.Actions.Calls);
+    });
+
+    /// <summary>굵기 미리보기 뗌은 ToggleFlyout(ThicknessFlyout)으로 굵기 플라이아웃을 연다 (전용 래퍼 ToggleThicknessFlyout 제거 뒤에도 같다).</summary>
+    [Fact]
+    public void Build_PreviewRelease_RequestsThicknessOpen() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+
+        Release(PreviewButton(strip));
+
+        Assert.True(IsOpenRequested(strip.Flyouts.ThicknessFlyout));
+        Assert.False(IsOpenRequested(strip.Flyouts.PaletteFlyout));
+        Assert.Empty(strip.Actions.Calls);
+    });
+
+    // ── ShellMetrics 토큰 (69단계, A5-7) ─────────────────────────────────────────────────────────────────────
+    // 값이 같은 리터럴만 토큰으로 바꿨다 — 토큰 값 자체는 ShellMetricsTests.Tokens_KeepTheirLegacyPixelValues가 옛 리터럴에 묶는다.
+
+    [Fact]
+    public void Build_PreviewButton_IsButtonSizeSquare() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        var preview = Assert.IsType<Border>(PreviewButton(strip));
+
+        Assert.Equal(ShellMetrics.ButtonSize, preview.Width);
+        Assert.Equal(ShellMetrics.ButtonSize, preview.Height);
+        Assert.Equal(strip.Parts.Buttons[ToolbarButtonId.Select].Root.Width, preview.Width); // 스트립 버튼과 같은 열
+    });
+
+    /// <summary>플라이아웃 카드 일곱 장 모두 스트립과 같은 모서리 반경이다 — CardRadius를 바꾸면 둘이 함께 바뀐다.</summary>
+    [Fact]
+    public void Build_FlyoutCards_UseCardRadius() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        var outer = Assert.IsType<StackPanel>(((Grid)strip.Host).Children[0]);
+        var stripBorder = Assert.IsType<Border>(outer.Children[1]);
+
+        Assert.Equal(7, strip.Flyouts.AllFlyouts.Length);
+        Assert.All(strip.Flyouts.AllFlyouts, popup =>
+            Assert.Equal(new CornerRadius(ShellMetrics.CardRadius), FlyoutCard(popup).CornerRadius));
+        Assert.Equal(new CornerRadius(ShellMetrics.CardRadius), stripBorder.CornerRadius);
+    });
+
+    [Fact]
+    public void Build_ToolFlyoutGlyph_IsFlyoutGlyphSize() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+
+        foreach (var flyout in new[] { strip.Flyouts.ShapesFlyout, strip.Flyouts.PenFlyout })
+        {
+            Assert.All(FlyoutItems(flyout), item =>
+            {
+                var glyph = Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(item.Child).Children[0]);
+                Assert.Equal(ShellMetrics.FlyoutGlyphSize, glyph.FontSize);
+            });
+        }
+    });
+
+    /// <summary>플라이아웃 라벨은 보조 크기, 설정 메뉴 행은 본문 크기 라벨 + 메뉴 글리프다 (타입 스케일 토큰).</summary>
+    [Fact]
+    public void Build_FlyoutText_UsesTypeScaleTokens() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+
+        // 도형·펜 타일: [글리프, 라벨]
+        foreach (var flyout in new[] { strip.Flyouts.ShapesFlyout, strip.Flyouts.PenFlyout })
+        {
+            Assert.All(FlyoutItems(flyout), item =>
+                Assert.Equal(ShellMetrics.FontCaption, Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(item.Child).Children[1]).FontSize));
+        }
+        // 페이딩: 라벨 하나
+        Assert.All(FlyoutItems(strip.Flyouts.FadingFlyout), item =>
+            Assert.Equal(ShellMetrics.FontCaption, Assert.IsType<TextBlock>(item.Child).FontSize));
+        // 보드: [스와치, 라벨]
+        Assert.All(FlyoutItems(strip.Flyouts.BoardFlyout), item =>
+            Assert.Equal(ShellMetrics.FontCaption, Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(item.Child).Children[1]).FontSize));
+        // 설정 메뉴 행: [글리프, 라벨]
+        Assert.All(SettingsMenuRows(strip), row =>
+        {
+            var children = Assert.IsType<StackPanel>(row.Child).Children;
+            Assert.Equal(ShellMetrics.MenuGlyphSize, Assert.IsType<TextBlock>(children[0]).FontSize);
+            Assert.Equal(ShellMetrics.FontBody, Assert.IsType<TextBlock>(children[1]).FontSize);
+        });
+    });
+
+    // ── 도구 그룹 플라이아웃 파생 (69단계, A5-2) ─────────────────────────────────────────────────────────────
+
+    /// <summary>타일 항목의 [글리프 텍스트, 라벨 텍스트].</summary>
+    private static (string Glyph, string Label) TileTexts(Border item)
+    {
+        var children = Assert.IsType<StackPanel>(item.Child).Children;
+        return (Assert.IsType<TextBlock>(children[0]).Text, Assert.IsType<TextBlock>(children[^1]).Text);
+    }
+
+    /// <summary>
+    /// 도형·펜 플라이아웃 항목은 그룹 순환 순서 그대로이고, 라벨은 상태 리드아웃과 같은 이름, 글리프는 그룹 버튼과 같은 표다.
+    /// 순환에 도구를 더하고 플라이아웃을 빠뜨리는 결함 모양은 이제 표현할 수 없다 — 이 증인은 그 파생이 유지되는지를 본다.
+    /// </summary>
+    [Fact]
+    public void Build_ShapesAndPenFlyouts_ItemsFollowCycleOrder() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+
+        foreach (var (flyout, cycle) in new[] { (strip.Flyouts.ShapesFlyout, ToolbarStateMap.ShapeCycle), (strip.Flyouts.PenFlyout, ToolbarStateMap.PenCycle) })
+        {
+            var texts = FlyoutItems(flyout).Select(TileTexts).ToList();
+
+            Assert.Equal(cycle.Select(StatusReadout.ToolName), texts.Select(t => t.Label));
+            Assert.Equal(cycle.Select(tool => ToolbarStateMap.ToolIcon(tool)!.Value.Regular), texts.Select(t => t.Glyph));
+        }
+        // 파생 전 하드코딩 순서의 특성화 (라벨 문자열 그대로).
+        Assert.Equal(
+            [Strings.ShapeLine, Strings.ShapeArrow, Strings.ShapeRectangle, Strings.ShapeEllipse, Strings.ShapeTable],
+            FlyoutItems(strip.Flyouts.ShapesFlyout).Select(item => TileTexts(item).Label));
+        Assert.Equal(
+            [Strings.Pen, Strings.Highlighter, Strings.ShapeText],
+            FlyoutItems(strip.Flyouts.PenFlyout).Select(item => TileTexts(item).Label));
+    });
+
+    /// <summary>플라이아웃 항목도 ToggleTool을 거친다 — 같은 항목을 다시 고르면 도구가 풀린다. 고를 때마다 플라이아웃이 닫힌다.</summary>
+    [Fact]
+    public void Build_ToolFlyoutItem_AppliesToggleTool() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        var first = FlyoutItems(strip.Flyouts.ShapesFlyout)[0];
+        strip.Parts.Buttons[ToolbarButtonId.Shapes].Root.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = UIElement.MouseEnterEvent });
+        Assert.True(IsOpenRequested(strip.Flyouts.ShapesFlyout));
+
+        Release(first);
+
+        Assert.Equal(ToolKind.Line, strip.State.ActiveTool);
+        Assert.False(IsOpenRequested(strip.Flyouts.ShapesFlyout));
+
+        Release(first);
+
+        Assert.Equal(ToolKind.None, strip.State.ActiveTool);
+    });
+
+    /// <summary>
+    /// 표에는 도구 핫키가 없다(ShellHotkeys.ToolHotkeyIds) — 툴팁은 제목 한 줄뿐이다. 예전에는 해석되지 않는 id "table"을 넘겨
+    /// 늘 숨겨지는 빈 둘째 줄을 만들었다. 대조군: 핫키가 있는 도구 항목은 두 줄이다.
+    /// </summary>
+    [Fact]
+    public void Build_TableFlyoutItem_TooltipHasTitleOnly() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        int TooltipLines(Border item) => Assert.IsType<StackPanel>(Assert.IsType<ToolTip>(item.ToolTip).Content).Children.Count;
+        var shapeItems = FlyoutItems(strip.Flyouts.ShapesFlyout);
+        int tableIndex = Array.IndexOf(ToolbarStateMap.ShapeCycle, ToolKind.Table);
+
+        Assert.Equal(1, TooltipLines(shapeItems[tableIndex]));
+        foreach (var (flyout, cycle) in new[] { (strip.Flyouts.ShapesFlyout, ToolbarStateMap.ShapeCycle), (strip.Flyouts.PenFlyout, ToolbarStateMap.PenCycle) })
+        {
+            var items = FlyoutItems(flyout);
+            for (int i = 0; i < cycle.Length; i++)
+            {
+                Assert.Equal(ShellHotkeys.ToolHotkeyIds.ContainsKey(cycle[i]) ? 2 : 1, TooltipLines(items[i]));
+            }
+        }
+    });
+
+    /// <summary>레지스트리 보기는 읽기 전용 래퍼다 — 내부 List로 되캐스팅해 등록을 지우거나 끼워 넣을 수 없다 (59단계 리뷰 후속).</summary>
+    [Fact]
+    public void Build_RegisteredTooltips_IsReadOnlyView() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        var registered = strip.Flyouts.RegisteredTooltips;
+
+        Assert.IsNotType<List<ToolTip>>(registered);
+        var asList = Assert.IsAssignableFrom<IList<ToolTip>>(registered);
+        Assert.True(asList.IsReadOnly);
+        Assert.Throws<NotSupportedException>(() => asList.Add(new ToolTip()));
+        Assert.Throws<NotSupportedException>(() => asList.RemoveAt(0));
     });
 }
