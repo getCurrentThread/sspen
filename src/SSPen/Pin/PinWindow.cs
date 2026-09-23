@@ -19,6 +19,7 @@ public sealed class PinWindow : Window, IClickThroughPin
     private readonly double _baseWidth;
     private readonly double _baseHeight;
     private readonly Func<nint> _zAnchor;
+    private readonly Func<bool> _controlDown; // Ctrl 판정 (D3) — PinManager가 복귀 훅과 같은 KeyboardState 썽크를 준다 (81단계).
     private System.Windows.Interop.HwndSourceHook? _zHook; // GC 고정 (요청 단계: AnchorBelow)
     private System.Windows.Interop.HwndSourceHook? _zKeepBelowHook; // GC 고정 (결과 단계: KeepBelow, 54단계 L2)
     private double _scale = 1.0;
@@ -34,11 +35,12 @@ public sealed class PinWindow : Window, IClickThroughPin
         Margin = new Thickness(6, 0, 4, 0),
     };
 
-    public PinWindow(BitmapSource image, PhysicalRect region, Func<nint> zAnchor)
+    public PinWindow(BitmapSource image, PhysicalRect region, Func<nint> zAnchor, Func<bool> controlDown)
     {
         _baseWidth = Math.Max(region.Width, 8);
         _baseHeight = Math.Max(region.Height, 8);
         _zAnchor = zAnchor;
+        _controlDown = controlDown;
 
         Title = "SS Pen Pin";
         WindowStyle = WindowStyle.None;
@@ -224,7 +226,7 @@ public sealed class PinWindow : Window, IClickThroughPin
         if (on)
         {
             _opacityBeforeClickThrough = Opacity;
-            Opacity = Math.Min(Opacity, 0.85);
+            Opacity = PinOpacity.DimForClickThrough(Opacity);
         }
         else
         {
@@ -261,11 +263,12 @@ public sealed class PinWindow : Window, IClickThroughPin
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
         base.OnMouseWheel(e);
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        // Ctrl은 주입된 비동기 키 상태로 읽는다 (D3, 81단계 A7-6) — 핀은 포그라운드가 아닐 때가 보통이라
+        // 스레드 로컬 Keyboard.Modifiers는 None이 되어 Ctrl+휠이 확대로 새던 결함이다.
+        if (_controlDown())
         {
-            // Ctrl+휠 = 투명도 (0.15 ~ 1.0).
-            double step = e.Delta > 0 ? 0.05 : -0.05;
-            Opacity = Math.Clamp(Opacity + step, 0.15, 1.0);
+            // Ctrl+휠 = 투명도 — 계단·범위는 PinOpacity가 소유한다.
+            Opacity = PinOpacity.Next(Opacity, e.Delta);
         }
         else
         {
@@ -287,7 +290,8 @@ public sealed class PinWindow : Window, IClickThroughPin
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.ChangedButton == MouseButton.Middle && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        // 버튼 먼저, Ctrl은 그다음 — 가운데 버튼이 아니면 키 상태를 읽지도 않는다 (전역 복귀 훅과 같은 주입 소스).
+        if (e.ChangedButton == MouseButton.Middle && _controlDown())
         {
             SetClickThrough(!IsClickThrough);
             e.Handled = true;

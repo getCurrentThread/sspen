@@ -10,6 +10,7 @@ namespace SSPen.Interop;
 /// 전역 훅에서도 같다 — <c>Pin/PinClickThroughMonitor</c>는 Ctrl을 <see cref="Control"/>로 읽는다
 /// (52단계에 자체 GetAsyncKeyState DllImport를 없애고 이 계층으로 합쳤다). 두 훅 모니터는 이 값을 <c>Func&lt;bool&gt;</c>로
 /// 주입받으므로(합성 루트·PinManager가 배선) 헤드리스 증인은 OS 키 상태를 읽지 않는다 (53단계).
+/// 핀 창의 Ctrl+휠·Ctrl+가운데 버튼도 PinManager가 준 같은 썽크를 읽는다 — 핀은 포그라운드가 아닐 때가 보통이다 (81단계).
 /// </summary>
 internal static class KeyboardState
 {

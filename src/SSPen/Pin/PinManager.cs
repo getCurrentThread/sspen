@@ -13,6 +13,13 @@ public sealed class PinManager
     private readonly PinClickThroughMonitor _monitor;
     private readonly Func<nint> _zAnchor;
 
+    /// <summary>
+    /// Ctrl 읽기의 단일 소스 (D3, 81단계 A7-6) — 복귀 훅(<see cref="PinClickThroughMonitor"/>)과 핀 창의
+    /// Ctrl+휠·Ctrl+가운데 버튼이 <b>같은 인스턴스</b>를 읽는다. 핀은 <c>ShowActivated=false</c>라 포그라운드가 아닐 때가
+    /// 보통인데, 스레드 로컬 <c>Keyboard.Modifiers</c>는 그때 None이라 같은 제스처를 두 경로가 다르게 읽던 이중 기준이었다.
+    /// </summary>
+    private readonly Func<bool> _controlDown = () => KeyboardState.Control;
+
     /// <param name="hooks">복귀 마우스 훅의 OS 이음매 (52단계) — 합성 루트가 <see cref="LowLevelHook.Native"/>를 준다.</param>
     public PinManager(Func<nint> zAnchor, IHookInstaller hooks)
     {
@@ -21,7 +28,7 @@ public sealed class PinManager
         // List<PinWindow> → IReadOnlyList<IClickThroughPin>은 IReadOnlyList<out T> 공변성이다 (핀을 구조체 컬렉션에 담으면 깨진다).
         _monitor = new PinClickThroughMonitor(
             pins: () => _pins,
-            controlDown: () => KeyboardState.Control,
+            controlDown: _controlDown,
             clickThroughChanged: NotifyClickThroughChanged,
             hooks: hooks);
     }
@@ -39,7 +46,7 @@ public sealed class PinManager
 
     public PinWindow CreatePin(BitmapSource image, PhysicalRect region)
     {
-        var pin = new PinWindow(image, region, _zAnchor);
+        var pin = new PinWindow(image, region, _zAnchor, _controlDown);
         pin.PinClosed += OnPinClosed;
         pin.ClickThroughChanged += on =>
         {

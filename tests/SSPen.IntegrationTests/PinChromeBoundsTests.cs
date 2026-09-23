@@ -32,7 +32,7 @@ public class PinChromeBoundsTests
     public void PhysicalBounds_WithChromeShown_StillCoversTheWholeWindow() => StaRunner.Run(() =>
     {
         var region = new PhysicalRect(180, 180, 320, 240);
-        var pin = new PinWindow(Swatch(region.Width, region.Height), region, () => 0);
+        var pin = new PinWindow(Swatch(region.Width, region.Height), region, () => 0, () => false);
         pin.Show();
         WindowStyling.PlacePhysical(pin.Hwnd, region);
         StaRunner.PumpMessages();
@@ -60,7 +60,7 @@ public class PinChromeBoundsTests
     public void PhysicalBounds_AfterEngagingClickThrough_IsUnchanged() => StaRunner.Run(() =>
     {
         var region = new PhysicalRect(200, 200, 260, 200);
-        var pin = new PinWindow(Swatch(region.Width, region.Height), region, () => 0);
+        var pin = new PinWindow(Swatch(region.Width, region.Height), region, () => 0, () => false);
         pin.Show();
         WindowStyling.PlacePhysical(pin.Hwnd, region);
         StaRunner.PumpMessages();

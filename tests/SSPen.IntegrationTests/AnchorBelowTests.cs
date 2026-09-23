@@ -277,7 +277,7 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
         {
             surface.Show();
             var region = new PhysicalRect(monitor.WorkArea.X + 200, monitor.WorkArea.Y + 200, 240, 180);
-            pin = new PinWindow(SolidImage(region.Width, region.Height), region, () => toolbarHwnd);
+            pin = new PinWindow(SolidImage(region.Width, region.Height), region, () => toolbarHwnd, () => false);
             pin.Show();
             WindowStyling.PlacePhysical(pin.Hwnd, region);
             StaRunner.PumpMessages();
