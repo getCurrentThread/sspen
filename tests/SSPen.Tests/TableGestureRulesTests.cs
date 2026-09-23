@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using SSPen.Annotation;
 using Xunit;
 
@@ -31,6 +32,33 @@ public class TableGestureRulesTests
     {
         Assert.Equal(TableAxis.Rows, TableGestureRules.AxisForWheel(shift: false));
         Assert.Equal(TableAxis.Columns, TableGestureRules.AxisForWheel(shift: true));
+    }
+
+    /// <summary>
+    /// 방향키 4개의 (축, ±1) 전수 (63단계, A3-4). 상하 = 행, 좌우 = 열, 위/오른쪽이 +1.
+    /// 이 매핑은 예전에 <c>SurfaceInputController.OnKeyDown</c> 안에만 있어(<c>KeyEventArgs</c>는 헤드리스로 못 만든다)
+    /// 상하·좌우나 부호를 뒤바꿔도 스위트가 초록이었다.
+    /// </summary>
+    [Theory]
+    [InlineData(Key.Up, TableAxis.Rows, +1)]
+    [InlineData(Key.Down, TableAxis.Rows, -1)]
+    [InlineData(Key.Right, TableAxis.Columns, +1)]
+    [InlineData(Key.Left, TableAxis.Columns, -1)]
+    public void ArrowKeyStep_MapsFourArrows(Key key, TableAxis axis, int delta)
+    {
+        Assert.Equal((axis, delta), TableGestureRules.ArrowKeyStep(key));
+    }
+
+    /// <summary>방향키가 아니면 null이다 — 호출부는 그때 Escape 분기로 내려가므로 여기서 먹으면 ESC가 죽는다.</summary>
+    [Theory]
+    [InlineData(Key.Escape)]
+    [InlineData(Key.Enter)]
+    [InlineData(Key.A)]
+    [InlineData(Key.PageUp)]
+    [InlineData(Key.Tab)]
+    public void ArrowKeyStep_NonArrowKey_IsNull(Key key)
+    {
+        Assert.Null(TableGestureRules.ArrowKeyStep(key));
     }
 
     /// <summary>열거형 전수 — 축이 늘면 행이 따라오고, 새 축이 다른 축을 건드리면 여기서 빨갛다.</summary>

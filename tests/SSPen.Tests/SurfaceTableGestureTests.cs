@@ -20,8 +20,9 @@ namespace SSPen.Tests;
 /// - 25단계부터 <c>Wheel(pos, notches, shift)</c>가 Shift를 인자로 받으므로(D3) 이 파일은 결정적이다 —
 ///   <c>Wheel_ShiftDuringTableDrag_ChangesColumnsNotRows</c>가 열 경로를 덮는다.
 /// - <c>OnKeyDown</c>(방향키) 어댑터 자체는 <c>KeyEventArgs</c>가 <c>PresentationSource</c>를 요구해 헤드리스로 구동할 수
-///   없다. 그 본문은 25단계의 Point-free 진입점 <c>AdjustTable</c>이 소유하며 여기서 직접 구동한다 — 어댑터에 남은
-///   Key→축 매핑 4줄만 증인이 없다(리뷰 게이트). 그 어댑터는 서피스가 활성일 때만 도달한다(텍스트 커밋 직후 포커스가
+///   없다. 그 본문은 25단계의 Point-free 진입점 <c>AdjustTable</c>이 소유하며 여기서 직접 구동한다 — Key→축 매핑은
+///   <c>TableGestureRules.ArrowKeyStep</c>이 소유하고 <c>TableGestureRulesTests</c>가 증인이다(63단계). 어댑터에는
+///   <c>TableActive</c> 가드와 <c>Handled</c> 배선만 남는다. 그 어댑터는 서피스가 활성일 때만 도달한다(텍스트 커밋 직후 포커스가
 ///   남은 채 툴바 휠로 표 도구를 고른 경로, F4 실측 판정).
 /// - 비인터랙티브 전환은 창(<c>ContentSurfaceWindow.ApplyState</c>)이 <c>CancelActiveInput</c>을 동기로 부르는 것이
 ///   계약이다. 창이 없는 이 하네스는 그 호출을 테스트가 대신 한다.

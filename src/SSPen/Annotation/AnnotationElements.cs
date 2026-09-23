@@ -53,16 +53,11 @@ public abstract class AnnotationElement
     /// </summary>
     public Rect LocalBounds => TransformMath.NonDegenerate(ModelBounds, Math.Max(Thickness, 1));
 
-    /// <summary>현재 변형 상태의 월드 사상 행렬 (<see cref="TransformMath.ToMatrix"/> 단일 합성 지점 경유).</summary>
-    public Matrix TransformMatrix
-    {
-        get
-        {
-            var bounds = LocalBounds;
-            return TransformMath.ToMatrix(
-                TransformState, new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2));
-        }
-    }
+    /// <summary>
+    /// 현재 변형 상태의 월드 사상 행렬 (<see cref="TransformMath.ToMatrix"/> 단일 합성 지점 경유).
+    /// 피벗은 <see cref="TransformMath.PivotOf"/> — 변위 계약(ARCH-20)의 <c>c</c>와 같은 식이어야 한다.
+    /// </summary>
+    public Matrix TransformMatrix => TransformMath.ToMatrix(TransformState, TransformMath.PivotOf(LocalBounds));
 
     /// <summary>축 정렬 월드 경계. **마퀴 교차 판정 전용**이다 (SEL-B-1) — 핸들 배치에는 쓰지 않는다.</summary>
     public Rect TransformedBounds => Rect.Transform(LocalBounds, TransformMatrix);

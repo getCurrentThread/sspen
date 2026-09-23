@@ -316,7 +316,7 @@ public static class SelectionGroup
     /// <summary>
     /// 모서리 드래그의 <b>등방</b> 배율: 대각 앵커에서 잡은 모서리로 향하는 축에 커서를 정사영한 비율.
     /// 대각 방향 성분만 쓰므로 종횡비가 절대 변하지 않고, 커서가 앵커를 지나쳐도 부호가 자연스럽게 뒤집히는 대신
-    /// 호출부가 <see cref="TransformMath.ClampGroupFactor"/>로 하한을 걸어 뒤집기를 막는다
+    /// 호출부(<see cref="SelectionOperations.PlanUniformScale"/>)가 <see cref="TransformMath.ClampGroupFactor"/>로 하한을 걸어 뒤집기를 막는다
     /// (그룹 뒤집기는 요소별 부호 규약 R14와 달리 프레임에 의미 있는 표현이 없다).
     ///
     /// 정사영 축이 <see cref="CornerCenter(GroupFrame, GroupHandleKind)"/>/
@@ -386,21 +386,12 @@ public static class SelectionGroup
     /// 프로덕션 호출부는 <see cref="RotateStep"/> 하나뿐이고, 가이드와 잉크가 한 값을 공유하도록
     /// <b>프레임당 한 번만</b> 불러야 한다 (R1).
     ///
-    /// <paramref name="pivot"/>까지의 거리를 <see cref="TransformMath.MinScale"/>과 비교하는 것은
-    /// <b>배율 하한이 아니라 길이 퇴화 가드</b>다 — 커서가 피벗에 얹히면 각도가 NaN이 되어 요소가
-    /// 화면에서 증발한다 (R16). <see cref="TransformMath.Rotate"/>의 같은 가드와 의도상 쌍둥이이므로
-    /// 한쪽만 다른 상수로 바꾸지 않는다 (<see cref="TransformMath.MinScale"/> 문서의 실태 목록 참고).
+    /// 스윕각과 길이 퇴화 가드는 <see cref="TransformMath.SweepDegrees"/>가 소유하고, 단일 요소 회전
+    /// <see cref="TransformMath.Rotate"/>도 같은 함수를 쓴다 — 두 회전 경로가 하나를 공유하므로 가드가 갈라질 수 없다.
+    /// 퇴화(커서가 피벗에 얹힘)면 NaN 대신 증분 0을 돌려준다 — NaN 각도는 요소를 화면에서 증발시킨다 (R16).
     /// </summary>
-    public static double RotationDelta(Point pivot, Point from, Point to, bool shift)
-    {
-        var before = from - pivot;
-        var after = to - pivot;
-        if (before.Length < TransformMath.MinScale || after.Length < TransformMath.MinScale)
-        {
-            return 0;
-        }
-        double delta =
-            (Math.Atan2(after.Y, after.X) - Math.Atan2(before.Y, before.X)) * 180.0 / Math.PI;
-        return shift ? ShiftConstraints.SnapDegrees(delta) : delta;
-    }
+    public static double RotationDelta(Point pivot, Point from, Point to, bool shift) =>
+        TransformMath.SweepDegrees(pivot, from, to) is { } delta
+            ? (shift ? ShiftConstraints.SnapDegrees(delta) : delta)
+            : 0;
 }

@@ -69,7 +69,10 @@ public sealed class SurfaceInputController(
     /// </summary>
     private Rect _groupFrame;
 
-    /// <summary>빈 곳 제스처를 시작할 때 선택이 있었는가 (R5: 제자리 클릭이면 업에서 클릭 통과로 전환).</summary>
+    /// <summary>
+    /// 빈 곳 제스처를 시작할 때 선택이 있었는가 (R5: 제자리 클릭이면 업에서 클릭 통과로 전환).
+    /// 세우는 곳은 마퀴 시작(<see cref="BeginSelectGesture"/>), 지우는 곳은 <see cref="ResetSelectGesture"/> 한 곳이다.
+    /// </summary>
     private bool _hadSelectionOnPress;
 
     private WheelScaleController? _wheel;
@@ -153,19 +156,13 @@ public sealed class SurfaceInputController(
 
     public void OnKeyDown(KeyEventArgs e)
     {
-        // 표 드래그 중 방향키: 상하 = 행, 좌우 = 열. 판정·적용은 Point-free 진입점 AdjustTable이 소유하고
-        // 여기는 Key→(축, ±1) 매핑만 한다. 이 어댑터는 서피스가 활성(키보드 포커스)일 때만 도달한다 — 서피스는 영구
+        // 표 드래그 중 방향키: 상하 = 행, 좌우 = 열. Key→(축, ±1) 매핑은 TableGestureRules.ArrowKeyStep이,
+        // 판정·적용은 Point-free 진입점 AdjustTable이 소유하고 여기는 TableActive 가드와 Handled 배선만 한다.
+        // 이 어댑터는 서피스가 활성(키보드 포커스)일 때만 도달한다 — 서피스는 영구
         // NOACTIVATE라 텍스트 커밋 직후 포커스가 남은 채 툴바 휠로 표 도구를 고른 좁은 경로뿐이다 (F4 실측 판정).
-        if (Drawing.TableActive && e.Key is (Key.Up or Key.Down or Key.Left or Key.Right))
+        if (Drawing.TableActive && TableGestureRules.ArrowKeyStep(e.Key) is { } step)
         {
-            var (axis, delta) = e.Key switch
-            {
-                Key.Up => (TableAxis.Rows, +1),
-                Key.Down => (TableAxis.Rows, -1),
-                Key.Right => (TableAxis.Columns, +1),
-                _ => (TableAxis.Columns, -1),
-            };
-            if (AdjustTable(axis, delta))
+            if (AdjustTable(step.Axis, step.Delta))
             {
                 e.Handled = true;
             }
@@ -517,16 +514,15 @@ public sealed class SurfaceInputController(
             // 등방 스케일과 회전만 있는 이유는 SelectionGroup의 XML 문서 참고 (전단 표현 불가).
             case SelectionDragKind.GroupScale:
             {
-                double factor = TransformMath.ClampGroupFactor(
-                    SelectionGroup.ScaleFactor(_groupFrame, _dragGroupHandle, pos), baseStates.Values);
-                var pivot = SelectionGroup.AnchorCorner(_groupFrame, _dragGroupHandle);
-                foreach (var element in selection.Elements)
+                // 재단·건너뛰기·재계산 규칙은 휠과 같은 PlanUniformScale 하나가 소유한다 (D5).
+                var plan = SelectionOperations.PlanUniformScale(
+                    selection.Elements,
+                    baseStates,
+                    SelectionGroup.AnchorCorner(_groupFrame, _dragGroupHandle),
+                    SelectionGroup.ScaleFactor(_groupFrame, _dragGroupHandle, pos));
+                foreach (var (element, next) in plan.Steps)
                 {
-                    if (baseStates.TryGetValue(element.Id, out var start))
-                    {
-                        _base.Apply(
-                            element, TransformMath.ScaleAbout(start, element.LocalBounds, pivot, factor));
-                    }
+                    _base.Apply(element, next);
                 }
                 break;
             }
@@ -596,10 +592,12 @@ public sealed class SurfaceInputController(
             // R2/R5: 끌지 않고 제자리에서 뗐다면 마퀴가 아니라 **해제 클릭**이다.
             // 선택이 있었을 때만 클릭 통과로 넘어간다 — 아무것도 안 고른 상태의 빈 클릭까지
             // 흡수하면 선택 도구를 켜자마자 도구가 해제되어 아무것도 고를 수 없다.
-            if (SelectionGestureRules.IsStationaryClick(_dragStart, pos))
+            // ★ engage는 반드시 ResetSelectGesture보다 **먼저** 계산한다: Reset이 _hadSelectionOnPress를 지우므로
+            // 순서를 뒤집으면 engage가 늘 false가 되어 해제 클릭의 클릭 통과가 조용히 죽는다.
+            bool stationary = SelectionGestureRules.IsStationaryClick(_dragStart, pos);
+            bool engage = SelectionGestureRules.ShouldEngageClickThrough(_hadSelectionOnPress, _dragStart, pos);
+            if (stationary)
             {
-                bool engage = SelectionGestureRules.ShouldEngageClickThrough(_hadSelectionOnPress, _dragStart, pos);
-                _hadSelectionOnPress = false;
                 ResetSelectGesture();
                 if (engage)
                 {
@@ -608,7 +606,6 @@ public sealed class SurfaceInputController(
                 return;
             }
 
-            _hadSelectionOnPress = false;
             var hits = SelectionGeometry.HitMarquee(document.Elements, new Rect(_dragStart, pos));
             if (shift)
             {
@@ -639,6 +636,8 @@ public sealed class SurfaceInputController(
 
     private void ResetSelectGesture()
     {
+        // 빈 곳 걸쇠(R5)를 지우는 유일한 지점 — 마퀴 업(제자리/드래그)·일반 드래그 업·CancelActiveInput이 모두 여기를 지난다.
+        _hadSelectionOnPress = false;
         _dragKind = SelectionDragKind.None;
         _dragHandleTarget = null;
         _base.Reset();
@@ -793,7 +792,6 @@ public sealed class SurfaceInputController(
     public void CancelActiveInput()
     {
         _eraserDragging = false;
-        _hadSelectionOnPress = false;
         Drawing.DiscardAll(); // 획·도형·표 = 폐기. 세 슬롯의 순서(획 → 도형 → 표)는 저쪽이 그대로 잇는다 (46단계).
         if (_activeTextBox is not null)
         {

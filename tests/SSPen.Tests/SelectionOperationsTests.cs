@@ -422,6 +422,27 @@ public class SelectionOperationsTests
         Assert.Equal(sourcePhysicalY, targetPhysicalY, 1e-6);
     }
 
+    /// <summary>
+    /// 이관 뒤 요소 피벗의 월드 위치(<c>PivotOf(lb) + Translation'</c>)는 이관 전 월드 피벗을
+    /// <see cref="CoordinateSpace.Rebase"/>로 옮긴 점과 같아야 한다 (63단계, A4-4 — ARCH-20).
+    /// RebaseState의 <c>c</c>가 <see cref="TransformMath.PivotOf"/>와 다른 식으로 갈라지면 차이가 정확히
+    /// <c>(c'−c)·(r−1)</c>이므로 <b>반드시 r ≠ 1</b>(여기서는 1.5)이고, 원본 원점도 음수(−1920)로 둔다.
+    /// </summary>
+    [Fact]
+    public void RebaseState_WorldPivot_FollowsCoordinateSpaceRebase()
+    {
+        var bounds = Bounds();
+        var pivot = TransformMath.PivotOf(bounds);
+        var state = new ElementTransformState(1.2, 0.8, 25, new Vector(35, -12));
+        const double sourceDpi = 1.5;
+        const double targetDpi = 1.0;
+
+        var rebased = SelectionOperations.RebaseState(state, bounds, Left, sourceDpi, Center, targetDpi);
+
+        var expected = CoordinateSpace.Rebase(pivot + state.Translation, Left, sourceDpi, Center, targetDpi);
+        AssertPointsEqual(expected, pivot + rebased.Translation, Tolerance);
+    }
+
     // ---- 레드팀 B. DPI Rebase 정확성 — r != 1 하드 공격 (리팩터링 19단계, SelectionRedTeamTests에서 이동) ----
     //
     // Center100/NegLeft는 위 Center/Left와 값이 같다 — 본문을 글자 그대로 옮기기 위해 원본 이름을 유지한다.
@@ -778,5 +799,96 @@ public class SelectionOperationsTests
         Assert.Equal(2, plan.Count); // 계획은 세워졌지만 소비하지 않았다.
         Assert.Equal(ElementTransformState.Identity, a.TransformState);
         Assert.Equal(ElementTransformState.Identity, b.TransformState);
+    }
+
+    // ---- PlanUniformScale (R1, R7, D5 — 63단계, A3-3: 드래그 GroupScale과 휠이 공유) ----
+
+    private static readonly Point ScalePivot = new(-30, 40);
+
+    /// <summary>
+    /// 배율은 <b>시작 상태 전부</b>로 재단한다 — <c>elements</c> 목록에 없는 스냅샷 대상도 한계에 든다.
+    /// b의 한 축이 <c>MinScale·2</c>라 그룹 축소 한계는 0.5다. 목록(a)만으로 재단하면 0.01까지 내려가
+    /// b가 바닥에 붙고 그룹이 찢어진다.
+    /// </summary>
+    [Fact]
+    public void PlanUniformScale_ClampsAgainstAllBaseStates_IncludingUnlistedElements()
+    {
+        var a = NewStroke();
+        var b = NewStroke();
+        b.TransformState = ElementTransformState.Identity with { ScaleX = TransformMath.MinScale * 2 };
+
+        var plan = SelectionOperations.PlanUniformScale([a], BaseStatesOf(a, b), ScalePivot, 0.0001);
+
+        Assert.Equal(0.5, plan.Factor, Tolerance);
+        var step = Assert.Single(plan.Steps);
+        Assert.Same(a, step.Element);
+        Assert.Equal(0.5, step.Next.ScaleX, Tolerance);
+    }
+
+    /// <summary>시작 상태가 없는 요소는 조용히 건너뛰고, 나머지는 <b>목록 순서</b>대로 낸다 (사전 순서가 아니다).</summary>
+    [Fact]
+    public void PlanUniformScale_SkipsElementsWithoutBaseState_PreservesListOrder()
+    {
+        var a = NewStroke();
+        var b = NewStroke();
+        var c = NewStroke();
+
+        var plan = SelectionOperations.PlanUniformScale([c, b, a], BaseStatesOf(a, c), ScalePivot, 2);
+
+        Assert.Equal(2, plan.Steps.Count);
+        Assert.Same(c, plan.Steps[0].Element);
+        Assert.Same(a, plan.Steps[1].Element);
+    }
+
+    /// <summary>
+    /// <c>Factor</c>는 <see cref="TransformMath.ClampGroupFactor"/>와 같은 값이고(휠은 이것을 세션에 되먹인다, R7),
+    /// 각 단계는 그 배율로 시작 상태에 <see cref="TransformMath.ScaleAbout"/>를 먹인 결과와 비트 동일하다.
+    /// </summary>
+    [Theory]
+    [InlineData(0.0001)]
+    [InlineData(0.5)]
+    [InlineData(1.0)]
+    [InlineData(3.0)]
+    [InlineData(1000.0)]
+    [InlineData(double.NaN)]
+    public void PlanUniformScale_FactorEqualsClampGroupFactor(double rawFactor)
+    {
+        var a = NewStroke();
+        var b = NewStroke();
+        a.TransformState = new ElementTransformState(2, 0.5, 30, new Vector(10, -5));
+        b.TransformState = new ElementTransformState(TransformMath.MaxScale / 4, 1, -15, new Vector(-3, 8));
+        var baseStates = BaseStatesOf(a, b);
+
+        var plan = SelectionOperations.PlanUniformScale([a, b], baseStates, ScalePivot, rawFactor);
+
+        double expected = TransformMath.ClampGroupFactor(rawFactor, baseStates.Values);
+        Assert.Equal(expected, plan.Factor);
+        Assert.Equal(2, plan.Steps.Count);
+        foreach (var (element, next) in plan.Steps)
+        {
+            Assert.Equal(
+                TransformMath.ScaleAbout(baseStates[element.Id], element.LocalBounds, ScalePivot, expected),
+                next);
+        }
+    }
+
+    /// <summary>
+    /// 시작 상태에서 <b>재계산</b>한다 — 1차 계획을 실제로 대입해 현재 상태를 바꿔도 같은 입력의 2차 계획은
+    /// 1차와 같다. 현재 상태를 읽으면 2배가 4배로 누적된다. 계획 자체는 아무것도 쓰지 않는다 (ARCH-15).
+    /// </summary>
+    [Fact]
+    public void PlanUniformScale_RecomputesFromBaseState_NotFromCurrent()
+    {
+        var element = NewStroke();
+        var baseStates = BaseStatesOf(element);
+
+        var first = SelectionOperations.PlanUniformScale([element], baseStates, ScalePivot, 2);
+        Assert.Equal(ElementTransformState.Identity, element.TransformState); // 계획은 쓰지 않는다.
+        element.TransformState = first.Steps[0].Next; // 호출부의 R15 집행을 흉내낸다.
+
+        var second = SelectionOperations.PlanUniformScale([element], baseStates, ScalePivot, 2);
+
+        Assert.Equal(first.Steps[0].Next, second.Steps[0].Next);
+        Assert.Equal(2, second.Steps[0].Next.ScaleX, Tolerance);
     }
 }

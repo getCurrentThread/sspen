@@ -98,15 +98,12 @@ public sealed class WheelScaleController(
         }
 
         double raw = _session.Step(notches, now());
-        double factor = TransformMath.ClampGroupFactor(raw, baseStates.Values);
-        _session.SetFactor(factor); // 한계 밖 누적을 지워 천장에서 첫 역방향 노치부터 반응하게 한다 (R7).
-        foreach (var element in elements)
+        // 재단·건너뛰기·재계산 규칙은 드래그 GroupScale과 같은 PlanUniformScale 하나가 소유한다 (D5).
+        var plan = SelectionOperations.PlanUniformScale(elements, baseStates, _session.Pivot, raw);
+        _session.SetFactor(plan.Factor); // 한계 밖 누적을 지워 천장에서 첫 역방향 노치부터 반응하게 한다 (R7).
+        foreach (var (element, next) in plan.Steps)
         {
-            if (baseStates.TryGetValue(element.Id, out var start))
-            {
-                applyTransformState(
-                    element, TransformMath.ScaleAbout(start, element.LocalBounds, _session.Pivot, factor));
-            }
+            applyTransformState(element, next);
         }
 
         // `-=` 뒤 `+=`는 중복이 아니라 멱등 재구독이다 — 노치마다 구독이 쌓이면 유휴 만료 한 번이

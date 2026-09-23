@@ -6,7 +6,7 @@ using Xunit;
 namespace SSPen.Tests;
 
 /// <summary>
-/// 선택·변형 스위트가 공유하는 기하 헬퍼 (리팩터링 19단계에서 승격).
+/// 여러 스위트가 공유하는 획·기하 헬퍼 (리팩터링 19단계에서 승격).
 ///
 /// 19단계가 SelectionGroupTests와 SelectionRedTeamTests를 "대상 타입 1:1" 파일로 나누면서 한 파일의
 /// private 헬퍼가 여러 파일에서 필요해졌다 — 그 헬퍼만 여기로 올렸고, 한 파일만 쓰는 것

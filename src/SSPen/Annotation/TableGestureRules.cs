@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 
 namespace SSPen.Annotation;
 
@@ -37,12 +38,27 @@ public readonly record struct TableBadgeHint(Point Anchor, TableSize Size);
 
 /// <summary>
 /// 표 제스처의 순수 판정 (24단계, R2/D3). 휠·방향키가 어느 축을 얼마나 움직이는지만 정하고, 입력을 읽거나
-/// 시각물을 만지지 않는다 — 그것은 <c>SurfaceInputController</c> 어댑터의 몫이다 (<c>ShapeGestureRules</c> 선례).
+/// 시각물을 만지지 않는다 — 입력 읽기는 <c>SurfaceInputController</c>, 시각물은 <c>DrawingGestureController</c>의 몫이다
+/// (<c>ShapeGestureRules</c> 선례).
 /// </summary>
 public static class TableGestureRules
 {
     /// <summary>휠은 행, Shift+휠은 열 (948b037의 동작 보존).</summary>
     public static TableAxis AxisForWheel(bool shift) => shift ? TableAxis.Columns : TableAxis.Rows;
+
+    /// <summary>
+    /// 표 드래그 중 방향키 1회의 (축, ±1). 상하 = 행, 좌우 = 열이고 위/오른쪽이 +1이다.
+    /// 방향키가 아니면 null이며, 호출부(<c>SurfaceInputController.OnKeyDown</c>)는 그때 Escape 분기로 내려간다.
+    /// <see cref="AxisForWheel"/>와 같은 자리에 두어 휠·방향키의 축 판정이 한 파일에서 보이게 한다.
+    /// </summary>
+    public static (TableAxis Axis, int Delta)? ArrowKeyStep(Key key) => key switch
+    {
+        Key.Up => (TableAxis.Rows, +1),
+        Key.Down => (TableAxis.Rows, -1),
+        Key.Right => (TableAxis.Columns, +1),
+        Key.Left => (TableAxis.Columns, -1),
+        _ => null,
+    };
 
     /// <summary>한 축만 <paramref name="delta"/>만큼 움직이고 <see cref="TableGridLimits"/> 안으로 재단한다.</summary>
     public static TableSize Adjust(TableSize size, TableAxis axis, int delta) => axis switch

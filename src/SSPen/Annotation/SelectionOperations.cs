@@ -10,6 +10,14 @@ public readonly record struct DeletePlanEntry(
     int Index);
 
 /// <summary>
+/// 등방 그룹 스케일 계획 (R1/R7/D5): 그룹 단위로 재단된 배율 하나와, 그 배율을 시작 상태에 먹인 요소별 다음 상태.
+/// 휠 경로는 <see cref="Factor"/>를 세션에 되먹이고(R7 (b)), 드래그 경로는 <see cref="Steps"/>만 집행한다.
+/// </summary>
+public readonly record struct UniformScalePlan(
+    double Factor,
+    IReadOnlyList<(AnnotationElement Element, ElementTransformState Next)> Steps);
+
+/// <summary>
 /// 선택 조작의 순수 계획 함수 (ARCH-15, D4). 문서를 **읽기만** 하고 아무것도 변경하지 않는다 —
 /// 계획과 실행을 분리해야 "제거하면서 인덱스를 수집"하는 순서 결함이 구조적으로 불가능해진다.
 /// </summary>
@@ -95,9 +103,8 @@ public static class SelectionOperations
         double targetDpi)
     {
         double ratio = sourceDpi / targetDpi;
-        var center = new Point(
-            localBounds.X + localBounds.Width / 2,
-            localBounds.Y + localBounds.Height / 2);
+        // c는 행렬 피벗과 비트 단위로 같아야 한다 — 같은 함수에서 얻는다 (ARCH-20).
+        var center = TransformMath.PivotOf(localBounds);
 
         // 변위 → 위치 → 사상 → 다시 변위.
         var asPosition = new Point(center.X + state.Translation.X, center.Y + state.Translation.Y);
@@ -171,5 +178,40 @@ public static class SelectionOperations
             plan.Add((element, TransformMath.Translate(start, scaled)));
         }
         return plan;
+    }
+
+    /// <summary>
+    /// 등방 그룹 스케일 계획 (R1, D5). 드래그 모서리 핸들(<c>GroupScale</c>)과 휠 노치(<c>WheelScaleController</c>)가
+    /// 이 한 함수를 공유한다 — "모든 시작 상태로 배율을 재단한 뒤, 시작 상태가 있는 요소마다 <see cref="TransformMath.ScaleAbout"/>"
+    /// 규칙이 두 곳에 손으로 적혀 있으면 한쪽의 재단 입력이나 건너뛰기 규칙만 바뀌어 <c>MinScale</c> 바닥 동작이 갈라진다.
+    ///
+    /// 배율은 <paramref name="baseStates"/>의 <b>전부</b>로 재단한다(<see cref="TransformMath.ClampGroupFactor"/>) —
+    /// <paramref name="elements"/>에 없는 스냅샷 대상도 한계에 들어간다. 요소별로 재단하면 한계에 먼저 닿은 요소만
+    /// 멈춰 그룹이 찢어진다.
+    /// 반환 순서는 <paramref name="elements"/>의 순서 그대로이고, 시작 상태가 없는 요소(제스처 시작 뒤에 선택에 더해진 것)는
+    /// 조용히 건너뛴다 (<see cref="PlanMove"/>와 같은 규칙).
+    ///
+    /// 매번 <paramref name="baseStates"/>(제스처 시작 상태)에서 <b>재계산</b>하고 요소의 현재 상태를 절대 읽지 않는다 —
+    /// 직전 결과에 누적하면 부동소수 오차가 쌓이고 취소 복원 기준도 사라진다.
+    ///
+    /// 이 함수는 아무것도 쓰지 않는다 (ARCH-15, D4): 대입과 소유 문서 알림은 호출부의 단일 집행 지점이 맡는다 (R15).
+    /// </summary>
+    public static UniformScalePlan PlanUniformScale(
+        IReadOnlyList<AnnotationElement> elements,
+        IReadOnlyDictionary<long, ElementTransformState> baseStates,
+        Point pivot,
+        double rawFactor)
+    {
+        double factor = TransformMath.ClampGroupFactor(rawFactor, baseStates.Values);
+        var steps = new List<(AnnotationElement, ElementTransformState)>(elements.Count);
+        foreach (var element in elements)
+        {
+            if (!baseStates.TryGetValue(element.Id, out var start))
+            {
+                continue; // 제스처 시작 뒤에 선택에 더해진 요소 — 시작 상태가 없으므로 조용히 건너뛴다.
+            }
+            steps.Add((element, TransformMath.ScaleAbout(start, element.LocalBounds, pivot, factor)));
+        }
+        return new UniformScalePlan(factor, steps);
     }
 }

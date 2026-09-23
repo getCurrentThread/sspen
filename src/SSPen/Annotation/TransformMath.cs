@@ -47,14 +47,14 @@ public static class TransformMath
     ///   <see cref="HitHandle"/>의 축별 도달거리 역산(0 나눗셈 방어),
     ///   <see cref="ClampGroupFactor"/>의 구성원 하한과 바닥값.</item>
     /// <item><b>퇴화 엡실론(재사용, 길이 px)</b> — <see cref="NonDegenerate"/>의 최소 폭,
-    ///   <see cref="RotateHandleWorld"/>의 방향 벡터 길이(R5), <see cref="Rotate"/>의 회전 반경 2개,
-    ///   <see cref="ScaleLocal"/>의 로컬 스팬 2개, <see cref="SelectionGroup.RotationDelta"/>의 회전 반경 2개.</item>
+    ///   <see cref="RotateHandleWorld"/>의 방향 벡터 길이(R5), <see cref="SweepDegrees"/>의 회전 반경 2개,
+    ///   <see cref="ScaleLocal"/>의 로컬 스팬 2개.</item>
     /// <item><b>퇴화 엡실론(재사용, 길이제곱 px²)</b> — <c>SelectionGroup.ScaleFactor</c>의 정사영 축 길이제곱.</item>
     /// </list>
     ///
-    /// 실측 기준: 두 파일 9개 메서드에서 16회 참조한다(선언·주석 줄 제외). <see cref="Rotate"/>와
-    /// <see cref="SelectionGroup.RotationDelta"/>는 <b>의도상 쌍둥이</b>(단일 요소 회전 / 그룹 회전의 같은 퇴화 가드)이므로
-    /// 한쪽만 다른 상수로 바꾸지 않는다. 위치가 아니라 <b>메서드 이름</b>으로 적은 이유는 줄 번호가 썩기 때문이다 —
+    /// 실측 기준: 두 파일 8개 메서드에서 14회 참조한다(선언·주석 줄 제외). 두 회전 경로 — 단일 요소 회전
+    /// <see cref="Rotate"/>와 그룹 회전 <see cref="SelectionGroup.RotationDelta"/> — 는 <see cref="SweepDegrees"/> 하나를
+    /// 공유하므로 퇴화 가드가 갈라질 수 없다. 위치가 아니라 <b>메서드 이름</b>으로 적은 이유는 줄 번호가 썩기 때문이다 —
     /// <c>grep -rn MinScale src/SSPen/Annotation/</c>가 이 목록과 어긋나면 목록을 고쳐라.
     /// </summary>
     public const double MinScale = 0.01;
@@ -131,10 +131,19 @@ public static class TransformMath
         return m;
     }
 
+    /// <summary>
+    /// 요소 피벗 <c>c</c> = 로컬 경계 중심. <see cref="ToMatrix"/>에 먹이는 피벗이자, <c>Translation</c>을 위치로
+    /// 바꿨다 되돌리는 식들(<see cref="ScaleAbout"/>/<see cref="RotateAbout"/>의 <c>t' = f·(c+t−P)+P−c</c>,
+    /// <c>SelectionOperations.RebaseState</c>의 <c>t' = Rebase(c+t) − c</c>)의 <c>c</c>다.
+    /// "<c>Translation</c>은 변위"라는 계약(ARCH-20)은 이 <c>c</c>들이 행렬 피벗과 <b>비트 단위로 같아야</b> 성립하므로
+    /// 식을 이 한 곳에만 둔다. 그룹 피벗 <c>P</c>(<see cref="GroupFrame.Pivot"/>)와 헷갈리지 않도록 이름을 PivotOf로 했다.
+    /// </summary>
+    public static Point PivotOf(Rect localBounds) => new(CenterX(localBounds), CenterY(localBounds));
+
     /// <summary>월드 점을 로컬(변형 전) 공간으로 되돌린다. 힌트 판정과 스케일 계산의 1단계.</summary>
     public static Point ToLocal(ElementTransformState state, Rect localBounds, Point world)
     {
-        var inverse = ToMatrix(state, Center(localBounds));
+        var inverse = ToMatrix(state, PivotOf(localBounds));
         if (!inverse.HasInverse)
         {
             return world;
@@ -154,7 +163,7 @@ public static class TransformMath
         HandleKind.Bottom => new Point(CenterX(bounds), bounds.Top),
         HandleKind.BottomLeft => bounds.TopRight,
         HandleKind.Left => new Point(bounds.Right, CenterY(bounds)),
-        _ => Center(bounds),
+        _ => PivotOf(bounds),
     };
 
     /// <summary>8방향 크기 핸들의 로컬 중심. 회전 핸들은 화면 오프셋을 쓰므로 <see cref="RotateHandleWorld"/>로 간다.</summary>
@@ -174,7 +183,7 @@ public static class TransformMath
     /// <summary>로컬 상단 변 중앙의 월드 위치 (회전 핸들 스템의 시작점).</summary>
     public static Point TopCenterWorld(ElementTransformState state, Rect localBounds)
     {
-        var m = ToMatrix(state, Center(localBounds));
+        var m = ToMatrix(state, PivotOf(localBounds));
         return m.Transform(new Point(CenterX(localBounds), localBounds.Top));
     }
 
@@ -185,7 +194,7 @@ public static class TransformMath
     public static Point RotateHandleWorld(
         ElementTransformState state, Rect localBounds, double screenOffset = RotateHandleScreenOffset)
     {
-        var m = ToMatrix(state, Center(localBounds));
+        var m = ToMatrix(state, PivotOf(localBounds));
         var top = m.Transform(new Point(CenterX(localBounds), localBounds.Top));
         var outward = m.Transform(new Vector(0, -1));
         double length = outward.Length;
@@ -202,21 +211,38 @@ public static class TransformMath
         baseState with { Translation = baseState.Translation + delta };
 
     /// <summary>
-    /// 로컬 경계 중심의 월드 사상점(<c>pivot + Translation</c>)을 축으로 하는 회전.
-    /// A3에서는 <c>AngleDegrees += Δ</c>와 정확히 동치이며 <see cref="ElementTransformState.Translation"/>은 불변이다.
-    /// <paramref name="shift"/>면 결과 각을 15도 배수로 스냅한다 (f10, X1).
+    /// <paramref name="pivot"/>을 축으로 커서가 <paramref name="from"/>에서 <paramref name="to"/>까지 쓸고 간 각(도).
+    /// 단일 요소 회전(<see cref="Rotate"/>)과 그룹 회전(<see cref="SelectionGroup.RotationDelta"/>)이 <b>이 함수 하나</b>를
+    /// 공유한다 — 두 경로의 스윕 식과 퇴화 가드가 갈라질 수 없게 한 곳에 둔다.
+    ///
+    /// 어느 한쪽 회전 반경이 <see cref="MinScale"/> 미만이면 null이다. 이것은 <b>배율 하한이 아니라 길이 퇴화 가드</b>다 —
+    /// 커서가 피벗에 얹히면 각도가 NaN이 되어 요소가 화면에서 증발한다 (R16). 퇴화를 어떻게 흡수할지(상태 유지 / 증분 0)와
+    /// Shift 스냅을 결과 각에 걸지 증분에 걸지는 호출부가 정한다.
     /// </summary>
-    public static ElementTransformState Rotate(
-        ElementTransformState baseState, Rect localBounds, Point from, Point to, bool shift)
+    public static double? SweepDegrees(Point pivot, Point from, Point to)
     {
-        var pivot = Center(localBounds) + baseState.Translation;
         var before = from - pivot;
         var after = to - pivot;
         if (before.Length < MinScale || after.Length < MinScale)
         {
+            return null;
+        }
+        return Degrees(Math.Atan2(after.Y, after.X) - Math.Atan2(before.Y, before.X));
+    }
+
+    /// <summary>
+    /// 로컬 경계 중심의 월드 사상점(<c>pivot + Translation</c>)을 축으로 하는 회전.
+    /// A3에서는 <c>AngleDegrees += Δ</c>와 정확히 동치이며 <see cref="ElementTransformState.Translation"/>은 불변이다.
+    /// <paramref name="shift"/>면 결과 각을 15도 배수로 스냅한다 (f10, X1).
+    /// 스윕각 Δ와 퇴화 가드(커서가 피벗에 얹히면 상태 그대로)는 그룹 회전과 같은 <see cref="SweepDegrees"/>가 소유한다.
+    /// </summary>
+    public static ElementTransformState Rotate(
+        ElementTransformState baseState, Rect localBounds, Point from, Point to, bool shift)
+    {
+        if (SweepDegrees(PivotOf(localBounds) + baseState.Translation, from, to) is not { } delta)
+        {
             return baseState;
         }
-        double delta = Degrees(Math.Atan2(after.Y, after.X) - Math.Atan2(before.Y, before.X));
         double angle = baseState.AngleDegrees + delta;
         return baseState with { AngleDegrees = shift ? ShiftConstraints.SnapDegrees(angle) : angle };
     }
@@ -239,7 +265,7 @@ public static class TransformMath
             return baseState;
         }
 
-        var center = Center(localBounds);
+        var center = PivotOf(localBounds);
         var anchor = AnchorLocal(localBounds, handle);
         var grip = HandleCenterLocal(localBounds, handle);
 
@@ -279,7 +305,7 @@ public static class TransformMath
     public static Vector PinAnchor(
         ElementTransformState before, ElementTransformState after, Rect localBounds, HandleKind handle)
     {
-        var offset = AnchorLocal(localBounds, handle) - Center(localBounds);
+        var offset = AnchorLocal(localBounds, handle) - PivotOf(localBounds);
         var difference = new Vector(
             offset.X * (before.ScaleX - after.ScaleX),
             offset.Y * (before.ScaleY - after.ScaleY));
@@ -368,7 +394,7 @@ public static class TransformMath
     public static ElementTransformState ScaleAbout(
         ElementTransformState baseState, Rect localBounds, Point pivot, double factor)
     {
-        var center = Center(localBounds);
+        var center = PivotOf(localBounds);
         var position = new Point(center.X + baseState.Translation.X, center.Y + baseState.Translation.Y);
         var scaled = new Point(
             ((position.X - pivot.X) * factor) + pivot.X,
@@ -389,7 +415,7 @@ public static class TransformMath
     public static ElementTransformState RotateAbout(
         ElementTransformState baseState, Rect localBounds, Point pivot, double deltaDegrees)
     {
-        var center = Center(localBounds);
+        var center = PivotOf(localBounds);
         var position = new Point(center.X + baseState.Translation.X, center.Y + baseState.Translation.Y);
         var rotated = RotateVector(position - pivot, deltaDegrees) + pivot;
         return baseState with
@@ -456,8 +482,6 @@ public static class TransformMath
     }
 
     private static double Degrees(double radians) => radians * 180.0 / Math.PI;
-
-    private static Point Center(Rect r) => new(CenterX(r), CenterY(r));
 
     private static double CenterX(Rect r) => r.X + r.Width / 2;
 

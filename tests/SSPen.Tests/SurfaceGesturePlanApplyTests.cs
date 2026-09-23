@@ -210,6 +210,104 @@ public class SurfaceGesturePlanApplyTests
         });
     }
 
+    // ---- 마퀴 업 판정: 제자리 → R5, 드래그 → 교체/누적 (63단계, A3-2) ----
+    //
+    // 공통 배치: a는 마퀴 (350,350)–(470,470) 안, c는 그 밖. c를 먼저 고른 상태에서 시작한다.
+
+    /// <summary>
+    /// Shift 없는 마퀴 드래그는 선택을 마퀴 안의 요소로 <b>교체</b>한다. 드래그이므로 클릭 통과는 켜지지 않는다 —
+    /// 걸쇠(다운 시점에 선택이 있었음)가 서 있어도 제자리 클릭이 아니면 R5가 아니다.
+    /// </summary>
+    [Fact]
+    public void PointerUp_MarqueeDrag_ReplacesSelectionWithHits()
+    {
+        RunSta(() =>
+        {
+            var (h, a, _) = MarqueeScene();
+
+            h.Controller.PointerDown(new Point(350, 350), shift: false);
+            h.Controller.PointerMove(new Point(470, 470), shift: false, leftPressed: true);
+            h.Controller.PointerUp(new Point(470, 470), shift: false);
+
+            Assert.Equal([a], h.Selection.Elements);
+            Assert.Equal(0, h.ClickThroughRequests);
+            Assert.Null(h.Marquee);
+        });
+    }
+
+    /// <summary>
+    /// Shift+마퀴 드래그는 기존 선택에 <b>누적</b>한다. 업 시점 Shift를 인자로 받으므로 헤드리스로 결정적이다 —
+    /// 스레드 로컬 <c>Keyboard.Modifiers</c>가 NOACTIVATE 서피스에서 늘 None이라 조용히 죽었던 경로다.
+    /// </summary>
+    [Fact]
+    public void PointerUp_ShiftMarqueeDrag_AccumulatesIntoExistingSelection()
+    {
+        RunSta(() =>
+        {
+            var (h, a, c) = MarqueeScene();
+
+            h.Controller.PointerDown(new Point(350, 350), shift: true);
+            h.Controller.PointerMove(new Point(470, 470), shift: true, leftPressed: true);
+            h.Controller.PointerUp(new Point(470, 470), shift: true);
+
+            Assert.Equal([c, a], h.Selection.Elements);
+            Assert.Equal(0, h.ClickThroughRequests);
+        });
+    }
+
+    /// <summary>
+    /// Shift+빈 곳 제자리 클릭은 선택을 건드리지 않고 클릭 통과도 켜지 않는다 — Shift 다운은 누적 의도라
+    /// 걸쇠를 세우지 않는다(R5는 "선택을 비운 해제 클릭"에만 걸린다).
+    /// </summary>
+    [Fact]
+    public void PointerUp_ShiftStationaryClick_KeepsSelection_NoClickThrough()
+    {
+        RunSta(() =>
+        {
+            var (h, _, c) = MarqueeScene();
+
+            h.Controller.PointerDown(new Point(350, 350), shift: true);
+            h.Controller.PointerUp(new Point(350, 350), shift: true);
+
+            Assert.Equal([c], h.Selection.Elements);
+            Assert.Equal(0, h.ClickThroughRequests);
+            Assert.Null(h.Marquee);
+        });
+    }
+
+    /// <summary>
+    /// 특성화(Today): 교체/누적은 <b>업</b> 시점 Shift로 갈린다. 다운에서 Shift를 눌러 선택을 유지했어도
+    /// 떼기 전에 Shift를 놓으면 교체가 된다 — 다운 시점 값을 쓰도록 바꾸면 여기서 빨갛다.
+    /// </summary>
+    [Fact]
+    public void PointerUp_ShiftReleasedBeforeUp_Replaces_Today()
+    {
+        RunSta(() =>
+        {
+            var (h, a, c) = MarqueeScene();
+
+            h.Controller.PointerDown(new Point(350, 350), shift: true);
+            Assert.Equal([c], h.Selection.Elements); // 다운은 선택을 유지했다.
+            h.Controller.PointerMove(new Point(470, 470), shift: false, leftPressed: true);
+            h.Controller.PointerUp(new Point(470, 470), shift: false);
+
+            Assert.Equal([a], h.Selection.Elements);
+        });
+    }
+
+    /// <summary>마퀴 업 증인 4건의 공통 배치: a(400,400,50,50)는 마퀴 안, c(600,600,50,50)는 밖이며 c가 선택되어 있다.</summary>
+    private static (Harness H, StrokeElement A, StrokeElement C) MarqueeScene()
+    {
+        var h = new Harness();
+        var a = Stroke(400, 400, 50, 50);
+        var c = Stroke(600, 600, 50, 50);
+        h.Document.Add(a);
+        h.Document.Add(c);
+        h.Selection.Set([c]);
+        h.State.ActiveTool = ToolKind.Select;
+        return (h, a, c);
+    }
+
     // ---- 반복 적용의 안정성 ----
 
     /// <summary>

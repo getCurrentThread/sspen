@@ -731,6 +731,28 @@ public class SelectionGroupTests
     }
 
     /// <summary>
+    /// 단일 요소 회전과 그룹 회전은 스윕각 하나(<see cref="TransformMath.SweepDegrees"/>)를 공유한다 (63단계, A4-4).
+    /// 항등 상태인 요소를 자기 피벗(<see cref="TransformMath.PivotOf"/>)으로 Shift 없이 돌리면 결과 각은
+    /// 그룹 증분과 <b>비트 단위로</b> 같아야 한다 — 한쪽 식만 바뀌면(평가 순서 하나라도) 여기서 갈라진다.
+    /// </summary>
+    [Fact]
+    public void RotationDelta_EqualsElementRotateSweep_WithoutShift()
+    {
+        var element = Stroke(40, 30, 120, 60);
+        var localBounds = element.LocalBounds;
+        var pivot = TransformMath.PivotOf(localBounds);
+        var from = pivot + new Vector(70, -20);
+        var to = pivot + new Vector(-15, 55);
+
+        double elementAngle = TransformMath.Rotate(
+            ElementTransformState.Identity, localBounds, from, to, shift: false).AngleDegrees;
+        double groupDelta = SelectionGroup.RotationDelta(pivot, from, to, shift: false);
+
+        Assert.NotEqual(0, groupDelta); // 대조군: 실제로 돈 경우를 비교한다.
+        Assert.Equal(elementAngle, groupDelta);
+    }
+
+    /// <summary>
     /// 시작 각이 제각각인 구성원도 <b>같은 증분</b>만큼 돈다 (R1). Shift 스냅이 결과 각이 아니라 증분에 걸리므로,
     /// 10도·70도·23도로 미리 돌려 둔 요소가 45도 증분을 나란히 받아 55도·115도·68도가 된다.
     ///

@@ -390,6 +390,52 @@ public class TransformMathTests
         Assert.Equal(start, TransformMath.Rotate(start, Bounds, pivot, pivot, shift: false));
     }
 
+    // ---- PivotOf / SweepDegrees: 요소 피벗과 스윕각의 단일 소유 지점 (63단계, A4-4) ----
+
+    /// <summary>요소 피벗은 로컬 경계 중심이다 — 원점이 0이 아닌 상자로 X·Y 두 항을 모두 확인한다.</summary>
+    [Fact]
+    public void PivotOf_IsLocalBoundsCenter()
+    {
+        Assert.Equal(new Point(60, 45), TransformMath.PivotOf(new Rect(10, 20, 100, 50)));
+    }
+
+    /// <summary>
+    /// 요소의 행렬 피벗이 <see cref="TransformMath.PivotOf"/>와 같은 값이어야 한다 (ARCH-20).
+    /// ScaleAbout/RotateAbout/RebaseState의 <c>c</c>가 모두 PivotOf에서 오므로, 행렬 쪽만 다른 식으로 갈라지면
+    /// "Translation은 변위" 계약이 조용히 깨진다. 배율·각도·이동이 모두 항등이 아닌 상태로 비트 동일을 요구한다.
+    /// </summary>
+    [Fact]
+    public void TransformMatrix_UsesPivotOf()
+    {
+        var element = Stroke(40, 30, 120, 60);
+        var state = new ElementTransformState(2, 0.5, 30, new Vector(10, -5));
+        element.TransformState = state;
+
+        Assert.Equal(
+            TransformMath.ToMatrix(state, TransformMath.PivotOf(element.LocalBounds)),
+            element.TransformMatrix);
+    }
+
+    /// <summary>
+    /// 회전 반경 어느 한쪽이라도 <see cref="TransformMath.MinScale"/> 미만이면 null이다 — NaN 각도가 요소로 새지 않는다 (R16).
+    /// 두 회전 경로(Rotate·RotationDelta)가 이 한 가드를 공유한다.
+    /// </summary>
+    [Fact]
+    public void SweepDegrees_DegenerateEitherEnd_ReturnsNull()
+    {
+        var pivot = new Point(50, 50);
+        var far = pivot + new Vector(100, 0);
+        var nearlyOnPivot = pivot + new Vector(TransformMath.MinScale / 2, 0);
+
+        Assert.Null(TransformMath.SweepDegrees(pivot, pivot, far));
+        Assert.Null(TransformMath.SweepDegrees(pivot, far, pivot));
+        Assert.Null(TransformMath.SweepDegrees(pivot, nearlyOnPivot, far));
+        Assert.Null(TransformMath.SweepDegrees(pivot, far, nearlyOnPivot));
+
+        // 대조군: 두 반경이 모두 살아 있으면 값이 나온다 (위 null이 늘 null인 함수의 결과가 아님을 못박는다).
+        Assert.Equal(90, TransformMath.SweepDegrees(pivot, far, pivot + new Vector(0, 100))!.Value, 9);
+    }
+
     // ---- Translate ----
 
     [Fact]
