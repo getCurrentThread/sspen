@@ -309,6 +309,7 @@ public class ToolbarStripBuilderTests
             SettingsMenuRows(strip).Select(RowLabel));
     });
 
+    /// <summary>행 발화는 누름 + 뗌 한 쌍이다 (84단계, A5-5) — 같은 행에서 누르고 떼야 동작하고, 발화하면 메뉴가 닫힌다.</summary>
     [Fact]
     public void Build_SettingsMenuRows_DispatchToShellActions_AndCloseTheMenu() => RunSta(() =>
     {
@@ -320,12 +321,66 @@ public class ToolbarStripBuilderTests
             Click(strip.Parts.Buttons[ToolbarButtonId.Settings].Root);
             Assert.True(IsOpenRequested(strip.Flyouts.SettingsFlyout));
 
-            Release(row);
+            Click(row);
 
             Assert.False(IsOpenRequested(strip.Flyouts.SettingsFlyout));
         }
 
         Assert.Equal(["settings", "hide-toolbar", "request-exit"], strip.Actions.Calls);
+    });
+
+    // ── 설정 메뉴 행의 눌림 래치 (84단계, A5-5) ──────────────────────────────────────────────────────────────
+    // 예전 행은 뗌 하나만으로 발화했다. 세로 메뉴에서 '도구 막대 닫기'를 누른 채 '프로그램 종료'로 미끄러져 떼면 누른 적 없는
+    // 종료 행이 발화했고, 종료는 확인 없이 판서 전체를 잃는다. 스트립 버튼과 같은 규칙(PressStateRules.ShouldFire)을 행에도 건다.
+
+    private static void Leave(UIElement element) =>
+        element.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = UIElement.MouseLeaveEvent });
+
+    /// <summary>밖에서 시작한 뗌은 남의 것이다 — 종료 행에 뗌만 오면 아무 일도 없고 메뉴도 열린 채다.</summary>
+    [Fact]
+    public void Build_SettingsMenuRow_ReleaseWithoutPress_DoesNotFire() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        Click(strip.Parts.Buttons[ToolbarButtonId.Settings].Root);
+        var exitRow = SettingsMenuRows(strip)[^1];
+
+        Release(exitRow);
+
+        Assert.Empty(strip.Actions.Calls);
+        Assert.True(IsOpenRequested(strip.Flyouts.SettingsFlyout));
+    });
+
+    /// <summary>행에서 눌렀다가 밖으로 나가면 취소다 — 캡처가 없어 돌아와 떼도 발화하지 않는다(안전한 쪽).</summary>
+    [Fact]
+    public void Build_SettingsMenuRow_PressedThenLeftThenReleased_DoesNotFire() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        Click(strip.Parts.Buttons[ToolbarButtonId.Settings].Root);
+        var hideRow = SettingsMenuRows(strip)[1];
+
+        Press(hideRow);
+        Leave(hideRow);
+        Release(hideRow);
+
+        Assert.Empty(strip.Actions.Calls);
+        Assert.True(IsOpenRequested(strip.Flyouts.SettingsFlyout));
+    });
+
+    /// <summary>신고된 결함 모양: '도구 막대 닫기'에서 누르고 '프로그램 종료'로 미끄러져 떼면 어느 행도 발화하지 않는다.</summary>
+    [Fact]
+    public void Build_SettingsMenuRow_PressOnOneRowReleaseOnAnother_DoesNotFire() => RunSta(() =>
+    {
+        var strip = BuildStrip();
+        Click(strip.Parts.Buttons[ToolbarButtonId.Settings].Root);
+        var rows = SettingsMenuRows(strip);
+
+        Press(rows[1]);
+        Leave(rows[1]);
+        Release(rows[2]);
+
+        Assert.DoesNotContain("request-exit", strip.Actions.Calls);
+        Assert.Empty(strip.Actions.Calls);
+        Assert.True(IsOpenRequested(strip.Flyouts.SettingsFlyout));
     });
 
     /// <summary>

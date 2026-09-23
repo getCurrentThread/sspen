@@ -525,7 +525,12 @@ public sealed class ToolbarFlyouts
         return item;
     }
 
-    /// <summary>세로 메뉴의 한 행 (아이콘 + 라벨). 이벤트·수명 배선은 <see cref="FlyoutItem"/>과 같은 관용구다.</summary>
+    /// <summary>
+    /// 세로 메뉴의 한 행 (아이콘 + 라벨). 툴팁·호버 배선은 <see cref="FlyoutItem"/>과 같은 관용구지만, FlyoutItem과 달리
+    /// 눌림 래치를 둔다 — 행 사이를 미끄러져 뗀 것이 종료를 발화하지 않게 (<see cref="PressStateRules"/>와 같은 규칙, 84단계 A5-5).
+    /// 이 행에서 눌렀고 이 행에서 뗐을 때만 발화한다. 마우스 캡처는 쓰지 않으므로 누른 채 행 밖으로 나가면 돌아와 떼도 취소다
+    /// (스트립 버튼과 다르지만 안전한 쪽이다). 마지막 행 '프로그램 종료'는 확인 없이 판서 전체를 잃는다.
+    /// </summary>
     private Border MenuRow(string label, (string Regular, string Filled) icon, Action onClick, string? hotkeyId = null)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 4, 10, 4) };
@@ -546,11 +551,23 @@ public sealed class ToolbarFlyouts
             VerticalAlignment = VerticalAlignment.Center,
         });
         var item = new Border { Background = Brushes.Transparent, Child = row, Padding = new Thickness(2) };
+        bool pressedInside = false;
         ToolbarTooltips.Attach(_actions, item, label, hotkeyId, RegisterTooltip);
         item.MouseEnter += (_, _) => item.Background = ToolbarTheme.ButtonHoverBrush;
-        item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
+        item.MouseLeave += (_, _) =>
+        {
+            item.Background = Brushes.Transparent;
+            pressedInside = false; // 누른 채 행을 벗어나면 취소다 — 다른 행에서 떼든 돌아와 떼든 발화하지 않는다
+        };
+        item.MouseLeftButtonDown += (_, _) => pressedInside = true;
         item.MouseLeftButtonUp += (_, _) =>
         {
+            bool fire = PressStateRules.ShouldFire(pressedInside, releasedInside: true);
+            pressedInside = false;
+            if (!fire)
+            {
+                return; // 다른 행(또는 메뉴 밖)에서 시작한 뗌은 남의 것이다
+            }
             // 먼저 닫는다: 설정 창·종료 확인 대화상자가 뜬 뒤에도 메뉴가 남아 있으면 그 위에 떠 있게 된다.
             CloseFlyoutsExcept(null);
             onClick();
