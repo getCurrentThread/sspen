@@ -28,8 +28,8 @@ public sealed class ToolbarFlyouts
     public readonly Popup SettingsFlyout;
 
     // 툴팁도 플라이아웃처럼 **자체 HWND를 가진 팝업**이라 소유 창을 숨겼다고 함께 사라지지 않는다.
-    // 캐프처 세션은 카메라 버튼 클릭(=마우스가 그 버튼 위, 툴팁이 열려 있을 수 있는 상태)으로
-    // 시작해 툴바를 숨기므로, 닫지 않으면 캘처 결과물 위에 툴팁이 떠 있거나 죽은 배치 대상을
+    // 캡처 세션은 카메라 버튼 클릭(=마우스가 그 버튼 위, 툴팁이 열려 있을 수 있는 상태)으로
+    // 시작해 툴바를 숨기므로, 닫지 않으면 캡처 결과물 위에 툴팁이 떠 있거나 죽은 배치 대상을
     // 가리키게 된다. 플라이아웃과 동일한 이유로 같은 곳에서 수명을 관리한다.
     private readonly List<ToolTip> _tooltips = [];
 
@@ -69,7 +69,7 @@ public sealed class ToolbarFlyouts
 
     /// <summary>
     /// 생성된 툴팁을 수명 관리 대상으로 등록한다 — <see cref="ToolbarTooltips.Attach"/>의 필수 등록 델리게이트로 넘긴다
-    /// (37단계: 미등록 경로가 시그니처에서 사라졌다). 레지스트리는 여기 그대로 둔다 (AGENTS L81).
+    /// (37단계: 미등록 경로가 시그니처에서 사라졌다). 레지스트리는 여기 그대로 둔다 (AGENTS L89).
     /// </summary>
     internal void RegisterTooltip(ToolTip tooltip) => _tooltips.Add(tooltip);
 

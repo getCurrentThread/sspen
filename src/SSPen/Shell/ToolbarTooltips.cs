@@ -8,7 +8,7 @@ namespace SSPen.Shell;
 /// 이름 + 유효 단축키 2줄 툴팁 팩토리 (37단계, TIP-REG/AC-20; Epic Pen 대응: "선 도구" / "(ctrl + shift + L)").
 /// ToolbarStripBuilder.AttachTooltip을 옮겼다 — 스트립 버튼과 플라이아웃 항목이 같은 팩토리를 쓰면서
 /// ToolbarFlyouts→ToolbarStripBuilder 역참조(2-사이클)가 생겨 있었다. 등록 델리게이트는 필수다: 문자열 툴팁이나
-/// 미등록 ToolTip은 자체 HWND 팝업이라 툴바가 숨을 때 닫을 수 없어 캡처 결과물 위에 남는다 (AGENTS L81).
+/// 미등록 ToolTip은 자체 HWND 팝업이라 툴바가 숨을 때 닫을 수 없어 캡처 결과물 위에 남는다 (AGENTS L89).
 /// 레지스트리(RegisterTooltip/CloseTooltips)는 ToolbarFlyouts가 그대로 소유한다 — 여기는 만들고 넘길 뿐이다.
 /// </summary>
 internal static class ToolbarTooltips

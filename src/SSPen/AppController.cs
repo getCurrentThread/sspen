@@ -788,8 +788,9 @@ public sealed class AppController : IShellActions, ISettingsHost
     // ---- 공유 렌더 틱 (ARCH-3/프리모템 1): 정책은 RenderTickController(45단계), 여기는 WPF 프레임 이벤트 어댑터뿐 ----
 
     /// <summary>
-    /// <see cref="IFrameSource"/>의 WPF 어댑터 — <c>CompositionTarget.Rendering</c>을 아는 곳은 여기 하나뿐이다
-    /// (ContentSurfaceWindow.DispatcherIdleScheduler 선례). 정적 이벤트라 Application이 필요 없고, 호출 스레드 Dispatcher에 묶인다.
+    /// <see cref="IFrameSource"/>의 WPF 어댑터 — 프레임 틱 구독(<c>CompositionTarget.Rendering</c>)은 여기 하나다
+    /// (캡처의 일회성 렌더 대기 <c>CaptureSessionController.WaitForRenderPass</c>는 별개;
+    /// ContentSurfaceWindow.DispatcherIdleScheduler 선례). 정적 이벤트라 Application이 필요 없고, 호출 스레드 Dispatcher에 묶인다.
     /// </summary>
     private sealed class CompositionTargetFrameSource : IFrameSource
     {

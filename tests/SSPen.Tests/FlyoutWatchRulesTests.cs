@@ -4,7 +4,7 @@ using Xunit;
 namespace SSPen.Tests;
 
 /// <summary>
-/// <see cref="FlyoutWatchRules"/>의 증인 (38단계, ARCH-11). 4분기 표 + 2틱 연속 이탈 시퀀스. 타이머는 어댑터(ToolbarFlyouts)에
+/// <see cref="FlyoutWatchRules"/>의 증인 (38단계, ARCH-11). 5분기 표 + 2틱 연속 이탈 시퀀스. 타이머는 어댑터(ToolbarFlyouts)에
 /// 남아 있으므로 여기는 판정만 본다 — 150ms 간격 자체는 이 표의 관심사가 아니다.
 /// </summary>
 public class FlyoutWatchRulesTests

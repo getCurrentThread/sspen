@@ -195,7 +195,7 @@ public static class AnnotationVisualFactory
 
     // 값은 셸의 강조색(ShellPalette.Accent, #0071A8)과 같아야 한다 — 같은 앱에서 "선택됨"을 뜻하는 색이
     // 두 가지면 사용자가 둘을 다른 의미로 읽는다. 여기서 Shell을 참조하지 않는 이유는 계층 규약이다
-    // (Annotation/은 using SSPen.Shell 금지). 대신 SelectionDecorationColorTests가 두 값이 갈라지면 빨간불을 낸다.
+    // (Annotation/은 using SSPen.Shell 금지). 대신 SelectionDecorationVisualTests.DecorationColor_MatchesTheShellAccent가 두 값이 갈라지면 빨간불을 낸다.
     private static readonly SolidColorBrush DecorationBrush = CreateFrozen(Color.FromRgb(0x00, 0x71, 0xA8));
     private static readonly SolidColorBrush HandleFillBrush = CreateFrozen(Colors.White);
     private static readonly SolidColorBrush MarqueeFillBrush = CreateFrozen(Color.FromArgb(0x22, 0x00, 0x71, 0xA8));

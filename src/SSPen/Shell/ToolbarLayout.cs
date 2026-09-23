@@ -86,7 +86,7 @@ public static class ToolbarLayout
         Flyout: null, BadgeGroup: null, HotkeyId: null, Wheel: ToolbarWheel.None);
 
     /// <summary>
-    /// 접히는 메뉴의 항목 순서 — 그룹 1 클릭 통과 / 2 선택·그리기·미리보기 / 3 편집 / 4 보드·캡처·설정 / 5 퀵컬러, 구분선 4개.
+    /// 접히는 메뉴의 항목 순서 — 그룹 1 클릭 통과 / 2 선택·그리기·미리보기 / 3 편집 / 4 보드·캡처·설정 / 5 퀵컬러, 구분선 5개(실행취소와 전체 지우기 사이 포함).
     /// 같은 순서 배열을 <c>ToolbarLayoutTests</c>(MTA, 스펙)와 <c>ToolbarStripBuilderTests</c>(STA, 실현)가 각각 든다.
     /// </summary>
     public static readonly IReadOnlyList<ToolbarLayoutEntry> Menu =

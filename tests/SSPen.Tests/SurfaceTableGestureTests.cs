@@ -114,7 +114,7 @@ public class SurfaceTableGestureTests
     }
 
     /// <summary>
-    /// 커밋 임계는 오늘 표(CommitTable 리터럴 3)와 도형(<see cref="ShapeGestureRules.ShouldCommit"/>)이 같은 값이다.
+    /// 커밋 임계는 표(ShapeGestureRules.ShouldCommit)와 도형(<see cref="ShapeGestureRules.ShouldCommit"/>)이 같은 값이다.
     /// 경계 3px에서 커밋되는 부호(<c>&lt; 3</c>이 폐기 = <c>&gt;= 3</c>이 커밋)를 잠근다 — 23단계가 리터럴을
     /// ShouldCommit으로 바꿀 때 부호가 뒤집히면 여기가 빨갛다.
     /// </summary>

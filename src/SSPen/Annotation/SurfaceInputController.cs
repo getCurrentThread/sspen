@@ -718,8 +718,8 @@ public sealed class SurfaceInputController(
     /// <summary>
     /// 커서가 편집 중 텍스트 상자 위인가 (ARCH-2). <c>IsMouseOver</c>는 WPF 입력 매니저가
     /// <b>살아있는 비주얼 트리</b>에 대해 유지하는 히트테스트 플래그이지 <c>Point</c>에서
-    /// 유도할 수 있는 값이 아니다 — 그래서 3인자 <see cref="PointerDown(Point, bool, bool)"/>이
-    /// 이 판정을 인자로 받는다.
+    /// 유도할 수 있는 값이 아니다 — 그래서 <c>overActiveEditor</c>를 받는
+    /// <see cref="PointerDown(Point, bool, bool, bool, float)"/> 오버로드가 이 판정을 인자로 받는다.
     /// </summary>
     private bool IsOverActiveTextBox() =>
         _activeTextBox is not null && _activeTextBox.IsMouseOver;
@@ -745,8 +745,8 @@ public sealed class SurfaceInputController(
 
     // ---- 커밋 공통 ----
 
-    /// <summary>공통 커밋. fade는 획 시작 시점 판정 (도형/텍스트는 항상 false).</summary>
-    private void CommitElement(AnnotationElement element, bool fade = false)
+    /// <summary>공통 커밋(획·도형·표·텍스트). fade는 각 제스처 시작 시점에 스냅샷한 IsFading이다 (Fading ink 규약).</summary>
+    private void CommitElement(AnnotationElement element, bool fade)
     {
         document.Add(element);
         ledger.RecordAdd(element);

@@ -14,7 +14,7 @@ namespace SSPen.Tests;
 /// </summary>
 public class ToolbarTooltipsTests
 {
-    /// <summary>문자열 툴팁 금지 (AGENTS L81): 인스턴스여야 툴바 숨김 때 닫을 수 있고, 그 인스턴스가 정확히 한 번 등록된다.</summary>
+    /// <summary>문자열 툴팁 금지 (AGENTS L89): 인스턴스여야 툴바 숨김 때 닫을 수 있고, 그 인스턴스가 정확히 한 번 등록된다.</summary>
     [Fact]
     public void Attach_RegistersTheOneToolTipInstance_AndPlacesItBelow() => RunSta(() =>
     {

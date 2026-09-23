@@ -92,7 +92,7 @@ public readonly record struct GroupRotateStep(Point Pivot, double DeltaDegrees, 
 /// <summary>
 /// 다중 선택의 <b>그룹 프레임</b> 순수 기하 (R1). UI와 분리되어 헤드리스 유닛 테스트 대상이다.
 ///
-/// 좌표 프레임 계약 (TransformMath의 3-프레임에 이어지는 <b>네 번째</b> 계약):
+/// 좌표 프레임 계약 (AGENTS의 세 bounds 계약 중 <b>세 번째</b> — 그룹 프레임):
 /// 그룹 프레임은 선택 요소들의 <see cref="AnnotationElement.TransformedBounds"/> 합집합인
 /// <b>축 정렬</b> 사각형이다. 요소별 OBB(<c>TransformedCorners</c>)와 통합하지 않는다 —
 /// 그룹은 자체 회전각을 <b>저장하지 않으므로</b>(해제 후 재선택하면 항상 축 정렬로 리셋된다)

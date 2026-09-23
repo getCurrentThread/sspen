@@ -100,7 +100,9 @@ public sealed class LedgerCommands(
     /// <b>선택집합 변화가 아니라 제스처에 매달아야 한다</b>: 선택이 비는 경로는 6개이고 그중
     /// 도구 전환에 걸리면 펜 버튼을 눌러도 곧바로 도구가 해제되어 아무 도구도 고를 수 없게 된다.
     /// <c>ClickThrough=true</c>는 <c>SetActiveTool(None)</c>을 강제하고, 그 <c>ActiveToolChanged</c>가
-    /// 선택집합까지 비우므로(SEL-B-4) 여기서 별도로 <c>Clear</c>를 부를 필요는 없다.
+    /// 선택집합까지 비운다(SEL-B-4). 그래도 명시적 <c>Clear</c>는 필요하다. AppState는 <c>Changed</c> →
+    /// <c>ActiveToolChanged</c> 순으로 발화하므로, 이 <c>Clear</c>가 없으면 <c>Changed</c>가 부른 서피스
+    /// <c>CancelActiveInput</c>이 아직 차 있는 선택을 본다(<see cref="DragBaseStates"/> 요약의 전제).
     /// </summary>
     public void EngageClickThrough()
     {

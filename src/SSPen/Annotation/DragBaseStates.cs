@@ -56,7 +56,7 @@ public static class TransformCommitPlan
 /// <c>IsInteractive</c>를 떨어뜨리면 <c>ContentSurfaceWindow.ApplyState</c>가
 /// <c>CancelActiveInput</c>을 부르는데, 그때 선택집합은 이미 비어 있다 (R5/SEL-B-4).
 /// 이동·그룹 스케일·그룹 회전은 핸들 대상도 없으므로 id로는 아무것도 되찾지 못해
-/// 롤백이 <b>통째로 무동작</b>이 된다. 휠 세션의 <c>_wheelElements</c>가 같은 실패를
+/// 롤백이 <b>통째로 무동작</b>이 된다. 휠 경로에서는 <c>WheelScaleController</c>의 held 요소 리스트(<c>_elements</c>)가 같은 실패를
 /// 같은 방법으로 이미 막고 있었다 (R7) — 드래그 경로만 그 교훈을 받지 못했다.
 ///
 /// 그래서 <see cref="RollbackAll"/>과 <see cref="Pairs"/>는 <b>인자를 받지 않는다</b>.

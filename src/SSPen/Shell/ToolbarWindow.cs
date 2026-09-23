@@ -13,7 +13,7 @@ namespace SSPen.Shell;
 /// UX 개선 (Epic Pen 실물 대조, 사용자 조타): 밝은 스트립 + 진한 아이콘(고대비),
 /// 플라이아웃 모서리 삼각형 어포던스, 현재 색·굵기 미리보기 원, 펜/형광펜 색 배지,
 /// 그룹 구분선, 하단 현재 색 대형 스와치. 아이콘은 Fluent UI System Icons만 사용 (자산 미복사, F21).
-/// 플라이아웃(도형/굵기/보드/빠른 색상 확장)은 WPF Popup으로 호스팅 (플랜 ARCH-11 확정).
+/// 플라이아웃(도형/펜/굵기/페이딩/보드/빠른 색상 확장/설정 메뉴)은 WPF Popup으로 호스팅 (플랜 ARCH-11 확정).
 /// 레이아웃 스펙은 <see cref="ToolbarLayout"/>(순수 데이터, 51단계), 시각 조립은 <see cref="ToolbarStripBuilder"/>, 플라이아웃 호스팅은 <see cref="ToolbarFlyouts"/>,
 /// 버튼↔상태 매핑은 <see cref="ToolbarStateMap"/>가 각각 소유한다 (god file 분할, ARCH-11 후속).
 /// 이 클래스는 창 수명·조립·배선만 담당한다.
@@ -95,7 +95,7 @@ public sealed class ToolbarWindow : Window
             if (!IsVisible)
             {
                 _flyouts.CloseFlyoutsExcept(null);
-                // 툴팁도 자체 HWND 팝업이라 함께 사라지지 않는다. 캐프처는 카메라 버튼
+                // 툴팁도 자체 HWND 팝업이라 함께 사라지지 않는다. 캡처는 카메라 버튼
                 // 클릭(=마우스가 버튼 위)으로 시작해 툴바를 숨기므로 정확히 이 경로다.
                 _flyouts.CloseTooltips();
             }
@@ -109,7 +109,7 @@ public sealed class ToolbarWindow : Window
         base.OnSourceInitialized(e);
         Hwnd = WindowStyling.GetHwnd(this);
         WindowStyling.SetToolWindow(Hwnd, true);
-        // 사용자 보고 18차: 외부 앱이 툴바를 톱모스트 밴드 밖으로 밀어내면 서피스가 그 위를 덤어
+        // 사용자 보고 18차: 외부 앱이 툴바를 톱모스트 밴드 밖으로 밀어내면 서피스가 그 위를 덮어
         // 버튼이 전부 죽는다. 서피스 쪽 AnchorBelow 훅은 이 방향을 잡지 못하므로 툴바도 자기 방어를 갖는다.
         _topmostHook = WindowStyling.KeepTopmost(Hwnd);
         _zChangedHook = WindowStyling.OnZOrderChanged(Hwnd, () => ZOrderChanged?.Invoke());

@@ -244,6 +244,32 @@ public class SurfaceEntryPointTests
     }
 
     /// <summary>
+    /// 텍스트 페이드 경로의 첫 컨트롤러 수준 증인 (Fading ink 규약, 56단계). 텍스트도 획·도형·표처럼 페이딩하며,
+    /// 그 판정은 편집 시작 시점의 스냅샷이다 — 편집 도중 페이딩을 꺼도 확정된 텍스트는 예약대로 사라진다.
+    /// <c>CommitElement</c>의 옛 문서('도형/텍스트는 항상 false')를 믿고 텍스트 커밋에 false를 넘기면 여기가 빨갛다.
+    /// </summary>
+    [Fact]
+    public void Escape_FadingText_FadeFrozenAtEditStart_SchedulesFromInjectedClock()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness(() => FixedNow);
+            h.State.ActiveTool = ToolKind.Text;
+            h.State.FadingInk = true;
+            h.Fading.Duration = TimeSpan.FromSeconds(5);
+            h.Controller.PointerDown(new Point(10, 10), shift: false, overActiveEditor: false);
+            OpenTextBox(h).Text = "가나";
+
+            h.State.FadingInk = false; // 편집 도중 토글 — 진행 중 요소를 재분류하면 안 된다
+            Assert.True(h.Controller.Escape());
+
+            Assert.Single(h.Document.Elements);
+            Assert.Empty(h.Fading.Core.Due(FixedNow.AddSeconds(4.9)));
+            Assert.Single(h.Fading.Core.Due(FixedNow.AddSeconds(5)));
+        });
+    }
+
+    /// <summary>
     /// R8: 스타일러스 뒤집기(지우개 꼭지)는 활성 도구가 펜이더라도 즉시 지우개로 동작한다.
     /// AppState.ActiveTool은 변하지 않아야 한다 (SEL-B-4).
     /// </summary>

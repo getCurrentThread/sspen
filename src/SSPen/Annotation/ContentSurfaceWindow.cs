@@ -120,7 +120,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         // 잉크/후광/장식은 이 클립과 무관하게 기존 순서를 유지한다.
         var boardClip = new Canvas { ClipToBounds = true, IsHitTestVisible = false };
         boardClip.Children.Add(_boardRect);
-        // Canvas 자식은 자동 신장되지 않으므로 창 크기에 맞음 묶어준다.
+        // Canvas 자식은 자동 신장되지 않으므로 창 크기에 맞춰 묶어준다.
         boardClip.SizeChanged += (_, e) =>
         {
             _boardRect.Width = e.NewSize.Width;
@@ -405,7 +405,7 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
             };
         }
         // Canvas.Top을 직접 애니메이션한다. RenderTransform을 쓰지 않는 이유:
-        // 그줦 단일 소유 지점(AnnotationVisualFactory.ApplyRenderTransform)은 판서 요소 변형 전용이라,
+        // 그 속성의 단일 소유 지점(AnnotationVisualFactory.ApplyRenderTransform)은 판서 요소 변형 전용이라,
         // 보드가 거기에 끼어들면 선택 도구의 변형 소유 규약이 흐려진다.
         _boardRect.BeginAnimation(Canvas.TopProperty, animation);
     }

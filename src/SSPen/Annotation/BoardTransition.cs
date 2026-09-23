@@ -3,7 +3,7 @@ namespace SSPen.Annotation;
 /// <summary>보드 표시 전이 종류 (사용자 요청 16차: 위→아래로 내려오고 다시 위로 걷힌다).</summary>
 public enum BoardTransitionKind
 {
-    /// <summary>이번 상태 적용으로 바뀜 것이 없다 — 애니메이션을 다시 걸면 안 된다.</summary>
+    /// <summary>이번 상태 적용으로 바뀐 것이 없다 — 애니메이션을 다시 걸면 안 된다.</summary>
     None,
 
     /// <summary>보드가 화면 위에서 아래로 내려온다 (블라인드를 내리는 느낌).</summary>
@@ -12,7 +12,10 @@ public enum BoardTransitionKind
     /// <summary>보드가 다시 위로 걷혀 사라진다 (완료 후 Collapsed).</summary>
     SlideUp,
 
-    /// <summary>보드는 계속 보이고 색만 바뀜다 (화이트 ↔ 블랙). 애니메이션 없이 즉시 교체.</summary>
+    /// <summary>
+    /// 보드는 계속 보이고 색만 바뀐다 (화이트 ↔ 블랙). 판정은 즉시 전이이고, 창 어댑터
+    /// (ContentSurfaceWindow.BeginBoardRecolor)가 160ms 색 보간으로 건넌다.
+    /// </summary>
     Recolor,
 }
 
@@ -21,7 +24,7 @@ public enum BoardTransitionKind
 ///
 /// UI에서 분리한 이유: <c>ApplyState()</c>는 색·굵기·가시성 등 <b>모든</b> 상태 변경에 호출되므로
 /// (AppState.Changed는 단일 coarse 이벤트다), 전이 판정 없이 애니메이션을 걸면 퀵컬러를 누를 때마다
-/// 보드가 다시 내려와 덬그든다. "직전에 무엇이 적용되어 있었는가"와 "지금 무엇이어야 하는가"를
+/// 보드가 다시 내려와 덜그럭거린다. "직전에 무엇이 적용되어 있었는가"와 "지금 무엇이어야 하는가"를
 /// 비교해 <b>실제 전이일 때만</b> 애니메이션을 내보낸다.
 /// </summary>
 public static class BoardTransition

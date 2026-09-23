@@ -174,6 +174,24 @@ public class LedgerCommandsTests
         Assert.Empty(r.Trace); // 원장을 건드리지 않는다 — 플러시 없음
     }
 
+    /// <summary>
+    /// 명시적 <c>Clear</c>는 순서 계약이다 (R5/SEL-B-4, 56단계). AppState는 <c>Changed</c> → <c>ActiveToolChanged</c> 순으로
+    /// 발화하므로, <c>Changed</c>를 받은 서피스(<c>ApplyState</c> → <c>CancelActiveInput</c>)가 볼 때 선택은 이미 비어 있어야 한다
+    /// (<see cref="DragBaseStates"/> 요약의 전제). Clear를 지우면 SEL-B-4의 늦은 해제만 남아 기록값이 1이 된다.
+    /// </summary>
+    [Fact]
+    public void EngageClickThrough_SelectionAlreadyEmptyWhenChangedFires()
+    {
+        var r = new Rig();
+        r.Selection.Set([r.AddStroke(0, 10, 10)]);
+        var seen = new List<int>();
+        r.State.Changed += () => seen.Add(r.Selection.Count);
+
+        r.Commands.EngageClickThrough();
+
+        Assert.Equal(0, Assert.Single(seen));
+    }
+
     [Fact]
     public void ClearSelectionByEscape_EmptySelection_DoesNothing()
     {

@@ -10,10 +10,10 @@ namespace SSPen.Annotation;
 ///
 /// 문서 참조 정책 (리더 결정 LD-2 / 옵션 C2, 범위 축소):
 /// <list type="bullet">
-/// <item><see cref="RecordAdd"/>·<see cref="RecordTransform"/>·<see cref="RecordDeleteSelection"/>는
-/// **문서-비의존**이다. 이관(f7)을 몇 번 거쳤든 undo 시점에 현재 소유자를 찾아 올바르게 동작한다.</item>
-/// <item><see cref="RecordErase"/>·<see cref="RecordClearAll"/>은 기록 시점 문서 참조를 유지한다.
-/// 지워진 요소는 어느 문서에도 없어 이관 대상이 될 수 없으므로 lookup이 항상 null이 되어 도달 불가 코드가 된다.</item>
+/// <item><see cref="RecordAdd"/>·<see cref="RecordTransform"/>은 **문서-비의존**이다(undo 시점에 현재 소유자 조회).
+/// 이관(f7)을 몇 번 거쳤든 undo 시점에 현재 소유자를 찾아 올바르게 동작한다.</item>
+/// <item><see cref="RecordErase"/>·<see cref="RecordClearAll"/>·<see cref="RecordDeleteSelection"/>은 기록 시점 문서 참조를 유지한다.
+/// 지워진 요소는 어느 문서에도 없어 이관 대상이 될 수 없다 — lookup을 붙여도 항상 null이 되어 도달 불가 코드가 된다.</item>
 /// </list>
 /// </summary>
 public sealed class UndoLedger
