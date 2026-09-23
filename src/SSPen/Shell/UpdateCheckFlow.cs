@@ -22,7 +22,10 @@ namespace SSPen.Shell;
 /// <param name="logInfo">정보 로그 (<c>Log.Info</c>).</param>
 /// <param name="logWarn">경고 로그 (<c>Log.Warn</c>).</param>
 /// <param name="showRelease">새 버전 대화상자 표시 (<see cref="UpdateDialog"/>) — 열린 창이 없을 때만 불린다.</param>
-/// <param name="dialogOpen">새 버전 대화상자가 지금 열려 있는지 — 루트의 <c>_updateDialog</c> 필드(Closed에서 비운다) (86단계, C-4).</param>
+/// <param name="dialogOpen">
+/// 새 버전 대화상자가 지금 열려 있는지 — 루트의 <c>_updateDialog</c> 필드(Closed에서 비운다) (86단계, C-4). 대화상자는 다운로드 중
+/// 닫기를 거부하므로(<see cref="UpdateDialog"/>의 <c>OnClosing</c>, 98단계) '다운로드 중'도 여기서 '열림'으로 읽힌다.
+/// </param>
 /// <param name="focusDialog">열린 대화상자를 앞으로 가져온다 — 두 번째 창 대신 (86단계, C-4).</param>
 /// <param name="showMessage">안내 상자 표시(본문, 아이콘) — owner 선택은 호출자가 한다 (<see cref="DialogOwnerRules"/>).</param>
 public sealed class UpdateCheckFlow(

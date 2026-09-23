@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -214,6 +215,23 @@ public sealed class UpdateDialog : Window
         root.Children.Add(buttonRow);
 
         Content = root;
+    }
+
+    /// <summary>
+    /// 다운로드 중에는 닫기를 취소한다 (98단계, FINAL-REVIEW-UPDATE-DOWNLOADING). '나중에'는 진행 중 비활성이지만 제목 표시줄 X·Alt+F4는
+    /// 막혀 있지 않았다 — 닫히면 루트의 <c>_updateDialog</c>가 비어 다음 자동·수동 확인이 새 대화상자를 열고, 같은 설치 파일 경로로
+    /// 두 번째 다운로드를 시작할 수 있었다(86단계 단일 인스턴스 판정은 '열림'만 본다). 여기서 막으면 '다운로드 중 ⇒ 열림'이 성립한다.
+    /// 실패 콜백이 <c>_isUpdating</c>을 내린 뒤에는 예전처럼 닫힌다. 앱 종료(<c>Application.Shutdown</c> — 설치 체인의 종료 포함)는
+    /// WPF가 취소를 무시하고 창을 닫으므로 막히지 않는다.
+    /// </summary>
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (_isUpdating)
+        {
+            e.Cancel = true;
+            Log.Info("업데이트 다운로드 중 — 대화상자 닫기를 취소했다");
+        }
+        base.OnClosing(e);
     }
 
     private void OpenWebReleasePage()
