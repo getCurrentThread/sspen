@@ -37,6 +37,8 @@ public sealed class AppController : IShellActions, ISettingsHost
     private HotkeyService? _hotkeys;
     private TrayIcon? _tray;
     private SettingsWindow? _settingsWindow;
+    // 86단계 (C-4): 열린 새 버전 대화상자 — 단일 인스턴스 판정(UpdateCheckFlow의 dialogOpen)의 원천. Closed에서 비운다.
+    private UpdateDialog? _updateDialog;
     private SelectionKeyMonitor? _selectionKeys;
     private bool _toolbarVisible = true;
     private PinManager? _pins;
@@ -104,12 +106,24 @@ public sealed class AppController : IShellActions, ISettingsHost
             current: () => UpdateService.CurrentVersion,
             logInfo: Log.Info,
             logWarn: Log.Warn,
+            // 새 버전 대화상자는 단일 인스턴스다 (86단계, C-4) — 설정창과 같은 수명 관리(Closed에서 필드를 비운다).
+            // 열려 있으면 흐름이 showRelease 대신 focusDialog를 부른다: 창이 둘이면 같은 설치 파일 경로로 동시에 내려받는다.
             showRelease: info =>
             {
                 var dialog = new UpdateDialog(info, _updateService);
+                _updateDialog = dialog;
+                dialog.Closed += (_, _) =>
+                {
+                    if (ReferenceEquals(_updateDialog, dialog))
+                    {
+                        _updateDialog = null;
+                    }
+                };
                 dialog.Show();
                 dialog.Activate();
             },
+            dialogOpen: () => _updateDialog is not null,
+            focusDialog: () => _updateDialog?.Activate(),
             showMessage: ShowUpdateMessage);
         // z-밴드 검증기 (72단계): 생성은 OS를 건드리지 않는다 — 훅 설치는 Start의 Install이다. BandOrder는 호출 시점에
         // 토스트·설정창·캡처·툴바·핀·서피스를 읽는 지연 조회라 아직 없는 창(0)은 Build가 건너뛴다.

@@ -17,6 +17,12 @@ public enum UpdateCheckOutcome
 
     /// <summary>최신 + 자동 확인 — 아무것도 보이지 않는다.</summary>
     Silent,
+
+    /// <summary>
+    /// 새 버전 + 대화상자가 이미 열려 있음 — 두 번째 창 대신 열린 창을 앞으로 (86단계, C-4). 창이 둘이면 둘 다 '지금 업데이트'로
+    /// 같은 설치 파일 경로에 동시에 내려받아 한쪽은 공유 위반 오류, 다른 쪽은 설치·종료로 끝난다.
+    /// </summary>
+    FocusExistingDialog,
 }
 
 /// <summary>
@@ -26,11 +32,17 @@ public enum UpdateCheckOutcome
 /// </summary>
 public static class UpdateCheckPresentation
 {
-    public static UpdateCheckOutcome Decide(UpdateCheckResult result, bool isManual)
+    /// <param name="result">확인 결과.</param>
+    /// <param name="isManual">트레이·설정창의 "지금 확인"(참)인지 시동 자동 확인(거짓)인지.</param>
+    /// <param name="dialogOpen">
+    /// 새 버전 대화상자가 이미 열려 있는지 (86단계, C-4). 새 버전 판정만 <see cref="UpdateCheckOutcome.FocusExistingDialog"/>로
+    /// 바꾸고, 실패·최신 판정에는 끼어들지 않는다. 기본값 false면 35단계 5갈래 표와 같다.
+    /// </param>
+    public static UpdateCheckOutcome Decide(UpdateCheckResult result, bool isManual, bool dialogOpen = false)
     {
         if (result.Success && result.HasUpdate && result.ReleaseInfo is not null)
         {
-            return UpdateCheckOutcome.ShowDialog;
+            return dialogOpen ? UpdateCheckOutcome.FocusExistingDialog : UpdateCheckOutcome.ShowDialog;
         }
         if (!result.Success)
         {

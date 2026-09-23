@@ -13,12 +13,17 @@ namespace SSPen.Shell;
 /// → 판정별 표시. 결과는 화면 판정과 무관하게 항상 로그로 남긴다 — 자동+최신은 Silent라 그 줄이 유일한 흔적이다.
 /// 콜백의 스레드는 <c>check</c>가 정한다(프로덕션 <see cref="UpdateService.CheckForUpdates"/>는 디스패처로 마샬링한다) —
 /// 이 클래스는 Task도 스레드도 만들지 않는다.
+///
+/// 새 버전 대화상자는 단일 인스턴스다 (86단계, C-4): 열림 여부(<c>dialogOpen</c>)는 <see cref="Run"/> 시점이 아니라 <b>결과가 도착한
+/// 시점</b>에 읽는다. 시동 자동 확인과 수동 확인이 동시에 떠 있으면 둘 다 Run 시점에는 '닫힘'이라, 거기서 읽으면 창이 둘 뜬다.
 /// </summary>
 /// <param name="check">확인 요청 — 결과를 UI 스레드 콜백으로 돌려준다 (<see cref="UpdateService.CheckForUpdates"/>).</param>
 /// <param name="current">현재 버전 (<see cref="UpdateService.CurrentVersion"/>).</param>
 /// <param name="logInfo">정보 로그 (<c>Log.Info</c>).</param>
 /// <param name="logWarn">경고 로그 (<c>Log.Warn</c>).</param>
-/// <param name="showRelease">새 버전 대화상자 표시 (<see cref="UpdateDialog"/>).</param>
+/// <param name="showRelease">새 버전 대화상자 표시 (<see cref="UpdateDialog"/>) — 열린 창이 없을 때만 불린다.</param>
+/// <param name="dialogOpen">새 버전 대화상자가 지금 열려 있는지 — 루트의 <c>_updateDialog</c> 필드(Closed에서 비운다) (86단계, C-4).</param>
+/// <param name="focusDialog">열린 대화상자를 앞으로 가져온다 — 두 번째 창 대신 (86단계, C-4).</param>
 /// <param name="showMessage">안내 상자 표시(본문, 아이콘) — owner 선택은 호출자가 한다 (<see cref="DialogOwnerRules"/>).</param>
 public sealed class UpdateCheckFlow(
     Action<Action<UpdateCheckResult>> check,
@@ -26,6 +31,8 @@ public sealed class UpdateCheckFlow(
     Action<string> logInfo,
     Action<string> logWarn,
     Action<UpdateReleaseInfo> showRelease,
+    Func<bool> dialogOpen,
+    Action focusDialog,
     Action<string, MessageBoxImage> showMessage)
 {
     /// <summary>확인을 시작한다. <paramref name="isManual"/>은 트레이·설정창의 "지금 확인"(참)과 시동 자동 확인(거짓)을 가른다.</summary>
@@ -48,10 +55,14 @@ public sealed class UpdateCheckFlow(
             logWarn(summary);
         }
 
-        switch (UpdateCheckPresentation.Decide(result, isManual))
+        switch (UpdateCheckPresentation.Decide(result, isManual, dialogOpen()))
         {
             case UpdateCheckOutcome.ShowDialog:
                 showRelease(result.ReleaseInfo!);
+                break;
+
+            case UpdateCheckOutcome.FocusExistingDialog:
+                focusDialog();
                 break;
 
             case UpdateCheckOutcome.ShowErrorDialog:
