@@ -31,6 +31,14 @@ public readonly record struct PhysicalRect(int X, int Y, int Width, int Height)
     }
 
     public bool IsEmpty => Width <= 0 || Height <= 0;
+
+    /// <summary>
+    /// Win32 <c>RECT</c>식 네 변(좌·상·우·하) → 원점+크기 (65단계, A7-8). 모니터 사각형·작업 영역·창 사각형 읽기가
+    /// 같은 산술을 따로 적던 것을 여기 한 곳으로 모은다. 음수 원점은 그대로 통과하고, 폭이나 높이가 0 이하인
+    /// 퇴화 사각형도 보정하지 않는다 (<see cref="IsEmpty"/>가 판정한다).
+    /// </summary>
+    public static PhysicalRect FromLtrb(int left, int top, int right, int bottom) =>
+        new(left, top, right - left, bottom - top);
 }
 
 /// <summary>
@@ -70,6 +78,28 @@ public static class CoordinateSpace
             (int)Math.Round(r.Y * dpiScale),
             (int)Math.Round(r.Width * dpiScale),
             (int)Math.Round(r.Height * dpiScale));
+    }
+
+    /// <summary>
+    /// 창 크기처럼 잘리면 안 되는 논리 길이 → 물리 픽셀: <b>올림</b> (65단계, A1-7).
+    /// 곱의 부동소수 잡음을 보정하지 않고 <c>(int)Math.Ceiling(길이 × 배율)</c> 그대로다 — 툴바·토스트 배치가
+    /// 옮겨 오기 전에 호출 지점에서 쓰던 식과 비트 단위로 같아야 한다 (<c>CoordinateSpaceTests</c>가 잠근다).
+    /// </summary>
+    public static int ToPhysicalExtent(double logicalLength, double dpiScale)
+    {
+        Guard(dpiScale);
+        return (int)Math.Ceiling(logicalLength * dpiScale);
+    }
+
+    /// <summary>
+    /// 여백처럼 가까운 값이면 되는 논리 길이 → 물리 픽셀: <b>반올림</b> (65단계, A1-7).
+    /// <see cref="ToPhysical(Point, double)"/>와 같은 기본 <c>Math.Round</c>(중간값은 짝수 쪽 — 은행가 반올림)이며,
+    /// 옮겨 오기 전 호출 지점의 식과 비트 단위로 같다.
+    /// </summary>
+    public static int ToPhysicalLength(double logicalLength, double dpiScale)
+    {
+        Guard(dpiScale);
+        return (int)Math.Round(logicalLength * dpiScale);
     }
 
     /// <summary>

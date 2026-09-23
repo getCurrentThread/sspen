@@ -52,8 +52,8 @@ public static class MonitorTopology
                 var w = info.rcWork;
                 monitors.Add(new MonitorSurfaceInfo(
                     info.szDevice,
-                    new PhysicalRect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top),
-                    new PhysicalRect(w.Left, w.Top, w.Right - w.Left, w.Bottom - w.Top),
+                    PhysicalRect.FromLtrb(r.Left, r.Top, r.Right, r.Bottom),
+                    PhysicalRect.FromLtrb(w.Left, w.Top, w.Right, w.Bottom),
                     (info.dwFlags & NativeMethods.MONITORINFOF_PRIMARY) != 0));
             }
             return true;

@@ -111,7 +111,11 @@ public sealed class ToastWindow : Window
         base.OnClosed(e);
     }
 
-    /// <summary>한 틱의 판정을 화면에 바른다. 배치는 호스트가 <see cref="WindowStyling.PlacePhysical"/>로 따로 한다.</summary>
+    /// <summary>
+    /// 한 틱의 판정을 화면에 바른다. 배치는 호스트(<c>ToastHost.Place</c>)가 <c>SWP_NOZORDER|SWP_NOACTIVATE</c>
+    /// <c>SetWindowPos</c>로 따로 하며 z-순서는 건드리지 않는다 (65단계, A7-8). <see cref="WindowStyling.PlacePhysical"/>은
+    /// <c>HWND_TOPMOST</c> 삽입이라 여기에 쓰면 안 된다 — 형제 삽입은 <c>ApplyZBand</c>만 한다 (AGENTS L15).
+    /// </summary>
     public void Render(ToastStep step)
     {
         _text.Text = step.Text;
@@ -136,10 +140,11 @@ public sealed class ToastWindow : Window
         double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
         _card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var desired = _card.DesiredSize;
-        return ((int)Math.Ceiling(desired.Width * dpi), (int)Math.Ceiling(desired.Height * dpi));
+        // 높이에도 DpiScaleX를 쓰는 기존 동작을 그대로 보존한다 (65단계 A1-7 — 축 선택은 이 단계의 범위가 아니다).
+        return (CoordinateSpace.ToPhysicalExtent(desired.Width, dpi), CoordinateSpace.ToPhysicalExtent(desired.Height, dpi));
     }
 
-    /// <summary>배치 여백을 이 창의 DPI로 물리 픽셀 환산한다 (환산은 언제나 이 경계에서만).</summary>
+    /// <summary>배치 여백을 이 창의 DPI로 물리 픽셀 환산한다 (환산은 CoordinateSpace가 소유한다 — 여기는 DPI 읽기만).</summary>
     public int PhysicalBottomMargin() =>
-        (int)Math.Round(ToastPlacement.BottomMarginDip * VisualTreeHelper.GetDpi(this).DpiScaleY);
+        CoordinateSpace.ToPhysicalLength(ToastPlacement.BottomMarginDip, VisualTreeHelper.GetDpi(this).DpiScaleY);
 }

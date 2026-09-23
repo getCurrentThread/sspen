@@ -242,7 +242,7 @@ public sealed class PinWindow : Window, IClickThroughPin
     public PhysicalRect PhysicalBounds()
     {
         NativeMethods.GetWindowRect(Hwnd, out var r);
-        return new PhysicalRect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top);
+        return PhysicalRect.FromLtrb(r.Left, r.Top, r.Right, r.Bottom);
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)

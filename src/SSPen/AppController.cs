@@ -680,10 +680,11 @@ public sealed class AppController : IShellActions, ISettingsHost
                 _toolbar.Top = position.Top;
                 return;
             }
-            int width = (int)Math.Ceiling(_toolbar.ActualWidth * dpiX);
-            int height = (int)Math.Ceiling(_toolbar.ActualHeight * dpiY);
+            // DIP→물리 환산은 CoordinateSpace가 소유한다 (AGENTS L18, 65단계 A1-7) — 크기는 올림, 여백은 반올림. 축 선택은 그대로.
+            int width = CoordinateSpace.ToPhysicalExtent(_toolbar.ActualWidth, dpiX);
+            int height = CoordinateSpace.ToPhysicalExtent(_toolbar.ActualHeight, dpiY);
             var (x, y) = ToolbarPlacement.PhysicalOnPrimary(
-                primary.WorkArea, width, height, (int)Math.Round(ToolbarPlacement.RightMargin * dpiX));
+                primary.WorkArea, width, height, CoordinateSpace.ToPhysicalLength(ToolbarPlacement.RightMargin, dpiX));
             WindowStyling.MovePhysical(_toolbar.Hwnd, x, y);
         });
     }

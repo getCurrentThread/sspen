@@ -200,9 +200,11 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         WindowStyling.PlacePhysical(Hwnd, _monitor.WorkArea);
         ApplyState();
         // R2 배치 검증 (프리모템 2 탐지 신호): 시동 시점에 기대/실제 물리 사각형 일치를 기록한다.
-        NativeMethods.GetWindowRect(Hwnd, out var actual);
+        // 네 변 → 원점+크기 산술은 PhysicalRect.FromLtrb 한 곳 (65단계 A7-8). 로그 문구는 기존 "(x,y,w,h)" 형식 그대로 둔다.
+        NativeMethods.GetWindowRect(Hwnd, out var r);
+        var actual = PhysicalRect.FromLtrb(r.Left, r.Top, r.Right, r.Bottom);
         Log.Info(
-            $"서피스 {_monitor.DeviceName}: 기대 {_monitor.WorkArea} / 실제 ({actual.Left},{actual.Top},{actual.Right - actual.Left},{actual.Bottom - actual.Top})");
+            $"서피스 {_monitor.DeviceName}: 기대 {_monitor.WorkArea} / 실제 ({actual.X},{actual.Y},{actual.Width},{actual.Height})");
     }
 
     private bool _closed;
