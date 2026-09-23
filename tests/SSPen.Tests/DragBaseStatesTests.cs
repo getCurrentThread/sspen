@@ -179,6 +179,67 @@ public class DragBaseStatesTests
         Assert.Equal(ElementTransformState.Identity with { AngleDegrees = 30 }, b.TransformState);
     }
 
+    /// <summary>
+    /// 롤백은 <b>이 스냅샷이 마지막으로 쓴 값</b>이 아직 화면에 있는 요소만 되돌린다 (96단계, FINAL-REVIEW-SETTLE-LEDGER).
+    /// 업을 잃은 드래그와 다음 누름 사이에 원장 진입점(실행취소·다른 서피스의 변형 확정·이관)이 상태를 바꿨다면
+    /// 그 값이 원장의 진실이라 낡은 시작 상태로 덮으면 안 된다. 세 갈래를 한 번에 본다 —
+    /// a: Apply 뒤 외부에서 바뀜 → 외부 값 유지, b: Apply만 → 시작 상태, c: Apply 없이 외부에서 바뀜 → 외부 값 유지.
+    /// </summary>
+    [Fact]
+    public void RollbackAll_ElementChangedOutsideApply_KeepsExternalState()
+    {
+        var doc = new AnnotationDocument("M1");
+        var a = NewStroke();
+        var b = NewStroke();
+        var c = NewStroke();
+        doc.Add(a);
+        doc.Add(b);
+        doc.Add(c);
+        var selection = new SelectionModel();
+        selection.Set([a, b, c]);
+
+        var states = new DragBaseStates(LookupIn(doc), doc);
+        states.Snapshot(selection, handleTarget: null);
+        states.Apply(a, Moved(40, 0));
+        states.Apply(b, Moved(40, 0));
+        // 원장 진입점(예: 실행취소)이 a·c를 직접 바꾼다 — DragBaseStates.Apply를 거치지 않는다.
+        a.TransformState = Moved(-7, -7);
+        c.TransformState = Moved(9, 9);
+
+        var notified = new List<AnnotationElement>();
+        doc.ElementTransformChanged += notified.Add;
+
+        states.RollbackAll();
+
+        Assert.Equal(Moved(-7, -7), a.TransformState);
+        Assert.Equal(ElementTransformState.Identity, b.TransformState);
+        Assert.Equal(Moved(9, 9), c.TransformState);
+        Assert.Equal([b], notified); // 건너뛴 요소에는 대입도 알림도 없다
+    }
+
+    /// <summary>
+    /// 스냅샷 밖의 대입(휠 세션은 스냅샷 없이 같은 <see cref="DragBaseStates.Apply"/>를 쓴다, R7)은 롤백 판정에 끼지 않는다 —
+    /// 다음 스냅샷은 그때의 상태를 새 시작 상태이자 "마지막으로 쓴 값"으로 삼는다.
+    /// </summary>
+    [Fact]
+    public void RollbackAll_AfterApplyOutsideSnapshot_RestoresNewSnapshotBase()
+    {
+        var doc = new AnnotationDocument("M1");
+        var a = NewStroke();
+        doc.Add(a);
+        var selection = new SelectionModel();
+        selection.Set([a]);
+
+        var states = new DragBaseStates(LookupIn(doc), doc);
+        states.Apply(a, Moved(5, 5)); // 스냅샷 없음 — 휠 경로
+        states.Snapshot(selection, handleTarget: null);
+        states.Apply(a, Moved(50, 50));
+
+        states.RollbackAll();
+
+        Assert.Equal(Moved(5, 5), a.TransformState);
+    }
+
     /// <summary>스냅샷 없이 롤백해도 아무 일도 없어야 한다 — CancelActiveInput은 제스처 없이도 불린다.</summary>
     [Fact]
     public void RollbackAll_WithoutSnapshot_IsNoOp()

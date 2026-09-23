@@ -62,6 +62,17 @@ public static class TransformCommitPlan
 /// 그래서 <see cref="RollbackAll"/>과 <see cref="Pairs"/>는 <b>인자를 받지 않는다</b>.
 /// <c>SelectionModel</c>이나 핸들 대상을 다시 받는 오버로드를 추가하지 말 것 —
 /// 위 결함이 그대로 돌아온다.
+///
+/// <b>롤백은 이 스냅샷이 마지막으로 쓴 값이 아직 요소에 있을 때만이다</b> (96단계, FINAL-REVIEW-SETTLE-LEDGER).
+/// 버튼 업을 잃은 드래그의 스냅샷은 다음 누름(<c>SurfaceInputController.SettleOrphanedPress</c>)이나 다음 취소까지 살아 있는데,
+/// 그 사이 원장 진입점(실행취소·다른 서피스의 변형 확정과 이관·휠 확정)이 요소 상태를 바꿨다면
+/// 그 값이 원장의 진실이다 — 시작 상태로 덮으면 방금 한 실행취소가 화면에서 조용히 무효가 되고 원장과 화면이 어긋난다.
+/// 전체 지우기·선택 삭제는 요소를 문서에서 빼기만 하고 상태를 바꾸지 않으므로 롤백은 예전처럼 시작 상태를 쓴다 —
+/// 중간 변형은 원장에 없었으니 그 삭제를 실행취소하면 요소는 원장이 아는 시작 상태로 돌아온다.
+/// 원장 쪽 팬아웃(<c>LedgerCommands</c>의 <c>flushPendingTransforms</c>)에서 잔여 드래그를 미리 롤백하는 안을 두고 이쪽을 고른 이유:
+/// 팬아웃은 실행취소·전체 지우기·선택 삭제 머리에만 있어 다른 서피스의 변형 확정·이관·휠 확정을 덮지 못하고,
+/// 그 확정 경로(<c>commitTransform</c>)에 팬아웃을 걸면 드래그 중인 서피스가 자기 커밋 도중 자기 스냅샷을 롤백한다.
+/// 여기서는 대입의 유일한 집행 지점(R15)이 "마지막으로 쓴 값"을 함께 기억하므로 외부 변경이 어느 경로로 오든 한 비교로 가려진다.
 /// </summary>
 public sealed class DragBaseStates(
     Func<AnnotationElement, AnnotationDocument?> ownerLookup,
@@ -69,6 +80,12 @@ public sealed class DragBaseStates(
 {
     private List<AnnotationElement>? _elements;
     private Dictionary<long, ElementTransformState>? _baseStates;
+
+    /// <summary>
+    /// 스냅샷 요소마다 이 집행자가 <b>마지막으로 쓴</b> 상태 (96단계). 스냅샷 시점에는 시작 상태로 채우고,
+    /// <see cref="Apply"/>가 스냅샷 요소에 쓸 때마다 갱신한다. 요소의 현재 상태가 이 값과 다르면 외부(원장 진입점)가 바꾼 것이다.
+    /// </summary>
+    private Dictionary<long, ElementTransformState>? _lastApplied;
 
     /// <summary>드래그 스냅샷이 살아 있는가 (제스처 진행 중).</summary>
     public bool Active => _baseStates is not null;
@@ -129,26 +146,41 @@ public sealed class DragBaseStates(
             }
             _baseStates[target.Id] = target.TransformState;
         }
+        _lastApplied = new(_baseStates);
     }
 
     /// <summary>
     /// 상태 대입 뒤에는 **반드시** 소유 문서의 알림이 따라와야 한다 (R15) — 그래야 시각물과 장식이 함께 움직인다.
     /// 다른 모니터 소속 요소도 그 요소의 소유 문서를 통해 알린다 (다중 선택 이동).
+    /// 스냅샷 요소에 쓴 값은 "마지막으로 쓴 값"으로 기억한다 (96단계). 스냅샷 밖의 대입(스냅샷 없는 휠 경로, R7)은 기억하지 않는다.
     /// </summary>
     public void Apply(AnnotationElement element, ElementTransformState next)
     {
         element.TransformState = next;
+        if (_lastApplied is not null && _lastApplied.ContainsKey(element.Id))
+        {
+            _lastApplied[element.Id] = element.TransformState;
+        }
         (ownerLookup(element) ?? fallback).RaiseElementTransformChanged(element);
     }
 
     /// <summary>
     /// 진행 중이던 변형을 시작 상태로 롤백한다 — 원장에 없는 중간 변형이 화면에 남으면 실행취소로 지울 수 없다.
     /// 스냅샷이 붙잡은 요소 참조를 그대로 순회한다 (선택집합 재조회 금지 — 타입 요약 참조).
+    ///
+    /// 현재 상태가 이 집행자가 마지막으로 쓴 값과 다른 요소는 <b>건너뛴다</b> — 원장 진입점이 그사이 바꾼 값이 원장의 진실이다
+    /// (96단계, 타입 요약 참고). 건너뛴 요소에는 대입도 알림도 없다. 외부 변경이 없는 정상 경로의 결과는 예전과 같다.
     /// </summary>
     public void RollbackAll()
     {
         foreach (var (element, before) in Pairs)
         {
+            if (_lastApplied is not null
+                && _lastApplied.TryGetValue(element.Id, out var written)
+                && element.TransformState != written)
+            {
+                continue;
+            }
             Apply(element, before);
         }
     }
@@ -158,5 +190,6 @@ public sealed class DragBaseStates(
     {
         _elements = null;
         _baseStates = null;
+        _lastApplied = null;
     }
 }

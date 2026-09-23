@@ -11,7 +11,8 @@ namespace SSPen.Tests;
 
 /// <summary>
 /// <c>SurfaceInputController.CancelActiveInput</c>의 증인 (ARCH-2, ARCH-6, R7, R15, SEL-LIM-6), 그리고
-/// 버튼 업 유실 뒤 새 누름의 잔여 정리 <c>SettleOrphanedPress</c>의 증인 (91단계, A3-1 — 파일 끝 절).
+/// 버튼 업 유실 뒤 새 누름의 잔여 정리 <c>SettleOrphanedPress</c>의 증인 (91단계, A3-1 — 파일 끝 절)과
+/// 그 사이 원장 변경을 낡은 스냅샷이 덮지 않는다는 증인 (96단계, FINAL-REVIEW-SETTLE-LEDGER — 마지막 절).
 ///
 /// 이 메서드는 "진행 중인 것을 전부 정리한다"가 아니라 <b>취소 의미가 서로 다른 다섯 가지</b>를
 /// 정해진 순서로 마감하는 오케스트레이터다 — 획·도형은 폐기, 텍스트는 <b>커밋</b>, 변형은 롤백,
@@ -413,7 +414,140 @@ public class SurfaceCancelOrderTests
         });
     }
 
+    // ---- 업 유실과 새 누름 사이의 원장 변경은 낡은 스냅샷에 지지 않는다 (96단계, FINAL-REVIEW-SETTLE-LEDGER) ----
+    //
+    // 업을 잃은 드래그의 스냅샷은 다음 누름(SettleOrphanedPress)이나 다음 취소(CancelActiveInput)까지 살아 있다.
+    // 그 사이 원장 진입점(실행취소·다른 서피스의 변형 확정·이관 등)이 요소 상태를 바꿨다면 그 값이 원장의 진실이다 —
+    // 롤백이 드래그 시작 상태로 덮어쓰면 방금 되돌린 실행취소가 화면에서 조용히 무효가 되고, 원장과 화면이 어긋난다.
+
+    /// <summary>
+    /// 이동을 한 번 확정한 뒤 두 번째 이동의 업을 잃고 실행취소하면, 요소는 <b>실행취소 결과</b>(첫 이동 전)에 있어야 한다.
+    /// 새 누름의 정리가 낡은 스냅샷(첫 이동 뒤)으로 롤백하면 실행취소가 화면에서 되돌려지고 원장은 이미 비어 있어
+    /// 다시 실행취소할 수도 없다.
+    /// </summary>
+    [Fact]
+    public void LostMouseUp_MoveThenUndoThenNewPress_KeepsUndoneState()
+    {
+        RunSta(() =>
+        {
+            var h = new LedgerHarness();
+            var a = Stroke(400, 400, 50, 50);
+            h.Document.Add(a);
+            h.State.ActiveTool = ToolKind.Select;
+            h.DragWithLostUp(a);
+
+            Assert.True(h.Commands.Undo()); // 원장 진입점 — 첫 이동을 되돌린다
+            Assert.Equal(ElementTransformState.Identity, a.TransformState);
+
+            h.Controller.PointerDown(new Point(1200, 900), shift: false); // 빈 곳 새 누름 → SettleOrphanedPress
+
+            Assert.Equal(ElementTransformState.Identity, a.TransformState);
+            Assert.Equal(0, h.Ledger.Count);
+            Assert.Single(h.Commits); // 롤백도 정리도 원장에 싣지 않는다
+        });
+    }
+
+    /// <summary>
+    /// 같은 시나리오에서 새 누름 대신 취소(ESC·클릭 통과 전환 → <c>CancelActiveInput</c>)가 와도 실행취소 결과가 남아야 한다 —
+    /// 두 정리는 합치지 않지만 롤백은 같은 <c>DragBaseStates.RollbackAll</c> 하나를 쓴다.
+    /// </summary>
+    [Fact]
+    public void LostMouseUp_MoveThenUndoThenCancel_KeepsUndoneState()
+    {
+        RunSta(() =>
+        {
+            var h = new LedgerHarness();
+            var a = Stroke(400, 400, 50, 50);
+            h.Document.Add(a);
+            h.State.ActiveTool = ToolKind.Select;
+            h.DragWithLostUp(a);
+
+            Assert.True(h.Commands.Undo());
+
+            h.Controller.CancelActiveInput();
+
+            Assert.Equal(ElementTransformState.Identity, a.TransformState);
+            Assert.Equal(0, h.Ledger.Count);
+        });
+    }
+
+    /// <summary>
+    /// 원장 진입점이 건드리지 않은 요소는 여전히 롤백된다 — 업 유실 정리 자체(91단계)는 그대로여야 한다.
+    /// a·b를 함께 끌다가 업을 잃고, 그 사이 a만 바꾸는 원장 항목을 실행취소하면 a는 실행취소 결과, b는 시작 상태다.
+    /// </summary>
+    [Fact]
+    public void LostMouseUp_GroupMoveThenUndoOfOneMember_RollsBackOnlyUntouchedMember()
+    {
+        RunSta(() =>
+        {
+            var h = new LedgerHarness();
+            var a = Stroke(400, 400, 50, 50);
+            var b = Stroke(600, 600, 50, 50);
+            h.Document.Add(a);
+            h.Document.Add(b);
+            h.State.ActiveTool = ToolKind.Select;
+            // a만 (80,60) 옮겨 확정한다 (원장 1건).
+            h.Controller.PointerDown(new Point(425, 425), shift: false);
+            h.Controller.PointerMove(new Point(505, 485), shift: false, leftPressed: true);
+            h.Controller.PointerUp(new Point(505, 485), shift: false);
+            // Shift+b 토글로 [a, b]를 만든다 (토글은 이동을 시작하지 않는다, SEL-AC-3).
+            h.Controller.PointerDown(new Point(625, 625), shift: true);
+            h.Controller.PointerUp(new Point(625, 625), shift: false);
+            Assert.Equal([a, b], h.Selection.Elements);
+
+            // a를 잡고 그룹을 (40,40) 끌다가 업을 잃는다.
+            h.Controller.PointerDown(new Point(505, 485), shift: false);
+            h.Controller.PointerMove(new Point(545, 525), shift: false, leftPressed: true);
+            Assert.Equal(new Vector(40, 40), b.TransformState.Translation); // b도 실제로 끌려 있었다 (거짓 안심 방지)
+
+            Assert.True(h.Commands.Undo()); // a의 첫 이동만 되돌린다 — b는 원장 연산이 건드리지 않았다
+
+            h.Controller.PointerDown(new Point(1200, 900), shift: false);
+
+            Assert.Equal(ElementTransformState.Identity, a.TransformState); // 실행취소 결과가 남는다
+            Assert.Equal(ElementTransformState.Identity, b.TransformState); // 원장에 없는 끌기는 롤백된다
+            Assert.Single(h.Commits);
+        });
+    }
+
     /// <summary>캔버스를 실제 크기로 측정한다 — 핸들·회전 판정이 살아 있어야 취소 순서를 관측할 수 있다.</summary>
     private sealed class Harness()
         : SurfaceHarness(new SurfaceHarnessOptions { Layout = new Size(SurfaceWidth, SurfaceHeight) });
+
+    /// <summary>
+    /// 커밋을 원장에도 싣고 프로덕션 원장 진입점(<see cref="LedgerCommands"/>)을 붙인 변종 (96단계) —
+    /// <c>flushPendingTransforms</c>는 프로덕션 팬아웃처럼 이 서피스의 <c>FlushPendingTransforms</c>다.
+    /// </summary>
+    private sealed class LedgerHarness : SurfaceHarness
+    {
+        public LedgerHarness()
+            : base(new SurfaceHarnessOptions { Layout = new Size(SurfaceWidth, SurfaceHeight), CommitToLedger = true })
+        {
+            Commands = new LedgerCommands(
+                State, Selection, Ledger,
+                documents: () => [Document],
+                ownerOf: element => Document.Elements.Contains(element) ? Document : null,
+                flushPendingTransforms: Controller.FlushPendingTransforms,
+                transferSurfaces: () => [],
+                closePins: () => { });
+        }
+
+        public LedgerCommands Commands { get; }
+
+        /// <summary>
+        /// (400,400) 50×50 획을 (80,60) 옮겨 <b>확정</b>(원장 1건)한 뒤, 다시 (40,40) 끌다가 업을 잃는다.
+        /// 끝나면 요소는 (120,100)에 있고, 살아남은 스냅샷의 시작 상태는 (80,60)이다.
+        /// </summary>
+        public void DragWithLostUp(AnnotationElement element)
+        {
+            Controller.PointerDown(new Point(425, 425), shift: false);
+            Controller.PointerMove(new Point(505, 485), shift: false, leftPressed: true);
+            Controller.PointerUp(new Point(505, 485), shift: false);
+            Assert.Equal(1, Ledger.Count);
+
+            Controller.PointerDown(new Point(505, 485), shift: false);
+            Controller.PointerMove(new Point(545, 525), shift: false, leftPressed: true);
+            Assert.Equal(new Vector(120, 100), element.TransformState.Translation); // 두 번째 이동이 실제로 걸려 있었다
+        }
+    }
 }

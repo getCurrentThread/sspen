@@ -280,6 +280,8 @@ public sealed class SurfaceInputController(
     ///
     /// 의미는 둘뿐이다 — 획·도형·표 = <b>폐기</b>(비인터랙티브 전환과 같다), 변형(드래그) = <b>롤백 → Reset</b>.
     /// 롤백이 Reset보다 <b>앞</b>이다: Reset이 시작 상태 스냅샷을 버리므로 뒤집으면 롤백이 조용히 무동작이 된다.
+    /// 업 유실과 이 누름 사이에 원장 진입점(실행취소·다른 서피스의 확정·이관 등)이 바꾼 요소는 롤백이 건너뛴다 — 낡은 스냅샷이
+    /// 원장의 진실을 덮지 않게 하는 판정은 <see cref="DragBaseStates.RollbackAll"/>이 소유한다 (96단계, FINAL-REVIEW-SETTLE-LEDGER).
     /// 나머지 셋은 하지 않는다.
     /// <list type="bullet">
     ///   <item>텍스트 커밋 — 열린 상자 바깥 누름은 라우터의 <c>CommitTextOnly</c>가 이 호출보다 먼저 선점한다.</item>
@@ -824,7 +826,8 @@ public sealed class SurfaceInputController(
     ///   <item>획·도형·표 = <b>폐기</b> (<see cref="DrawingGestureController.DiscardAll"/>). 미리보기 시각물만 있고 원장 항목이 없으므로 그냥 지운다.</item>
     ///   <item>텍스트 = <b>커밋</b>. ARCH-2 NOACTIVATE 핸드셰이크로 이미 활성화된 편집이고,
     ///         입력한 글자를 폐기하면 사용자 데이터가 사라진다.</item>
-    ///   <item>변형(드래그) = <b>롤백</b> (R15). 원장에 없는 중간 변형이 화면에 남으면 실행취소로 지울 수 없다.</item>
+    ///   <item>변형(드래그) = <b>롤백</b> (R15). 원장에 없는 중간 변형이 화면에 남으면 실행취소로 지울 수 없다.
+    ///         원장 진입점이 그사이 바꾼 요소는 건너뛴다 (96단계, <see cref="DragBaseStates.RollbackAll"/>).</item>
     ///   <item>휠 = <b>확정</b> (R7/f3). 방치하면 원장에 없는 변형이 남고, 롤백하면 화면에서 이미
     ///         커진 결과가 소리 없이 되돌아간다.</item>
     ///   <item>제스처 각도 = <b>소멸</b>. <see cref="ResetSelectGesture"/> 한 곳에서만 사라진다 (SEL-LIM-6).</item>
