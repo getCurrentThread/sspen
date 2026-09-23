@@ -16,12 +16,14 @@ public class SettingsFormRulesTests
     private const string DefaultFolder = @"C:\\Default\\Folder";
 
     private static SettingsFormValues Values(
-        IReadOnlyList<(string, bool)>? monitors = null, string saveFolder = @"C:\\Custom", IReadOnlyList<Color>? quick = null) =>
+        IReadOnlyList<(string, bool)>? monitors = null, string saveFolder = @"C:\\Custom", IReadOnlyList<Color>? quick = null,
+        bool zBandPolling = false) =>
         new(
             RunAtLogin: true, CheckUpdateOnStart: true, WheelAdjustsPenSize: false, SyncToolStyles: true,
             BoardAllMonitors: false, DefaultBoardIsBlack: true, QuickColors: quick ?? ColorPalette.DefaultQuickColors,
             HighlightCursor: true, SaveFolder: saveFolder,
-            Monitors: monitors ?? [(@"\\.\DISPLAY1", true), (@"\\.\DISPLAY2", false)]);
+            Monitors: monitors ?? [(@"\\.\DISPLAY1", true), (@"\\.\DISPLAY2", false)],
+            ZBandPolling: zBandPolling);
 
     [Fact]
     public void ApplyTo_CopiesEveryFormField()
@@ -39,6 +41,21 @@ public class SettingsFormRulesTests
         Assert.True(target.HighlightCursor);
         Assert.Equal(@"C:\\Custom", target.SaveFolder);
         Assert.Equal([@"\\.\DISPLAY2"], target.DisabledMonitors);
+        // 기본값(true)과 다른 값을 넣어 복사를 증명한다 (73단계 실험적 기능).
+        Assert.False(target.ZBandPolling);
+    }
+
+    /// <summary>실험적 기능 체크박스(73단계): 켜고 끄는 두 방향 모두 설정에 그대로 적힌다.</summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void ApplyTo_ZBandPolling_CopiesCheckboxValue(bool before, bool checkbox)
+    {
+        var target = new AppSettings { ZBandPolling = before };
+
+        SettingsFormRules.ApplyTo(target, Values(zBandPolling: checkbox), DefaultFolder);
+
+        Assert.Equal(checkbox, target.ZBandPolling);
     }
 
     [Fact]

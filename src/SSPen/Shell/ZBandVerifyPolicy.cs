@@ -10,6 +10,8 @@ namespace SSPen.Shell;
 /// 복구가 연속 <see cref="MaxConsecutiveRepairs"/>번 소용없으면(낡은 HWND·외부 앱이 계속 뒤집음) 정규 재적용
 /// (<see cref="Reset"/>: AppState.Changed 등)까지 쉰다. 없으면 복구 → 재정렬 이벤트 → 검증 → 복구의 무한 루프가
 /// Background 우선순위로 CPU를 먹는다. AGENTS의 "렌더 틱에서 밴드 재적용 금지"와 같은 정신이다: 밴드 적용은 사건에만 반응한다.
+/// 유일한 예외는 실험적 <see cref="ZBandPoller"/>(73단계, 설정 게이트·기본 켜짐)다 — 2초 Background 타이머로 같은 IsOrdered 검사 후
+/// 이 정책의 백오프와 무관하게 <c>Repair</c>한다(참조하지도, <see cref="Reset"/>으로 풀지도 않는다). 렌더 틱 금지는 그대로다.
 /// (c) <b>깨우는 계기</b> — 어떤 WinEvent가 깨우는가(<see cref="Wakes"/>)와 두 훅을 모두 설치 시도하는 규칙(<see cref="InstallWatches"/>, 70단계).
 /// 이 정책을 워치·순서 판정과 잇는 조립(훅 소유, 검증 본문, 복구는 <see cref="Reset"/> 없이, 종료)은 <see cref="ZBandVerifier"/>다 (72단계).
 /// </summary>

@@ -3,7 +3,8 @@ using System.Windows;
 namespace SSPen.Annotation;
 
 /// <summary>
-/// 휠 유휴 디바운스 이음매 (R7). 구현은 <c>ContentSurfaceWindow.DispatcherIdleScheduler</c> 하나뿐이고,
+/// 휠 유휴 디바운스 이음매 (R7). 구현은 <see cref="DispatcherIdleScheduler"/> 하나뿐이고(73단계에 <c>ContentSurfaceWindow</c>에서 꺼냈다 —
+/// 실험적 z-순서 주기 정정 <c>Shell/ZBandPoller</c>도 틱마다 <see cref="Restart"/>로 재무장하는 주기 타이머로 쓴다),
 /// 헤드리스 테스트는 가짜를 넣어 450ms를 기다리지 않고 유휴 만료를 흉내낸다.
 ///
 /// 콜백을 매 호출마다 받는 <c>Restart(TimeSpan, Action)</c> 꼴을 쓰지 않는다 — 구독이 누적되어

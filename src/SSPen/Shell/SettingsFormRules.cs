@@ -15,7 +15,8 @@ public readonly record struct SettingsFormValues(
     IReadOnlyList<Color> QuickColors,
     bool HighlightCursor,
     string SaveFolder,
-    IReadOnlyList<(string DeviceName, bool Enabled)> Monitors);
+    IReadOnlyList<(string DeviceName, bool Enabled)> Monitors,
+    bool ZBandPolling);
 
 /// <summary>적용 결과. 규칙이 사용자 입력을 <b>교정</b>했다면 무엇을 되살렸는지 알린다.</summary>
 public readonly record struct SettingsApplyResult(bool MonitorSelectionCoerced, string? RestoredDeviceName);
@@ -40,6 +41,7 @@ public static class SettingsFormRules
         target.DefaultBoardIsBlack = values.DefaultBoardIsBlack;
         target.QuickColors = [.. values.QuickColors.Select(ColorPalette.ToHex)];
         target.HighlightCursor = values.HighlightCursor;
+        target.ZBandPolling = values.ZBandPolling; // 실험적 기능 (73단계)
         target.SaveFolder = values.SaveFolder == defaultSaveFolder ? string.Empty : values.SaveFolder;
 
         var disabled = values.Monitors

@@ -51,6 +51,9 @@ public sealed class AppController : IShellActions, ISettingsHost
     // ZBandVerifier가 소유한다 (72단계, A8-1·A1-1) — 루트는 호출 지점('언제 적용하는가')만 가진다.
     private readonly ZBandVerifier _zBand;
     private bool _zBandSubscribed;
+    // 73단계 (실험적, 설정 ZBandPolling·기본 켜짐): 2초마다 같은 IsOrdered 검사 후 어긋나면 Repair — 이벤트 계층의 안전망.
+    // 생성은 Start(_zBand.Install 직후), 켜고 끄기는 Start·ApplyGeneralSettings, 정지는 Shutdown(_zBand.Stop 옆, 창 닫기 전).
+    private ZBandPoller? _zPoller;
 
     // A8-2: 로그인 시 시작(HKCU Run) 반영은 이 델리게이트 하나로만 나간다. 기본값은 RunAtLogin.Apply(프로덕션),
     // E2E 픽스처는 기록 람다를 주입해 개발자 PC의 실제 레지스트리 값을 건드리지 않는다.
@@ -239,6 +242,18 @@ public sealed class AppController : IShellActions, ISettingsHost
         _toolbar.ZOrderChanged += _zBand.RequestVerify;
         _zBand.Install();
 
+        // 73단계 실험적 z-순서 주기 정정 (사용자 결정: 2초 고정·설정은 체크박스만·기본 켜짐). 검증기와 같은 IsOrdered로 보고
+        // 어긋나면 Repair한다 — Apply가 아니므로 검증기의 백오프를 풀지 않고, 백오프로 쉬는 중에도 정정한다(정책을 참조하지 않는다).
+        // 캡처 세션 중에는 검사를 건너뛴다: 세션이 툴바 숨김 → DwmFlush → BitBlt → 오버레이 순서를 소유하므로, 그 사이의
+        // 정정은 숨긴 툴바·오버레이의 z를 흔들어 캡처 결과를 바꿀 수 있다. 타이머는 Background 우선순위(AGENTS L14의 유일한 시간 기반 예외).
+        _zPoller = new ZBandPoller(
+            new DispatcherIdleScheduler(_dispatcher),
+            blocked: () => _capture.IsActive,
+            isOrdered: _zBand.IsOrdered,
+            repair: _zBand.Repair,
+            log: Log.Info);
+        _zPoller.SetEnabled(_settingsBinder.Settings.ZBandPolling);
+
         if (_settingsBinder.Settings.CheckUpdateOnStart)
         {
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -258,6 +273,8 @@ public sealed class AppController : IShellActions, ISettingsHost
         // z-밴드 검증 정지가 첫 줄 — 이후의 검증 요청을 무시하고 WinEvent 두 훅을 푼다. 이미 큐에 든 검증은
         // pending만 풀고 아무것도 적용하지 않는다 (예전 _shuttingDown 플래그 + 워치 해제, 72단계).
         _zBand.Stop();
+        // 주기 정정도 같은 자리에서 멈춘다 — 창을 닫기 전이어야 파괴 중인 창에 Repair(SetWindowPos)가 걸리지 않는다 (73단계).
+        _zPoller?.Dispose();
         _renderTick.Stop(); // 틱 해제 — 아래 구독 해제·창 닫기보다 먼저 (프레임이 닫힌 서피스를 만지지 않게).
         if (_toolbar is not null)
         {
@@ -408,6 +425,8 @@ public sealed class AppController : IShellActions, ISettingsHost
         _applyRunAtLogin(_settingsBinder.Settings.RunAtLogin);
         SyncSurfacesWithSettings();
         ApplyZBand();
+        // 73단계: 설정의 "실험적 기능" 체크박스 — 같은 값이면 무동작(멱등)이다.
+        _zPoller?.SetEnabled(_settingsBinder.Settings.ZBandPolling);
         Log.Info("일반 설정 적용");
     }
 
@@ -746,7 +765,7 @@ public sealed class AppController : IShellActions, ISettingsHost
     /// <summary>
     /// <see cref="IFrameSource"/>의 WPF 어댑터 — 프레임 틱 구독(<c>CompositionTarget.Rendering</c>)은 여기 하나다
     /// (캡처의 일회성 렌더 대기 <c>CaptureSessionController.WaitForRenderPass</c>는 별개;
-    /// ContentSurfaceWindow.DispatcherIdleScheduler 선례). 정적 이벤트라 Application이 필요 없고, 호출 스레드 Dispatcher에 묶인다.
+    /// Annotation/DispatcherIdleScheduler 선례). 정적 이벤트라 Application이 필요 없고, 호출 스레드 Dispatcher에 묶인다.
     /// </summary>
     private sealed class CompositionTargetFrameSource : IFrameSource
     {
@@ -767,6 +786,7 @@ public sealed class AppController : IShellActions, ISettingsHost
     internal ToolbarWindow? Toolbar => _toolbar;
     internal SettingsBinder SettingsBinder => _settingsBinder;
     internal CaptureSessionController Capture => _capture;
+    internal ZBandPoller? ZPoller => _zPoller;
     internal PinManager? Pins => _pins;
     internal SettingsWindow? CurrentSettingsWindow => _settingsWindow;
 }

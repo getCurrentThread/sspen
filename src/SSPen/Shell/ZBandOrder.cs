@@ -16,7 +16,8 @@ namespace SSPen.Shell;
 /// 오히려 토스트를 아래로 밀어 알림이 툴바 뒤로 숨는다 — 순서를 결정론으로 만들려면 목록의 멤버여야 한다.
 /// 순서만 결정하고 <c>SetWindowPos</c>는 <c>WindowStyling.ApplyZBand</c>가, 언제 적용할지는 <c>AppController</c>가
 /// 소유한다 — 호출 지점(AppState.Changed·PinsChanged·캡처·설정창·툴바 토글·일반 설정)은 이 파일이 늘리거나 줄이지 않는다
-/// (AGENTS L14: 렌더 틱에서 부르는 것은 위반).
+/// (AGENTS L14: 렌더 틱에서 부르는 것은 위반. 유일한 시간 기반 예외는 실험적 <c>ZBandPoller</c> — 73단계, 설정 게이트·기본 켜짐,
+/// 2초 Background 타이머로 같은 IsOrdered 검사 후 백오프 없이 Repair).
 /// </summary>
 public static class ZBandOrder
 {

@@ -48,6 +48,32 @@ public class SettingsServiceTests : IDisposable
         Assert.Equal(2, settings.PenThickness);
         Assert.Null(settings.ToolbarLeft);
         Assert.Empty(settings.Hotkeys);
+        // 실험적 z-순서 주기 정정은 기본 켜짐 (73단계, 사용자 결정).
+        Assert.True(settings.ZBandPolling);
+    }
+
+    /// <summary>
+    /// 73단계 이전에 저장된 settings.json에는 ZBandPolling 속성이 없다 — 추가 속성 + 기본값 전략이라 켜진 채 열려야 한다
+    /// (false로 열리면 업데이트한 사용자만 새 기능이 조용히 꺼진다).
+    /// </summary>
+    [Fact]
+    public void Load_OldJsonWithoutZBandPolling_DefaultsToTrue()
+    {
+        var service = NewService();
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(service.SettingsPath, """
+            {
+              "RunAtLogin": true,
+              "CheckUpdateOnStart": false,
+              "FadingSeconds": 2
+            }
+            """);
+
+        var loaded = service.Load();
+
+        Assert.True(loaded.RunAtLogin);
+        Assert.False(loaded.CheckUpdateOnStart);
+        Assert.True(loaded.ZBandPolling);
     }
 
     [Fact]
@@ -72,6 +98,7 @@ public class SettingsServiceTests : IDisposable
             HighlighterThickness = 0,
             ShapeColor = "#000000",
             ShapeThickness = 3,
+            ZBandPolling = false,
         };
         service.Save(settings);
 
@@ -92,6 +119,7 @@ public class SettingsServiceTests : IDisposable
         Assert.Equal(0, loaded.HighlighterThickness);
         Assert.Equal("#000000", loaded.ShapeColor);
         Assert.Equal(3, loaded.ShapeThickness);
+        Assert.False(loaded.ZBandPolling);
     }
 
     [Fact]

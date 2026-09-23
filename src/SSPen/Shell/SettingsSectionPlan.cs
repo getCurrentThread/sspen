@@ -6,6 +6,7 @@ public enum SettingsSection
     General,
     Monitors,
     QuickColors,
+    Experimental,
     Hotkeys,
 }
 
@@ -21,9 +22,12 @@ public enum SettingsSection
 /// </summary>
 public static class SettingsSectionPlan
 {
-    /// <summary>섹션 표시 순서 (일반 → 판서 화면 → 바로가기 색상 → 단축키).</summary>
+    /// <summary>
+    /// 섹션 표시 순서 (일반 → 판서 화면 → 바로가기 색상 → 실험적 기능 → 단축키). 실험적 기능(73단계)은 접힌 단축키 위에 둔다 —
+    /// 기본 켜짐인 기능을 끄는 스위치가 21행 목록 뒤에 숨으면 문제가 생겼을 때 찾지 못한다.
+    /// </summary>
     public static readonly IReadOnlyList<SettingsSection> Order =
-        [SettingsSection.General, SettingsSection.Monitors, SettingsSection.QuickColors, SettingsSection.Hotkeys];
+        [SettingsSection.General, SettingsSection.Monitors, SettingsSection.QuickColors, SettingsSection.Experimental, SettingsSection.Hotkeys];
 
     /// <summary>
     /// 처음 열었을 때 펼쳐져 있는가. 단축키만 접혀 있다 — 21행은 나머지 전 섹션을 합친 것보다 길어서
@@ -37,8 +41,11 @@ public static class SettingsSectionPlan
     /// <summary>단축키를 접은 상태에서 버튼 줄까지 보이는 높이.</summary>
     public const double MinHeight = 360;
 
-    /// <summary>기본 높이. 최소 높이보다 커야 첫 실행에서 스크롤이 필요 없다.</summary>
-    public const double DefaultHeight = 560;
+    /// <summary>
+    /// 기본 높이. 최소 높이보다 커야 첫 실행에서 스크롤이 필요 없다. 73단계에서 560 → 640: 실험적 기능 섹션(머리·체크박스·힌트,
+    /// 약 80)만큼 늘려 기존 섹션들이 보이던 높이를 그대로 둔다.
+    /// </summary>
+    public const double DefaultHeight = 640;
 
     /// <summary>
     /// 검색어 정규화: 앞뒤 공백을 떼고, 남는 것이 없으면 null(= 필터 없음)이다.

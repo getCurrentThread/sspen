@@ -49,6 +49,24 @@ public class SettingsAndPersistenceE2ETests
     }
 
     [Fact]
+    public void ZBandPolling_ToggleInSettings_StartsAndStopsPoller() => E2EAppFixture.Run(actor =>
+    {
+        // 73단계 실험적 z-순서 주기 정정: 기본 켜짐으로 시동하고, 일반 설정 적용이 같은 폴러를 끄고 다시 켠다.
+        var poller = actor.App.ZPoller;
+        Assert.NotNull(poller);
+        Assert.True(poller.Enabled);
+
+        actor.App.ApplyGeneralSettings(new AppSettings { CheckUpdateOnStart = false, ZBandPolling = false });
+        actor.Pump();
+        Assert.Same(poller, actor.App.ZPoller);
+        Assert.False(poller.Enabled);
+
+        actor.App.ApplyGeneralSettings(new AppSettings { CheckUpdateOnStart = false, ZBandPolling = true });
+        actor.Pump();
+        Assert.True(poller.Enabled);
+    });
+
+    [Fact]
     public void OpenSettingsWindow_CreatesAndActivatesWindow() => E2EAppFixture.Run(actor =>
     {
         actor.OpenSettings();

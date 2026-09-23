@@ -14,6 +14,28 @@ public class SettingsSectionPlanTests
         Assert.Equal(SettingsSection.General, SettingsSectionPlan.Order[0]);
     }
 
+    /// <summary>
+    /// 표시 순서 전체 (73단계): 실험적 기능은 바로가기 색상과 단축키 사이다 — 기본 켜짐 기능을 끄는 스위치가
+    /// 접힌 21행 목록 뒤에 숨지 않게.
+    /// </summary>
+    [Fact]
+    public void Order_ExperimentalSitsBetweenQuickColorsAndHotkeys()
+    {
+        Assert.Equal(
+            [
+                SettingsSection.General,
+                SettingsSection.Monitors,
+                SettingsSection.QuickColors,
+                SettingsSection.Experimental,
+                SettingsSection.Hotkeys,
+            ],
+            SettingsSectionPlan.Order);
+    }
+
+    [Fact]
+    public void StartsExpanded_Experimental_IsExpanded() =>
+        Assert.True(SettingsSectionPlan.StartsExpanded(SettingsSection.Experimental));
+
     /// <summary>단축키 21행만 접혀 있다 — 펼쳐 두면 자주 쓰는 일반 항목이 화면 밖으로 밀린다.</summary>
     [Fact]
     public void StartsExpanded_OnlyHotkeysIsCollapsed()

@@ -106,6 +106,11 @@ public static class Strings
     public const string SettingsQuickColorsHint = "칸을 눌러 색을 바꿉니다 (Ctrl+Shift+1~6).";
     public const string SettingsQuickColorsReset = "기본값으로";
 
+    // 실험적 기능 (73단계): z-순서 주기 정정 (Shell/ZBandPoller, 기본 켜짐).
+    public const string SettingsExperimental = "실험적 기능";
+    public const string SettingsZBandPolling = "도구 막대와 핀이 판서 화면에 가려지지 않게 2초마다 확인해 바로잡기";
+    public const string SettingsZBandPollingHint = "다른 '항상 위' 프로그램과 순서를 다툴 수 있습니다. 문제가 생기면 끄세요.";
+
     /// <summary>
     /// 페이딩 지속 시간 표기 (사용자 요청 16차: 0.1~5초 재조정).
     /// 짧게/보통/길게 고정 명칭을 버린 이유: 칸이 6개로 늘어 세 단계 이름으로는

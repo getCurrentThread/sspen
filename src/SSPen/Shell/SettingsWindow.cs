@@ -23,6 +23,7 @@ public sealed class SettingsWindow : Window
     private readonly RadioButton _boardWhite;
     private readonly RadioButton _boardBlack;
     private readonly CheckBox _halo;
+    private readonly CheckBox _zBandPolling;
     private readonly TextBox _saveFolder;
     private readonly List<(string DeviceName, CheckBox CheckBox)> _monitorCheckBoxes = [];
 
@@ -80,6 +81,13 @@ public sealed class SettingsWindow : Window
         _boardWhite = new RadioButton { Content = Strings.Whiteboard, IsChecked = !s.DefaultBoardIsBlack, Margin = RowMargin, GroupName = "boardDefault" };
         _boardBlack = new RadioButton { Content = Strings.Blackboard, IsChecked = s.DefaultBoardIsBlack, Margin = RowMargin, GroupName = "boardDefault" };
         _halo = new CheckBox { Content = Strings.SettingsHighlightCursor, IsChecked = s.HighlightCursor, Margin = RowMargin };
+        // 실험적 기능 (73단계): z-순서 주기 정정. 문구가 길어 최소 폭(460)에서 잘리지 않게 줄바꿈 TextBlock으로 싼다.
+        _zBandPolling = new CheckBox
+        {
+            Content = new TextBlock { Text = Strings.SettingsZBandPolling, TextWrapping = TextWrapping.Wrap },
+            IsChecked = s.ZBandPolling,
+            Margin = RowMargin,
+        };
 
         _quickColors = ColorPalette.RestoreQuickColors(s.QuickColors); // 드래프트 — 규칙은 ColorPalette 한 곳 (39단계)
 
@@ -168,6 +176,17 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(monitorSection);
         stack.Children.Add(SectionHeader(Strings.SettingsQuickColors));
         stack.Children.Add(BuildQuickColorRow());
+        // 실험적 기능은 접힌 단축키 위 (SettingsSectionPlan.Order, 73단계): 섹션 머리 + 체크박스 + 회색 힌트(판서 화면·바로가기 색상 힌트와 같은 모양).
+        stack.Children.Add(SectionHeader(Strings.SettingsExperimental));
+        stack.Children.Add(_zBandPolling);
+        stack.Children.Add(new TextBlock
+        {
+            Text = Strings.SettingsZBandPollingHint,
+            Margin = new Thickness(4, 0, 4, 6),
+            Foreground = Brushes.Gray,
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+        });
         stack.Children.Add(BuildHotkeySection(host));
 
         // 하단 "업데이트 확인" 버튼은 뺐다: 버전 라벨 옆 인라인 버튼과 같은 동작이라,
@@ -447,7 +466,8 @@ public sealed class SettingsWindow : Window
             QuickColors: _quickColors,
             HighlightCursor: _halo.IsChecked == true,
             SaveFolder: _saveFolder.Text,
-            Monitors: [.. _monitorCheckBoxes.Select(item => (item.DeviceName, item.CheckBox.IsChecked == true))]);
+            Monitors: [.. _monitorCheckBoxes.Select(item => (item.DeviceName, item.CheckBox.IsChecked == true))],
+            ZBandPolling: _zBandPolling.IsChecked == true);
 
         var updated = _host.Settings;
         var result = SettingsFormRules.ApplyTo(updated, values, Capture.CaptureFileNaming.DefaultSaveFolder());

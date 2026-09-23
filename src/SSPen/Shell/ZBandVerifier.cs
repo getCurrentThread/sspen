@@ -97,7 +97,7 @@ public sealed class ZBandVerifier : IDisposable
 
     /// <summary>
     /// 실제 z-순서가 밴드 순서와 같은가 — 토스트를 뺀 목록에서 낡은 HWND를 거른 뒤 <see cref="ZOrderInvariant.IsOrdered"/>로 판정한다.
-    /// 정책 상태(pending·연속 복구 카운터)는 건드리지 않는다.
+    /// 정책 상태(pending·연속 복구 카운터)는 건드리지 않는다 — 73단계 <see cref="ZBandPoller"/>가 주기 검사에 이것을 쓴다.
     /// </summary>
     public bool IsOrdered()
     {
@@ -108,6 +108,7 @@ public sealed class ZBandVerifier : IDisposable
     /// <summary>
     /// 백오프를 건드리지 않는 적용 — 토스트를 포함한 밴드 전체를 다시 적용하되 <see cref="ZBandVerifyPolicy.Reset"/>은 부르지 않는다.
     /// 검증의 복구 경로가 이것이다(<see cref="Apply"/>를 부르면 연속 복구 카운터가 매번 지워져 백오프가 영영 걸리지 않는다).
+    /// 73단계 <see cref="ZBandPoller"/>의 정정도 이것이다 — 백오프를 우회하되 풀지 않는다(사용자 결정).
     /// </summary>
     public void Repair() => _applyBand(_bandOrder(true));
 

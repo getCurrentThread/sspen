@@ -57,6 +57,12 @@ public sealed class AppSettings
     /// <summary>세 도구 그룹(펜/형광펜/도형)의 색·굵기 동기화 여부 (기본 개별 — 사용자 조타).</summary>
     public bool SyncToolStyles { get; set; }
 
+    /// <summary>
+    /// 실험적 기능: z-순서 주기 정정 (73단계, <c>Shell/ZBandPoller</c>). 2초마다 툴바·핀·서피스 순서를 확인해 어긋나면 바로잡는다.
+    /// 기본은 켜짐(사용자 결정) — 속성이 없는 옛 settings.json도 켜진 채 열린다(추가 속성 + 기본값).
+    /// </summary>
+    public bool ZBandPolling { get; set; } = true;
+
     // 도구 그룹 기본 색·굵기 리터럴 (66단계, A4-5·A9-2): JSON 표기 호환·가독성 때문에 hex 문자열과 정수 2를 그대로 둔다.
     // 값의 원천은 ColorPalette.DefaultToolColor·ThicknessScale.Default이며, 일치는 ToolStyleTests·ThicknessScaleTests 증인이 잠근다.
 
