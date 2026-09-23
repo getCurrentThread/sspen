@@ -46,13 +46,11 @@ public sealed class AppController : IShellActions, ISettingsHost
     // 만들면 합성 루트를 STA 밖에서 세우는 테스트가 무너진다.
     private ToastHost? _toasts;
 
-    // 54단계 L3: z-밴드 사후 검증. 최상위 z-순서 변화(REORDER, 데스크톱)·포그라운드 전환(FOREGROUND)이 검증을 깨우고,
-    // 실제 순서가 ZBandOrder와 다를 때만 ApplyZBand를 다시 돌린다. 정책(코얼레싱·백오프)은 ZBandVerifyPolicy가 소유한다.
-    private readonly ZBandVerifyPolicy _zVerify = new();
-    private WinEventWatch? _zReorderWatch;
-    private WinEventWatch? _zForegroundWatch;
+    // 54단계 L3: z-밴드 적용·사후 검증. 최상위 z-순서 변화(REORDER, 데스크톱)·포그라운드 전환(FOREGROUND)이 검증을 깨우고,
+    // 실제 순서가 ZBandOrder와 다를 때만 밴드를 다시 돌린다. 워치 두 개·정책(코얼레싱·백오프)·종료 플래그는
+    // ZBandVerifier가 소유한다 (72단계, A8-1·A1-1) — 루트는 호출 지점('언제 적용하는가')만 가진다.
+    private readonly ZBandVerifier _zBand;
     private bool _zBandSubscribed;
-    private bool _shuttingDown;
 
     // A8-2: 로그인 시 시작(HKCU Run) 반영은 이 델리게이트 하나로만 나간다. 기본값은 RunAtLogin.Apply(프로덕션),
     // E2E 픽스처는 기록 람다를 주입해 개발자 PC의 실제 레지스트리 값을 건드리지 않는다.
@@ -95,6 +93,17 @@ public sealed class AppController : IShellActions, ISettingsHost
             ownerOf: element => _surfaces.FirstOrDefault(s => s.Document.Elements.Contains(element)));
         _settingsBinder = new SettingsBinder(_state, _fading, settingsService);
         _updateService = new UpdateService(_dispatcher, ExitApp);
+        // z-밴드 검증기 (72단계): 생성은 OS를 건드리지 않는다 — 훅 설치는 Start의 Install이다. BandOrder는 호출 시점에
+        // 토스트·설정창·캡처·툴바·핀·서피스를 읽는 지연 조회라 아직 없는 창(0)은 Build가 건너뛴다.
+        // 게시 우선순위는 Background를 명시한다 (AGENTS L14 — 입력·렌더보다 뒤).
+        _zBand = new ZBandVerifier(
+            bandOrder: BandOrder,
+            applyBand: WindowStyling.ApplyZBand,
+            isWindow: WindowStyling.IsWindow,
+            below: WindowStyling.Below,
+            desktop: NativeMethods.GetDesktopWindow,
+            postBackground: action => _dispatcher.BeginInvoke(DispatcherPriority.Background, action),
+            winEvents: WinEventWatch.Native);
         _capture = new CaptureSessionController(
             dispatcher: _dispatcher,
             toolbarVisible: () => _toolbarVisible && _toolbar?.Visibility == Visibility.Visible,
@@ -226,15 +235,9 @@ public sealed class AppController : IShellActions, ISettingsHost
 
         // 54단계 L2/L3: 툴바 z-변화와 전역 z-순서 변화가 밴드 검증을 깨운다. 설치 실패는 진단만 남긴다 — 요청·결과 단계 훅은 그대로 산다.
         // 두 훅은 한쪽이 실패해도 둘 다 시도하고, 로그는 어느 쪽이 실패했는지 밝힌다 (70단계, A9-8: 예전 || 단락 평가 결함).
-        _toolbar.ZOrderChanged += RequestZBandVerify;
-        _zReorderWatch = new WinEventWatch(
-            NativeMethods.EVENT_OBJECT_REORDER, NativeMethods.EVENT_OBJECT_REORDER, OnZOrderEvent, WinEventWatch.Native);
-        _zForegroundWatch = new WinEventWatch(
-            NativeMethods.EVENT_SYSTEM_FOREGROUND, NativeMethods.EVENT_SYSTEM_FOREGROUND, OnZOrderEvent, WinEventWatch.Native);
-        if (ZBandVerifyPolicy.InstallWatches(_zReorderWatch.Install, _zForegroundWatch.Install) is { } installFailure)
-        {
-            Log.Warn(installFailure);
-        }
+        // 설치·실패 로그·WinEvent 콜백은 ZBandVerifier가 소유한다 (72단계).
+        _toolbar.ZOrderChanged += _zBand.RequestVerify;
+        _zBand.Install();
 
         if (_settingsBinder.Settings.CheckUpdateOnStart)
         {
@@ -252,13 +255,13 @@ public sealed class AppController : IShellActions, ISettingsHost
 
     public void Shutdown()
     {
-        _shuttingDown = true;
-        _renderTick.Stop(); // 틱 해제가 첫 줄 — 아래 구독 해제·창 닫기보다 먼저 (프레임이 닫힌 서피스를 만지지 않게).
-        _zReorderWatch?.Dispose();
-        _zForegroundWatch?.Dispose();
+        // z-밴드 검증 정지가 첫 줄 — 이후의 검증 요청을 무시하고 WinEvent 두 훅을 푼다. 이미 큐에 든 검증은
+        // pending만 풀고 아무것도 적용하지 않는다 (예전 _shuttingDown 플래그 + 워치 해제, 72단계).
+        _zBand.Stop();
+        _renderTick.Stop(); // 틱 해제 — 아래 구독 해제·창 닫기보다 먼저 (프레임이 닫힌 서피스를 만지지 않게).
         if (_toolbar is not null)
         {
-            _toolbar.ZOrderChanged -= RequestZBandVerify;
+            _toolbar.ZOrderChanged -= _zBand.RequestVerify;
         }
         _state.Changed -= ApplyZBand;
         _zBandSubscribed = false;
@@ -722,12 +725,12 @@ public sealed class AppController : IShellActions, ISettingsHost
 
     // ---- z-밴드 (ARCH-5/R10): 토스트 > 설정창 > 캡처 오버레이+액션바 > 툴바 > 핀 > 서피스(보드) > 기타 앱 (71단계 사용자 결정) ----
 
-    /// <summary>순서 정책은 <see cref="ZBandOrder"/>가, 적용 시점은 이 클래스의 호출 지점들이 소유한다 (33단계).</summary>
-    private void ApplyZBand()
-    {
-        _zVerify.Reset();
-        WindowStyling.ApplyZBand(BandOrder(includeToast: true));
-    }
+    /// <summary>
+    /// 정규 재적용 — 순서 정책은 <see cref="ZBandOrder"/>가, 적용과 백오프 해제는 <see cref="ZBandVerifier.Apply"/>가,
+    /// 적용 시점은 이 클래스의 호출 지점들이 소유한다 (33단계, 72단계). 이벤트 구독·해제(<c>+=</c>/<c>-=</c>)가 같은
+    /// 델리게이트로 맞아떨어지도록 메서드로 남긴다.
+    /// </summary>
+    private void ApplyZBand() => _zBand.Apply();
 
     private List<nint> BandOrder(bool includeToast) =>
         ZBandOrder.Build(
@@ -737,55 +740,6 @@ public sealed class AppController : IShellActions, ISettingsHost
             _toolbar?.Hwnd ?? 0,
             _pins?.Pins.Select(p => p.Hwnd) ?? [],
             _surfaces.Select(s => s.Hwnd));
-
-    /// <summary>
-    /// WinEvent 콜백 (54단계 L3). 어떤 이벤트가 검증을 깨우는지는 <see cref="ZBandVerifyPolicy.Wakes"/>가 소유한다.
-    /// 콜백은 설치 스레드(UI)의 펌프에서 오지만 짧아야 하므로 검증은 디스패처로 미룬다.
-    /// </summary>
-    private void OnZOrderEvent(uint eventType, nint hwnd, int idObject)
-    {
-        if (ZBandVerifyPolicy.Wakes(eventType, hwnd, NativeMethods.GetDesktopWindow()))
-        {
-            RequestZBandVerify();
-        }
-    }
-
-    /// <summary>검증을 큐에 넣는다 — 이미 걸려 있거나 백오프 중이면 무동작 (코얼레싱은 <see cref="ZBandVerifyPolicy"/>).</summary>
-    private void RequestZBandVerify()
-    {
-        if (_shuttingDown || !_zVerify.OnEvent())
-        {
-            return;
-        }
-        _dispatcher.BeginInvoke(DispatcherPriority.Background, VerifyZBand);
-    }
-
-    /// <summary>
-    /// 실제 z-순서를 읽어 밴드 순서와 다를 때만 재적용한다 (54단계 L3). 토스트는 클릭 통과 창이라 검사에서 뺀다 —
-    /// 설정창처럼 활성화되는 창이 토스트 위로 오르는 것은 입력에 아무 영향이 없다. 닫힌 창의 낡은 HWND도 뺀다.
-    /// 렌더 틱이 아니라 z-순서 <b>사건</b>에만 반응하므로 AGENTS의 "틱에서 밴드 재적용 금지"와 충돌하지 않는다.
-    /// </summary>
-    private void VerifyZBand()
-    {
-        if (_shuttingDown)
-        {
-            _zVerify.OnVerified(ordered: true);
-            return;
-        }
-        var order = BandOrder(includeToast: false).Where(WindowStyling.IsWindow).ToList();
-        bool ordered = ZOrderInvariant.IsOrdered(order, WindowStyling.Below);
-        if (!_zVerify.OnVerified(ordered))
-        {
-            return;
-        }
-        Log.Info("z-밴드 순서가 어긋나 있어 다시 적용했다 (사후 검증).");
-        // ApplyZBand()가 아니라 직접 부른다 — 그쪽은 정규 재적용이라 백오프 카운터를 지운다.
-        WindowStyling.ApplyZBand(BandOrder(includeToast: true));
-        if (_zVerify.Suspended)
-        {
-            Log.Warn($"z-밴드 복구가 연속 {ZBandVerifyPolicy.MaxConsecutiveRepairs}회 소용없어 다음 정규 재적용까지 검증을 쉰다.");
-        }
-    }
 
     // ---- 공유 렌더 틱 (ARCH-3/프리모템 1): 정책은 RenderTickController(45단계), 여기는 WPF 프레임 이벤트 어댑터뿐 ----
 

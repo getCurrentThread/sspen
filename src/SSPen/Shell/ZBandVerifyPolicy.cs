@@ -11,6 +11,7 @@ namespace SSPen.Shell;
 /// (<see cref="Reset"/>: AppState.Changed 등)까지 쉰다. 없으면 복구 → 재정렬 이벤트 → 검증 → 복구의 무한 루프가
 /// Background 우선순위로 CPU를 먹는다. AGENTS의 "렌더 틱에서 밴드 재적용 금지"와 같은 정신이다: 밴드 적용은 사건에만 반응한다.
 /// (c) <b>깨우는 계기</b> — 어떤 WinEvent가 깨우는가(<see cref="Wakes"/>)와 두 훅을 모두 설치 시도하는 규칙(<see cref="InstallWatches"/>, 70단계).
+/// 이 정책을 워치·순서 판정과 잇는 조립(훅 소유, 검증 본문, 복구는 <see cref="Reset"/> 없이, 종료)은 <see cref="ZBandVerifier"/>다 (72단계).
 /// </summary>
 public sealed class ZBandVerifyPolicy
 {

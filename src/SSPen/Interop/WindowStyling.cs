@@ -10,7 +10,7 @@ namespace SSPen.Interop;
 /// (71단계 사용자 결정, 정책은 <c>Shell/ZBandOrder</c>). 앵커는 핀 = 툴바, 서피스 = 맨 아래 핀(없으면 툴바).
 /// 표시/보드/핀 생성/캡처 세션/툴바 토글 전이마다 재적용한다.
 /// 방어는 세 겹이다 (54단계): 요청 단계 <see cref="AnchorBelow"/>(서피스·핀) → 결과 단계 <see cref="KeepBelow"/>(서피스·핀) +
-/// <see cref="KeepTopmost"/>(툴바) → 사후 검증(<c>AppController.VerifyZBand</c>, WinEvent). 순수 판정은
+/// <see cref="KeepTopmost"/>(툴바) → 사후 검증(<c>Shell/ZBandVerifier</c>, WinEvent — 72단계). 순수 판정은
 /// <see cref="AnchorBelowRules"/>·<see cref="ZOrderInvariant"/>가 가진다.
 /// </summary>
 public static class WindowStyling

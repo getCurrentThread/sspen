@@ -127,6 +127,7 @@ public class ZBandVerifyPolicyTests
 
         string? failure = ZBandVerifyPolicy.InstallWatches(reorder.Watch.Install, foreground.Watch.Install);
 
+        Assert.Single(reorder.Fake.Installs);
         Assert.Single(foreground.Fake.Installs); // 첫 설치 실패가 두 번째 시도를 건너뛰게 하면 안 된다
         Assert.True(foreground.Watch.IsInstalled);
         Assert.False(reorder.Watch.IsInstalled);
