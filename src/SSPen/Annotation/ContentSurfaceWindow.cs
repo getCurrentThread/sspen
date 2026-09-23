@@ -193,8 +193,8 @@ public sealed class ContentSurfaceWindow : Window, ISurfaceHost, IFadeSurface
         Hwnd = WindowStyling.GetHwnd(this);
         WindowStyling.SetToolWindow(Hwnd, true);
         WindowStyling.SetNoActivate(Hwnd, true);
-        // 사용자 조타: 서피스는 어떤 경우에도 툴바 위로 올라가지 않는다 (도구 선택 후 툴바 상호작용 보장).
-        // 훅이 첫 배치(PlacePhysical의 HWND_TOPMOST)보다 앞이어야 늦게 만들어진 서피스(설정 동기화)도 처음부터 툴바 아래에 놓인다 (54단계 L5).
+        // 사용자 조타: 서피스는 어떤 경우에도 툴바·핀 위로 올라가지 않는다 (도구 선택 후 툴바 상호작용 보장; 앵커 = 맨 아래 핀, 없으면 툴바 — 71단계).
+        // 훅이 첫 배치(PlacePhysical의 HWND_TOPMOST)보다 앞이어야 늦게 만들어진 서피스(설정 동기화)도 처음부터 앵커 아래에 놓인다 (54단계 L5).
         _zHook = WindowStyling.AnchorBelow(Hwnd, _zAnchor);
         _zKeepBelowHook = WindowStyling.KeepBelow(Hwnd, _zAnchor, $"서피스 {_monitor.DeviceName}");
         WindowStyling.PlacePhysical(Hwnd, _monitor.WorkArea);

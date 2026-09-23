@@ -177,8 +177,8 @@ public sealed class AppController : IShellActions, ISettingsHost
             _settingsBinder.ScheduleSave();
         };
 
-        // 핀 z-앵커: 항상 마지막 서피스 바로 아래 (F5: 잉크는 핀 위).
-        _pins = new PinManager(() => _surfaces.Count > 0 ? _surfaces[^1].Hwnd : 0, hooks: LowLevelHook.Native);
+        // 핀 z-앵커: 툴바 바로 아래 (71단계 사용자 결정: 툴바 > 핀 > 서피스 — 핀은 판서 서피스·보드 위에 보인다).
+        _pins = new PinManager(() => _toolbar?.Hwnd ?? 0, hooks: LowLevelHook.Native);
         _pins.PinsChanged += ApplyZBand;
         // 클릭 통과에 걸리면 그 핀은 마우스를 받지 못한다 — 되찾는 제스처를 아는 것이 유일한 복구 경로다.
         _pins.ClickThroughEngaged += () =>
@@ -452,12 +452,12 @@ public sealed class AppController : IShellActions, ISettingsHost
         var document = new AnnotationDocument(monitor.DeviceName);
         // R17: 문서에서 사라진 요소를 선택집합에서 떨어뜨려 댕글링 참조를 막는다.
         _selection.AttachTo(document);
-        // 서피스 z-앵커: 항상 툴바 바로 아래 (사용자 조타 — 도구 선택 후에도 툴바 상호작용 보장).
-        // 툴바는 서피스 뒤에 만들어지므로 지연 참조여야 한다.
+        // 서피스 z-앵커: 서피스 밴드 바로 위 창 — 맨 아래 핀, 핀이 없으면 툴바 (사용자 조타 — 도구 선택 후에도 툴바·핀 상호작용 보장;
+        // 71단계 사용자 결정: 툴바 > 핀 > 서피스). 툴바·PinManager는 서피스 뒤에 만들어지므로 지연 참조여야 한다 — 그 전에는 0(훅 무동작).
         var surface = new ContentSurfaceWindow(
             monitor, _state, document, _ledger, _fading,
             _selection, OwnerOf, DpiOf, _commands.CommitTransform, _commands.EngageClickThrough,
-            () => _toolbar?.Hwnd ?? 0,
+            () => ZBandOrder.SurfaceAnchor(_toolbar?.Hwnd ?? 0, _pins?.Pins.Select(p => p.Hwnd) ?? []),
             // 사용자 문자열은 Shell/Strings에만 산다 — 창(Annotation)에는 포맷터로 주입한다 (26단계).
             Strings.TableBadge);
         // 54단계 L0: 텍스트 도구 핸드셰이크(활성화) 직후·커밋 직후 밴드를 다시 적용한다.
@@ -720,7 +720,7 @@ public sealed class AppController : IShellActions, ISettingsHost
         ApplyZBand();
     }
 
-    // ---- z-밴드 (ARCH-5/R10): 설정창 > 캡처 오버레이+액션바 > 툴바 > 서피스 > 핀 > 기타 앱 ----
+    // ---- z-밴드 (ARCH-5/R10): 토스트 > 설정창 > 캡처 오버레이+액션바 > 툴바 > 핀 > 서피스(보드) > 기타 앱 (71단계 사용자 결정) ----
 
     /// <summary>순서 정책은 <see cref="ZBandOrder"/>가, 적용 시점은 이 클래스의 호출 지점들이 소유한다 (33단계).</summary>
     private void ApplyZBand()
@@ -735,8 +735,8 @@ public sealed class AppController : IShellActions, ISettingsHost
             _settingsWindow?.Hwnd ?? 0,
             _capture.OverlayHwnd,
             _toolbar?.Hwnd ?? 0,
-            _surfaces.Select(s => s.Hwnd),
-            _pins?.Pins.Select(p => p.Hwnd) ?? []);
+            _pins?.Pins.Select(p => p.Hwnd) ?? [],
+            _surfaces.Select(s => s.Hwnd));
 
     /// <summary>
     /// WinEvent 콜백 (54단계 L3). 어떤 이벤트가 검증을 깨우는지는 <see cref="ZBandVerifyPolicy.Wakes"/>가 소유한다.

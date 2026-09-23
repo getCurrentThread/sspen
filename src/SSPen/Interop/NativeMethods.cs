@@ -48,7 +48,7 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool IsWindow(nint hWnd);
 
-    // z-밴드 고정 훅 (툴바 항상 서피스 위, 서피스 항상 핀 위 — R10 상시 보증)
+    // z-밴드 고정 훅 (툴바 항상 핀 위, 핀 항상 서피스 위 — R10 상시 보증, 71단계 사용자 결정)
     internal const int WM_WINDOWPOSCHANGING = 0x0046;
     internal const int WM_WINDOWPOSCHANGED = 0x0047;
 

@@ -10,7 +10,9 @@ namespace SSPen.Pin;
 /// <summary>
 /// 핀 고정 윈도우 (WI-13, AC-14..18): 캡처 이미지를 캡처 위치에 최상위로 띄우는 뷰어.
 /// 휠=확대/축소, 드래그=이동, Ctrl+휠=투명도, Ctrl+가운데 버튼=클릭 통과 토글, Esc/더블클릭=닫기.
-/// 복수 핀 허용. 핀 귀속 판서는 Non-Goal 2 (잉크는 z-밴드에 따라 핀 위에 렌더링된다).
+/// 복수 핀 허용. 핀 귀속 판서는 Non-Goal 2. z-밴드에서 핀은 툴바 바로 아래, 판서 서피스(보드 포함) 위다 (71단계 사용자 결정) —
+/// 판서 모드에서도 통과가 아닌 핀은 자기 영역의 클릭(드래그·휠)을 받고 핀 영역의 잉크는 핀에 가려진다.
+/// 통과 핀(Ctrl+가운데 버튼)은 입력을 아래 서피스로 흘린다.
 /// </summary>
 public sealed class PinWindow : Window, IClickThroughPin
 {
@@ -184,7 +186,7 @@ public sealed class PinWindow : Window, IClickThroughPin
         base.OnSourceInitialized(e);
         Hwnd = WindowStyling.GetHwnd(this);
         WindowStyling.SetToolWindow(Hwnd, true);
-        // 핀은 서피스 아래 밴드에 고정 (F5: 핀 위 판서 보장 — 클릭/드래그로 올라가도 서피스 아래 유지).
+        // 핀은 툴바 아래 밴드에 고정 (71단계 사용자 결정: 툴바 > 핀 > 서피스 — 클릭/드래그로 올라가도 툴바를 덮지 않는다).
         _zHook = WindowStyling.AnchorBelow(Hwnd, _zAnchor);
         _zKeepBelowHook = WindowStyling.KeepBelow(Hwnd, _zAnchor, "핀");
     }

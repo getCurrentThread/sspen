@@ -1,6 +1,10 @@
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using SSPen.Annotation;
 using SSPen.Interop;
+using SSPen.Pin;
+using SSPen.Shell;
 using Xunit;
 
 namespace SSPen.IntegrationTests;
@@ -244,6 +248,81 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
             anchor.Close();
         }
     });
+
+    /// <summary>
+    /// 71단계 사용자 결정(2026-09-23)의 실창 증인: 툴바 &gt; 핀 &gt; 서피스. 합성 루트와 같은 배선 — 핀 앵커 = 툴바,
+    /// 서피스 앵커 = <see cref="ZBandOrder.SurfaceAnchor"/> — 으로 실제 서피스 창과 핀 창을 띄우고
+    /// <see cref="ZBandOrder.Build"/> 순서로 밴드를 적용한 뒤, 서피스를 HWND_TOP/HWND_TOPMOST로 올려도
+    /// 요청·결과 단계 훅(AnchorBelow/KeepBelow)이 핀 아래로 되돌리는지 실제 z-순서 워크로 단언한다.
+    /// 핀을 올려도 툴바 위로는 못 가고 서피스 위는 지킨다. 툴바 자리는 톱모스트 테스트 창이 대신한다.
+    /// </summary>
+    [Fact]
+    public void PinOverSurface_SurfaceRaised_ReturnsBelowPin() => StaRunner.Run(() =>
+    {
+        var toolbar = NewTestWindow(300, 300);
+        toolbar.Show();
+        nint toolbarHwnd = WindowStyling.GetHwnd(toolbar);
+        PinWindow? pin = null;
+
+        var monitor = MonitorTopology.Enumerate()[0];
+        var state = new AppState { ActiveTool = ToolKind.Pen };
+        var document = new AnnotationDocument(monitor.DeviceName);
+        var selection = new SelectionModel();
+        selection.AttachTo(document);
+        var ledger = new UndoLedger(e => document.Elements.Contains(e) ? document : null, selection);
+        var surface = SurfaceRigs.NewSurface(
+            monitor, state, document, ledger, selection,
+            zAnchor: () => ZBandOrder.SurfaceAnchor(toolbarHwnd, pin is null ? [] : [pin.Hwnd]));
+        try
+        {
+            surface.Show();
+            var region = new PhysicalRect(monitor.WorkArea.X + 200, monitor.WorkArea.Y + 200, 240, 180);
+            pin = new PinWindow(SolidImage(region.Width, region.Height), region, () => toolbarHwnd);
+            pin.Show();
+            WindowStyling.PlacePhysical(pin.Hwnd, region);
+            StaRunner.PumpMessages();
+            nint pinHwnd = pin.Hwnd;
+            nint surfaceHwnd = surface.Hwnd;
+
+            WindowStyling.ApplyZBand(ZBandOrder.Build(0, 0, 0, toolbarHwnd, pins: [pinHwnd], surfaces: [surfaceHwnd]));
+            StaRunner.PumpMessages();
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(toolbarHwnd, pinHwnd), "밴드 적용 뒤 핀이 툴바 위에 있다.");
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(pinHwnd, surfaceHwnd), "밴드 적용 뒤 서피스가 핀 위에 있다.");
+
+            NativeMethodsProbe.SetWindowPos(surfaceHwnd, 0 /* HWND_TOP */, 0, 0, 0, 0, SwpFlags);
+            StaRunner.PumpMessages();
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(pinHwnd, surfaceHwnd), "HWND_TOP 올리기 뒤 서피스가 핀을 덮었다.");
+
+            NativeMethodsProbe.SetWindowPos(surfaceHwnd, (nint)(-1) /* HWND_TOPMOST */, 0, 0, 0, 0, SwpFlags);
+            StaRunner.PumpMessages();
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(pinHwnd, surfaceHwnd), "HWND_TOPMOST 올리기 뒤 서피스가 핀을 덮었다.");
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(toolbarHwnd, surfaceHwnd), "서피스가 툴바를 덮었다.");
+
+            NativeMethodsProbe.SetWindowPos(pinHwnd, (nint)(-1) /* HWND_TOPMOST */, 0, 0, 0, 0, SwpFlags);
+            StaRunner.PumpMessages();
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(toolbarHwnd, pinHwnd), "핀 올리기 뒤 핀이 툴바를 덮었다.");
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(pinHwnd, surfaceHwnd), "핀 올리기 뒤 서피스가 핀 위에 있다.");
+        }
+        finally
+        {
+            pin?.ClosePin();
+            surface.Close();
+            toolbar.Close();
+        }
+    });
+
+    private static BitmapSource SolidImage(int width, int height)
+    {
+        var pixels = new byte[width * height * 4];
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 0xED;     // B
+            pixels[i + 1] = 0x95; // G
+            pixels[i + 2] = 0x64; // R
+            pixels[i + 3] = 0xFF; // A
+        }
+        return BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
+    }
 
     private static Window NewTestWindow(double left, double top) => new()
     {

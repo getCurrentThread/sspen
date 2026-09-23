@@ -6,7 +6,8 @@ namespace SSPen.Interop;
 
 /// <summary>
 /// exstyle 토글과 톱모스트 z-밴드 정책 (플랜 ARCH-5 / R10).
-/// 밴드 순서(위→아래): 캡처 오버레이+액션바 > 툴바 > 콘텐츠 서피스 > 핀 > 기타 앱.
+/// 밴드 순서(위→아래): 토스트 > 설정창 > 캡처 오버레이+액션바 > 툴바 > 핀 > 콘텐츠 서피스(보드) > 기타 앱
+/// (71단계 사용자 결정, 정책은 <c>Shell/ZBandOrder</c>). 앵커는 핀 = 툴바, 서피스 = 맨 아래 핀(없으면 툴바).
 /// 표시/보드/핀 생성/캡처 세션/툴바 토글 전이마다 재적용한다.
 /// 방어는 세 겹이다 (54단계): 요청 단계 <see cref="AnchorBelow"/>(서피스·핀) → 결과 단계 <see cref="KeepBelow"/>(서피스·핀) +
 /// <see cref="KeepTopmost"/>(툴바) → 사후 검증(<c>AppController.VerifyZBand</c>, WinEvent). 순수 판정은
@@ -167,9 +168,9 @@ public static class WindowStyling
     }
 
     /// <summary>
-    /// <see cref="ApplyZBand"/>가 도는 동안 참. 밴드 적용의 구체 삽입(이전 서피스·이전 핀 뒤)은 활성화된 적 있는 창에서
+    /// <see cref="ApplyZBand"/>가 도는 동안 참. 밴드 적용의 구체 삽입(이전 핀·이전 서피스 뒤)은 활성화된 적 있는 창에서
     /// "자기 IME 창 바로 아래"로 도착해 상승 요청과 구별할 수 없다 (통합 테스트 실측: flags=0x13 insertAfter=IME(owner=self)).
-    /// 그 삽입은 의도된 것이므로 요청 단계 훅이 손대지 않는다 — 앵커로 돌리면 서피스끼리의 순서가 뒤집혀 사후 검증이 헛돈다.
+    /// 그 삽입은 의도된 것이므로 요청 단계 훅이 손대지 않는다 — 앵커로 돌리면 핀끼리·서피스끼리의 순서가 뒤집혀 사후 검증이 헛돈다.
     /// UI 스레드 전용이다.
     /// </summary>
     private static bool _applyingBand;

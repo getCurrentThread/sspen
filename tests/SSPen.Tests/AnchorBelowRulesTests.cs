@@ -50,7 +50,7 @@ public class AnchorBelowRulesTests
     [Fact]
     public void IsRise_InsertAfterForeignWindow_IsNotRise()
     {
-        // ApplyZBand의 구체 삽입(툴바·이전 서피스·이전 핀)은 상승이 아니다 — 여기서 상승으로 읽으면 밴드 적용 자체가 앵커 아래로 뒤틀린다.
+        // ApplyZBand의 구체 삽입(툴바·이전 핀·이전 서피스)은 상승이 아니다 — 여기서 상승으로 읽으면 밴드 적용 자체가 앵커 아래로 뒤틀린다.
         Assert.False(AnchorBelowRules.IsRise(Other, Self, OwnerOf));
     }
 

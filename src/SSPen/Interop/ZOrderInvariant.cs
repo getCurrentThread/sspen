@@ -14,7 +14,7 @@ public static class ZOrderInvariant
     /// <summary>
     /// <paramref name="self"/>가 <paramref name="anchor"/> 아래에 있는가. <paramref name="above"/>는 z-순서상 바로 위 창
     /// (<c>GW_HWNDPREV</c>, 최상단이면 0)을 돌려준다. self에서 위로 올라가며 anchor를 만나면 참이다 —
-    /// 위반이 아닐 때 걸음 수가 가장 적은 방향이다(서피스는 툴바 바로 아래 몇 칸 안에 있다).
+    /// 위반이 아닐 때 걸음 수가 가장 적은 방향이다(핀·서피스는 앵커 — 툴바, 맨 아래 핀 — 바로 아래 몇 칸 안에 있다, 71단계).
     /// anchor를 끝내 못 만나면(anchor가 아래에 있거나 목록에 없음) 거짓이다.
     /// </summary>
     public static bool IsBelow(nint self, nint anchor, Func<nint, nint> above)
