@@ -112,6 +112,65 @@ public class TableGeometryTests
         Assert.All(vertices, v => Assert.True(table.HitTest(v, tolerance: 0.5), $"꼭짓점 {v}"));
     }
 
+    /// <summary>
+    /// 폭이나 높이가 0인 표의 <b>렌더 범위</b>도 히트 범위 안에 든다 (101단계, FINAL-REVIEW-DEGENERATE-TABLE-RENDER). 퇴화 표의 외곽
+    /// 닫힌 figure는 선분을 되짚는 머리핀이라, 마이터 결합(기본 한계 10)이 시작점 너머로 두께×5만큼 뾰족하게 그려졌다
+    /// (실측: (10,20)→(210,20), 두께 2의 렌더 왼쪽 끝 x=0 — 픽셀도 칠해진다). 히트 거리는 선분까지만 재므로 지우개가 그 촉을
+    /// 못 잡았다. 기준은 요소 경계를 두께/2만큼 부풀린 사각형이다 — 정상 크기 표의 마이터 모서리도 정확히 그 모서리에 닿는다.
+    /// 커밋 시각물과 미리보기(<see cref="AnnotationVisualFactory.UpdateTableVisual"/>) 둘 다 본다. Path가 있으니 STA다.
+    /// 수정 전 빨강은 높이 0인 세 행뿐이다 — 폭 0·영길이 행은 머리핀 방향 때문에 촉이 생기지 않아(실측) 원래 초록인 가드다.
+    /// </summary>
+    [Theory]
+    [InlineData(10, 20, 210, 20, 2)]   // 높이 0
+    [InlineData(210, 20, 10, 20, 2)]   // 높이 0, 역방향 드래그
+    [InlineData(50, 20, 250, 20, 6)]   // 높이 0, 굵은 선
+    [InlineData(10, 20, 10, 120, 2)]   // 폭 0
+    [InlineData(10, 120, 10, 20, 6)]   // 폭 0, 역방향 드래그
+    [InlineData(10, 20, 10, 20, 2)]    // 영길이 — 미리보기 첫 프레임
+    public void BuildVisual_DegenerateTable_RenderBoundsWithinHitRange(double x1, double y1, double x2, double y2, double thickness)
+    {
+        RunSta(() =>
+        {
+            var start = new Point(x1, y1);
+            var end = new Point(x2, y2);
+            var table = new TableElement(start, end, rows: 3, columns: 4, Colors.Black, thickness);
+            var committed = (Path)AnnotationVisualFactory.BuildVisual(table);
+            var preview = (Path)AnnotationVisualFactory.CreateTableVisual(Colors.Black, thickness);
+            AnnotationVisualFactory.UpdateTableVisual(preview, start, end, table.Rows, table.Columns);
+
+            var hitRange = Rect.Inflate(table.Bounds, thickness / 2, thickness / 2);
+            AssertWithin(hitRange, RenderBounds(committed), "커밋");
+            AssertWithin(hitRange, RenderBounds(preview), "미리보기");
+        });
+    }
+
+    /// <summary>
+    /// 정상 크기 표의 렌더는 101단계 전과 비트 단위로 같다: 퇴화 표만 외곽선 마이터 한계를 바꾸고, 미리보기가 드래그 중에
+    /// 퇴화(시작점 == 끝점, 수평 통과)를 거쳐 정상 크기로 돌아오면 한계는 로컬 값 없이 Shape 기본값으로 돌아간다.
+    /// 렌더 범위는 요소 경계를 두께/2만큼 부풀린 사각형 그대로다(마이터 모서리). 이 단계 전에도 초록인 가드다.
+    /// </summary>
+    [Fact]
+    public void UpdateTableVisual_DegenerateThenNormal_KeepsDefaultOutlinePen()
+    {
+        RunSta(() =>
+        {
+            var start = new Point(10, 20);
+            var end = new Point(130, 80);
+            var committed = (Path)AnnotationVisualFactory.BuildVisual(new TableElement(start, end, 3, 4, Colors.Red, 3));
+            var preview = (Path)AnnotationVisualFactory.CreateTableVisual(Colors.Red, 3);
+
+            AnnotationVisualFactory.UpdateTableVisual(preview, start, start, 3, 4);
+            AnnotationVisualFactory.UpdateTableVisual(preview, start, new Point(130, 20), 3, 4);
+            AnnotationVisualFactory.UpdateTableVisual(preview, start, end, 3, 4);
+
+            Assert.Equal(DependencyProperty.UnsetValue, committed.ReadLocalValue(Shape.StrokeMiterLimitProperty));
+            Assert.Equal(DependencyProperty.UnsetValue, preview.ReadLocalValue(Shape.StrokeMiterLimitProperty));
+            Assert.Equal(new Path().StrokeMiterLimit, preview.StrokeMiterLimit);
+            Assert.Equal(new Rect(8.5, 18.5, 123, 63), RenderBounds(committed));
+            Assert.Equal(RenderBounds(committed), RenderBounds(preview));
+        });
+    }
+
     /// <summary>미리보기(드래그 중)와 커밋(요소 시각물)이 같은 CreateTableGeometry를 쓴다 — 획의 '미리보기와 커밋이 같은 Create' 규약과 동형.</summary>
     [Fact]
     public void TablePreviewAndCommit_UseSameGeometry()
@@ -130,6 +189,30 @@ public class TableGeometryTests
             Assert.Equal(previewFigures.Count, committedFigures.Count);
             Assert.Equal(((Path)preview).Data.Bounds, committed.Data.Bounds);
         });
+    }
+
+    /// <summary>
+    /// Path가 실제로 그리는 범위: 그 Path의 스트로크 속성으로 조립한 Pen으로 <see cref="Geometry.GetRenderBounds(Pen)"/>를 잰다
+    /// (<c>Shape</c>가 내부에서 Pen을 조립하는 속성과 같은 목록 — 두께·결합·마이터 한계·양 끝 캡).
+    /// </summary>
+    private static Rect RenderBounds(Path path) =>
+        path.Data.GetRenderBounds(new Pen(path.Stroke, path.StrokeThickness)
+        {
+            LineJoin = path.StrokeLineJoin,
+            MiterLimit = path.StrokeMiterLimit,
+            StartLineCap = path.StrokeStartLineCap,
+            EndLineCap = path.StrokeEndLineCap,
+        });
+
+    /// <summary>렌더 범위가 기준 사각형 안인가 — Geometry 렌더 경계의 부동소수 오차(1e-3 미만)만 허용한다.</summary>
+    private static void AssertWithin(Rect outer, Rect inner, string label)
+    {
+        const double slack = 1e-3;
+        Assert.False(inner.IsEmpty, $"{label}: 렌더 범위가 비었다");
+        Assert.True(
+            inner.Left >= outer.Left - slack && inner.Top >= outer.Top - slack
+                && inner.Right <= outer.Right + slack && inner.Bottom <= outer.Bottom + slack,
+            $"{label}: 렌더 {inner}가 히트 범위 {outer} 밖으로 나간다");
     }
 
     private static void AssertLine((Point A, Point B) line, Point a, Point b)

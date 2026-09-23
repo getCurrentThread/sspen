@@ -80,6 +80,23 @@ public static class AnnotationVisualFactory
 
     public static Shape CreateTableVisual(Color color, double thickness) => CreateOutlinePath(color, thickness);
 
+    /// <summary>
+    /// 폭이나 높이가 정확히 0인 표의 외곽선 마이터 한계 (101단계, FINAL-REVIEW-DEGENERATE-TABLE-RENDER). 퇴화 표의 외곽 닫힌
+    /// figure는 선분을 되짚는 머리핀이라 기본 한계(10)의 마이터가 시작점 너머로 두께×5만큼 뾰족하게 그려졌고, 히트 거리는
+    /// 선분까지만 재서 지우개가 그 촉을 못 잡았다. 한계 1이면 머리핀 끝이 두께/2에서 잘려, 렌더 경계가 요소 경계를 두께/2
+    /// 부풀린 사각형 — 높이 0인 Rectangle 도형의 렌더 경계 — 와 같아진다(실측). 폭 0·영길이 표는 한계 10에서도 촉이 없었고
+    /// 한계 1에서도 렌더 경계가 그대로다(실측) — 바뀌는 것은 높이 0인 표의 촉뿐이다. 한계를 모든 표에 낮추지 않는 이유:
+    /// 정상 표의 직각 모서리는 마이터 비가 √2라 1.5로도 렌더가 그대로지만 그러면 머리핀 촉이 두께×0.75로 남고(실측),
+    /// √2 미만이면 정상 표의 모서리가 잘린다. 외곽을 열린 선분 하나로 바꾸는 안은 양 끝의 두께/2 연장과 영길이 미리보기의
+    /// 점까지 지워 렌더 변화가 더 크다. 0 비교는 정확 비교다 — 높이 1e-12에서도 촉이 생기지 않는다(실측).
+    /// </summary>
+    private const double DegenerateTableMiterLimit = 1.0;
+
+    /// <summary>
+    /// 표 시각물의 지오메트리와 외곽선 마이터 한계를 끝점에 맞춘다. 미리보기(드래그 중)와 커밋(<see cref="BuildVisual"/>)이
+    /// 모두 이 함수를 지난다. 정상 크기 표는 로컬 값을 지워 <see cref="CreateOutlinePath"/>의 기본 Pen 그대로 그린다 —
+    /// 드래그가 퇴화(시작 프레임, 수평·수직 통과)를 거쳐 돌아와도 101단계 전과 비트 단위로 같은 렌더다.
+    /// </summary>
     public static void UpdateTableVisual(Shape visual, Point start, Point end, int rows, int columns)
     {
         if (visual is not Path path)
@@ -87,11 +104,23 @@ public static class AnnotationVisualFactory
             return;
         }
         path.Data = CreateTableGeometry(start, end, rows, columns);
+
+        var bounds = TableGeometry.Normalize(start, end);
+        if (bounds.Width == 0 || bounds.Height == 0)
+        {
+            path.StrokeMiterLimit = DegenerateTableMiterLimit;
+        }
+        else
+        {
+            path.ClearValue(Shape.StrokeMiterLimitProperty);
+        }
     }
 
     /// <summary>
     /// 표 격자 지오메트리. 미리보기(<see cref="UpdateTableVisual"/>)와 커밋(<see cref="BuildVisual"/>)이 같은 함수를 쓴다.
     /// 외곽은 <b>닫힌 figure</b>(Miter 모서리) 하나, 내부 분할선은 <see cref="TableGeometry.Dividers"/> — 히트테스트와 같은 목록 (29단계).
+    /// 폭이나 높이가 0인 표도 같은 figure를 낸다 — 그 머리핀의 마이터 촉은 지오메트리가 아니라 Pen에서 자른다
+    /// (<see cref="UpdateTableVisual"/>, 101단계).
     /// </summary>
     public static Geometry CreateTableGeometry(Point start, Point end, int rows, int columns)
     {
