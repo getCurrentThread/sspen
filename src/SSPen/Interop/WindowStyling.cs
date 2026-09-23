@@ -64,6 +64,21 @@ public static class WindowStyling
     }
 
     /// <summary>
+    /// 창의 위치와 크기를 물리 픽셀 사각형으로 <b>한 번의</b> <c>SetWindowPos</c>에 함께 바꾼다 (z-순서·활성화는 건드리지 않는다).
+    /// DIP인 <c>Left/Top/Width/Height</c>를 따로 대입하면 WPF가 속성마다 <c>SetWindowPos</c>를 불러 "이동만 된" "크기만 바뀐"
+    /// 중간 사각형이 레이어드 창에 그대로 비친다 — 핀 휠 확대의 떨림이 그것이었다 (82단계, 사용자 신고).
+    /// WPF는 이 호출이 보내는 WM_MOVE/WM_SIZE로 Left·Top·Width·Height를 스스로 맞추고(Window.WmMoveChanged/WmSizeChanged),
+    /// 옛 크기로 되돌리는 <c>SetWindowPos</c>를 내지 않는다 (실측: 칸당 WM_WINDOWPOSCHANGED 1회, Width/Height 동기화 — PinZoomSmoothnessTests).
+    /// 호출자는 핀 확대/축소와 토스트 배치다.
+    /// </summary>
+    public static void MoveResizePhysical(nint hwnd, PhysicalRect bounds)
+    {
+        NativeMethods.SetWindowPos(
+            hwnd, 0, bounds.X, bounds.Y, bounds.Width, bounds.Height,
+            NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+    }
+
+    /// <summary>
     /// 창이 지정 앵커(예: 툴바) 위로 절대 올라가지 못하게 고정한다 — <b>요청 단계</b> 방어.
     /// 클릭/표시/재배치/활성화로 OS가 창을 밴드 최상단으로 올리려는 순간 WM_WINDOWPOSCHANGING에서 삽입 위치를
     /// 앵커 바로 아래로 돌린다. "올리려는 요청"의 판정은 <see cref="AnchorBelowRules.IsRise"/>가 소유한다 —

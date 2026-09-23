@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using SSPen.Interop;
 
 namespace SSPen.Pin;
@@ -10,19 +11,18 @@ namespace SSPen.Pin;
 /// <summary>
 /// 핀 고정 윈도우 (WI-13, AC-14..18): 캡처 이미지를 캡처 위치에 최상위로 띄우는 뷰어.
 /// 휠=확대/축소, 드래그=이동, Ctrl+휠=투명도, Ctrl+가운데 버튼=클릭 통과 토글, Esc/더블클릭=닫기.
+/// 확대/축소의 적용 흐름은 <see cref="PinZoomController"/>가 갖는다 — 물리 픽셀, 한 번의 SetWindowPos, 버스트 병합 (82단계).
 /// 복수 핀 허용. 핀 귀속 판서는 Non-Goal 2. z-밴드에서 핀은 툴바 바로 아래, 판서 서피스(보드 포함) 위다 (71단계 사용자 결정) —
 /// 판서 모드에서도 통과가 아닌 핀은 자기 영역의 클릭(드래그·휠)을 받고 핀 영역의 잉크는 핀에 가려진다.
 /// 통과 핀(Ctrl+가운데 버튼)은 입력을 아래 서피스로 흘린다.
 /// </summary>
 public sealed class PinWindow : Window, IClickThroughPin
 {
-    private readonly double _baseWidth;
-    private readonly double _baseHeight;
+    private readonly PinZoomController _zoom;
     private readonly Func<nint> _zAnchor;
     private readonly Func<bool> _controlDown; // Ctrl 판정 (D3) — PinManager가 복귀 훅과 같은 KeyboardState 썽크를 준다 (81단계).
     private System.Windows.Interop.HwndSourceHook? _zHook; // GC 고정 (요청 단계: AnchorBelow)
     private System.Windows.Interop.HwndSourceHook? _zKeepBelowHook; // GC 고정 (결과 단계: KeepBelow, 54단계 L2)
-    private double _scale = 1.0;
     private double _opacityBeforeClickThrough = 1.0;
     private bool _closing;
     private readonly FrameworkElement _chrome;
@@ -37,10 +37,19 @@ public sealed class PinWindow : Window, IClickThroughPin
 
     public PinWindow(BitmapSource image, PhysicalRect region, Func<nint> zAnchor, Func<bool> controlDown)
     {
-        _baseWidth = Math.Max(region.Width, 8);
-        _baseHeight = Math.Max(region.Height, 8);
         _zAnchor = zAnchor;
         _controlDown = controlDown;
+        _zoom = new PinZoomController(
+            region,
+            windowRect: () => Hwnd == 0 ? null : PhysicalBounds(),
+            cursor: () => NativeMethods.GetCursorPos(out var c) ? (c.X, c.Y) : null,
+            moveResize: bounds => WindowStyling.MoveResizePhysical(Hwnd, bounds),
+            // Input 우선순위 = 디스패처가 "Win32 큐에 입력·게시 메시지가 남아 있으면 기다리는" 대역(Background..Input)의 맨 위다.
+            // 그래서 빠르게 굴린 휠 여러 칸이 먼저 모두 처리된 뒤 한 번만 적용된다. Loaded 이상(전경 대역)으로 올리면
+            // 게시 메시지로 곧바로 끼어들어 칸마다 적용되어 병합이 깨진다. 그 대역 안에서는 가장 높은 값이라, 입력이 비는 즉시
+            // Background 이하의 다른 작업보다 먼저 돈다 (Dispatcher.RequestBackgroundProcessing/IsInputPending — 82단계 소스 판독).
+            postCoalesced: apply => Dispatcher.BeginInvoke(DispatcherPriority.Input, apply),
+            applied: RefreshChrome);
 
         Title = "SS Pen Pin";
         WindowStyle = WindowStyle.None;
@@ -54,13 +63,13 @@ public sealed class PinWindow : Window, IClickThroughPin
 
         Left = region.X;
         Top = region.Y;
-        Width = _baseWidth;
-        Height = _baseHeight;
+        Width = _zoom.BaseWidth;
+        Height = _zoom.BaseHeight;
 
         // 크롬은 **이 창 안의 오버레이**다 — 별도 HWND가 아니다.
         // PinClickThroughMonitor는 GetWindowRect(Hwnd)로 되찾기 히트테스트를 하므로, 팝업 창을 쓰면
         // 눈에는 핀 위인데 복구 사각형 밖인 픽셀 띠가 생긴다. BorderThickness도 1로 유지한다 —
-        // 늘리면 이미지가 리플로우되어 PhysicalBounds가 _baseWidth/_baseHeight와 어긋난다.
+        // 늘리면 이미지가 리플로우되어 PhysicalBounds가 배율 1.0의 기준 크기(_zoom.BaseWidth/BaseHeight)와 어긋난다.
         _chrome = BuildChrome();
         _clickThroughBadge = BuildClickThroughBadge();
         var layers = new Grid();
@@ -153,23 +162,18 @@ public sealed class PinWindow : Window, IClickThroughPin
 
     private void RefreshChrome()
     {
-        var state = PinChromeRules.Resolve(IsMouseOver, IsClickThrough, _scale, Width, Height);
+        // Width/Height는 WPF가 MoveResizePhysical의 WM_SIZE로 맞춘 값이다 (82단계 실측, PinZoomSmoothnessTests).
+        var state = PinChromeRules.Resolve(IsMouseOver, IsClickThrough, _zoom.Scale, Width, Height);
         _chrome.Visibility = state.ShowChrome ? Visibility.Visible : Visibility.Collapsed;
         _clickThroughBadge.Visibility = state.ShowClickThroughBadge ? Visibility.Visible : Visibility.Collapsed;
         _zoomLabel.Text = state.ZoomPercent;
     }
 
-    /// <summary>원래 크기(100%)로 되돌린다 — 배율이 얼마인지도, 되돌리는 법도 화면에 없던 기능이다.</summary>
-    private void ResetZoom()
-    {
-        var zoom = PinZoom.ResetToOriginal(_scale, Left, Top, _baseWidth, _baseHeight);
-        _scale = zoom.Scale;
-        Left = zoom.Left;
-        Top = zoom.Top;
-        Width = zoom.Width;
-        Height = zoom.Height;
-        RefreshChrome();
-    }
+    /// <summary>
+    /// 원래 크기(100%)로 되돌린다 — 배율이 얼마인지도, 되돌리는 법도 화면에 없던 기능이다.
+    /// 휠과 같은 적용 경로(중심 고정, 물리 기준 크기, 한 번의 SetWindowPos)를 탄다 (82단계).
+    /// </summary>
+    internal void ResetZoom() => _zoom.Reset();
 
     private static readonly Brush ChromeBackground =
         Shell.ToolbarTheme.Freeze(new SolidColorBrush(Color.FromArgb(0xCC, 0x1F, 0x1F, 0x1F)));
@@ -272,17 +276,9 @@ public sealed class PinWindow : Window, IClickThroughPin
         }
         else
         {
-            // 휠 = 확대/축소. 커서 아래 지점을 고정해 그림이 커서에서 달아나지 않게 한다
-            // (사용자 요청 15차). 수학은 PinZoom이 소유한다.
-            var cursor = e.GetPosition(this);
-            var zoom = PinZoom.ZoomAtCursor(
-                _scale, e.Delta, Left, Top, _baseWidth, _baseHeight, cursor.X, cursor.Y);
-            _scale = zoom.Scale;
-            Left = zoom.Left;
-            Top = zoom.Top;
-            Width = zoom.Width;
-            Height = zoom.Height;
-            RefreshChrome();
+            // 휠 = 확대/축소. 커서 아래 지점을 고정해 그림이 커서에서 달아나지 않게 한다 (사용자 요청 15차).
+            // 물리 픽셀 계산·병합·한 번의 적용은 PinZoomController가 한다 (82단계) — Left/Top/Width/Height를 여기서 대입하지 않는다.
+            _zoom.Wheel(e.Delta);
         }
         e.Handled = true;
     }

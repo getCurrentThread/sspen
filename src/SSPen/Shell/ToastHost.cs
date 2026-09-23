@@ -105,7 +105,7 @@ public sealed class ToastHost
 
     /// <summary>
     /// 커서가 있는 화면의 작업 영역 하단 중앙 (배치 산술은 <see cref="ToastPlacement"/>).
-    /// <c>Window.Left/Top</c>(DIP) 대신 물리 픽셀 <c>SetWindowPos</c>를 쓰는 이유: 혼합 DPI에서
+    /// <c>Window.Left/Top</c>(DIP) 대신 물리 픽셀 <c>SetWindowPos</c>(<see cref="WindowStyling.MoveResizePhysical"/>)를 쓰는 이유: 혼합 DPI에서
     /// DIP 대입은 배율이 섞인 값을 낳는다 (툴바 초기 배치가 같은 이유로 화면 밖으로 나갔다).
     /// </summary>
     private void Place()
@@ -125,9 +125,7 @@ public sealed class ToastHost
             var monitor = ToastPlacement.MonitorFor(monitors, cursorX, cursorY);
             var (width, height) = _window.PhysicalSize();
             var (x, y) = ToastPlacement.Anchor(monitor.WorkArea, width, height, _window.PhysicalBottomMargin());
-            NativeMethods.SetWindowPos(
-                _window.Hwnd, 0, x, y, width, height,
-                NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_NOZORDER);
+            WindowStyling.MoveResizePhysical(_window.Hwnd, new PhysicalRect(x, y, width, height));
         }
         catch (Exception ex)
         {

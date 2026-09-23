@@ -113,7 +113,7 @@ public sealed class ToastWindow : Window
 
     /// <summary>
     /// 한 틱의 판정을 화면에 바른다. 배치는 호스트(<c>ToastHost.Place</c>)가 <c>SWP_NOZORDER|SWP_NOACTIVATE</c>
-    /// <c>SetWindowPos</c>로 따로 하며 z-순서는 건드리지 않는다 (65단계, A7-8). <see cref="WindowStyling.PlacePhysical"/>은
+    /// <c>SetWindowPos</c>(<see cref="WindowStyling.MoveResizePhysical"/>, 82단계)로 따로 하며 z-순서는 건드리지 않는다 (65단계, A7-8). <see cref="WindowStyling.PlacePhysical"/>은
     /// <c>HWND_TOPMOST</c> 삽입이라 여기에 쓰면 안 된다 — 형제 삽입은 <c>ApplyZBand</c>만 한다 (AGENTS L15).
     /// </summary>
     public void Render(ToastStep step)

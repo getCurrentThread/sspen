@@ -4,8 +4,8 @@ namespace SSPen.IntegrationTests;
 
 /// <summary>
 /// 통합 테스트 전용 Win32 프로브. 앱의 <c>NativeMethods</c>는 internal이지만 InternalsVisibleTo로 보인다 —
-/// 그래도 교란 주입(SetWindowPos/SetForegroundWindow)과 z-순서·창 리드백(GetWindow/GetDesktopWindow/IsWindowVisible/
-/// FindWindow/GetWindowRect)은 여기서 따로 선언한다:
+/// 그래도 교란 주입(SetWindowPos/SetForegroundWindow, 82단계부터 SetCursorPos/PostMessage)과 z-순서·창·커서 리드백
+/// (GetWindow/GetDesktopWindow/IsWindowVisible/FindWindow/GetWindowRect/GetCursorPos)은 여기서 따로 선언한다:
 /// 앱 P/Invoke 표면을 테스트 편의로 늘리지 않고, 프로브가 앱과 같은 바인딩을 공유해 서로의 오류를 가리지 않게 하기 위해서다.
 /// 테스트 파일에 extern을 다시 적지 말고 여기에 모은다 (61단계, A8-7) — 한 파일만 쓰는 선언은 그 파일에 남아도 된다(19단계 승격 규칙).
 ///
@@ -32,6 +32,23 @@ internal static class NativeMethodsProbe
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetWindowRect(nint hWnd, out ProbeRect lpRect);
+
+    /// <summary>커서를 물리 화면 좌표로 옮긴다 — 핀 휠 확대의 고정점 실측용 (82단계).</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetCursorPos(out ProbePoint lpPoint);
+
+    /// <summary>
+    /// 창 메시지 큐에 넣는다 — WPF가 실제 입력을 받는 경로(HwndSource 창 프로시저 → 입력 공급자)를 그대로 탄다.
+    /// 전역 <c>SendInput</c>과 달리 커서 아래 다른 앱으로 새지 않는다.
+    /// </summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool PostMessage(nint hWnd, int msg, nint wParam, nint lParam);
 
     [DllImport("user32.dll")]
     private static extern nint GetDesktopWindow();
@@ -60,6 +77,14 @@ internal static class NativeMethodsProbe
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    /// <summary><c>GetCursorPos</c>의 결과 점 (물리 픽셀, Win32 POINT 배치).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ProbePoint
+    {
+        public int X;
+        public int Y;
     }
 
     /// <summary>
