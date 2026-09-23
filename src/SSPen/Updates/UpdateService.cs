@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Reflection;
 using System.Windows.Threading;
+using SSPen.Diagnostics;
 
 namespace SSPen.Updates;
 
@@ -12,17 +13,32 @@ namespace SSPen.Updates;
 public sealed class UpdateService
 {
     private const string DefaultApiUrl = "https://api.github.com/repos/getCurrentThread/sspen/releases/latest";
+
+    /// <summary>릴리스 목록 웹 페이지 — 릴리스에 <c>html_url</c>이 없을 때 대화상자가 여는 폴백 (77단계, A9-7 (d): 슬러그를 한 파일에 둔다).</summary>
+    public const string ReleasesPageUrl = "https://github.com/getCurrentThread/sspen/releases";
+
     private readonly Dispatcher _dispatcher;
     private readonly Action _exitApp;
     private readonly string _apiUrl;
     private readonly HttpClient _httpClient;
+    private readonly Action<string> _launchInstaller;
 
-    public UpdateService(Dispatcher dispatcher, Action exitApp, string apiUrl = DefaultApiUrl, HttpClient? httpClient = null)
+    /// <param name="launchInstaller">
+    /// 다운로드를 마친 설치 파일 경로를 받아 실행하는 이음매 (77단계, A1-8). null이면 <see cref="LaunchSilentInstallerAndExit"/>
+    /// (프로덕션 — AppController는 넘기지 않는다). 테스트는 경로를 기록만 하는 람다를 넣어 cmd.exe 실행과 앱 종료 없이 다운로드 경로를 검증한다.
+    /// </param>
+    public UpdateService(
+        Dispatcher dispatcher,
+        Action exitApp,
+        string apiUrl = DefaultApiUrl,
+        HttpClient? httpClient = null,
+        Action<string>? launchInstaller = null)
     {
         _dispatcher = dispatcher;
         _exitApp = exitApp;
         _apiUrl = apiUrl;
         _httpClient = httpClient ?? CreateDefaultHttpClient();
+        _launchInstaller = launchInstaller ?? LaunchSilentInstallerAndExit;
     }
 
     /// <summary>
@@ -72,6 +88,9 @@ public sealed class UpdateService
 
     /// <summary>
     /// 최신 설치 프로그램을 백그라운드에서 다운로드하고, 완료 시 무음 설치를 실행한 후 앱을 재시작한다.
+    /// 다운로드도 확인 경로처럼 동기 <see cref="HttpClient.Send(HttpRequestMessage, HttpCompletionOption)"/>를 스레드풀에서 쓴다 —
+    /// Task API를 GetResult로 막던 예전 호출을 걷어 냈다 (77단계, A1-8 — 업데이트 계층도 no-async 규칙).
+    /// 디스패처 순서는 진행률 → <c>onCompleted(null)</c> → 설치 실행 이음매다.
     /// </summary>
     public void DownloadAndInstallSilently(
         UpdateReleaseInfo info,
@@ -92,7 +111,8 @@ public sealed class UpdateService
                 Directory.CreateDirectory(tempDir);
                 var installerPath = Path.Combine(tempDir, $"SSPen-Setup-{info.TagName}.exe");
 
-                using (var response = _httpClient.GetAsync(info.InstallerDownloadUrl, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult())
+                using var request = new HttpRequestMessage(HttpMethod.Get, info.InstallerDownloadUrl);
+                using (var response = _httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead))
                 {
                     response.EnsureSuccessStatusCode();
                     var totalBytes = response.Content.Headers.ContentLength ?? -1L;
@@ -119,7 +139,7 @@ public sealed class UpdateService
                 _dispatcher.BeginInvoke(() =>
                 {
                     onCompleted(null);
-                    LaunchSilentInstallerAndExit(installerPath);
+                    _launchInstaller(installerPath);
                 });
             }
             catch (Exception ex)
@@ -131,6 +151,9 @@ public sealed class UpdateService
 
     /// <summary>
     /// Inno Setup 설치 프로그램을 무음 모드로 실행하고, 완료 후 새 버전의 앱을 재시작하도록 체이닝한 뒤 현재 앱을 종료한다.
+    /// 명령줄은 <see cref="UpdateInstallPlan.CommandLine"/>이 만든다. 실행 직전에 그 명령을 로그로 남기고, 실행 실패는 좁은 필터
+    /// (<see cref="UpdateInstallPlan.IsLaunchFailure"/>)로 잡아 로그를 남긴다 — 무음 설치 실패가 로그에 흔적 없이 앱만 사라지던 것을
+    /// 고친다 (77단계, A1-8). 실패해도 앱을 종료하는 것은 예전 그대로다.
     /// </summary>
     public void LaunchSilentInstallerAndExit(string installerPath)
     {
@@ -142,15 +165,8 @@ public sealed class UpdateService
                 currentExe = Assembly.GetEntryAssembly()?.Location ?? Path.Combine(AppContext.BaseDirectory, "SSPen.exe");
             }
 
-            // Inno Setup 스위치:
-            // /VERYSILENT : 진행 대화상자 없이 완전 백그라운드 설치
-            // /SUPPRESSMSGBOXES : 메시지 박스 억제
-            // /NORESTART : 시스템 재부팅 억제
-            // /CLOSEAPPLICATIONS : 충돌 프로그램 자동 닫기 시도
-            // /FORCECLOSEAPPLICATIONS : 강제 닫기
-            //
-            // 체이닝: start /wait 로 설치 완료를 기다린 후, 설치된 새 버전의 실행 파일을 시작
-            var cmdArgs = $"/c \"start /wait \"\" \"{installerPath}\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS & start \"\" \"{currentExe}\"\"";
+            // Inno Setup 스위치와 체이닝(start /wait … & start 새 exe)의 설명은 UpdateInstallPlan.CommandLine에 있다.
+            var cmdArgs = UpdateInstallPlan.CommandLine(installerPath, currentExe);
 
             var startInfo = new ProcessStartInfo
             {
@@ -160,18 +176,21 @@ public sealed class UpdateService
                 UseShellExecute = false,
             };
 
+            Log.Info($"무음 설치 체인 실행: cmd.exe {cmdArgs}");
             Process.Start(startInfo);
         }
-        catch
+        catch (Exception ex) when (UpdateInstallPlan.IsLaunchFailure(ex))
         {
             // 프로세스 시작 실패 시 일반 실행 시도
+            Log.Warn($"무음 설치 실행 실패, 일반 실행 재시도: {ex.Message}");
             try
             {
                 Process.Start(new ProcessStartInfo(installerPath) { UseShellExecute = true });
             }
-            catch
+            catch (Exception retryEx) when (UpdateInstallPlan.IsLaunchFailure(retryEx))
             {
-                // 실패 시 무시
+                // 실패해도 아래에서 앱은 종료한다 (예전 동작 그대로) — 로그만 남긴다.
+                Log.Warn($"설치 프로그램 실행 실패: {retryEx.Message}");
             }
         }
 

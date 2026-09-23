@@ -144,6 +144,17 @@ public static class Strings
     public const string UpdateLatestAlready = "현재 최신 버전을 사용 중입니다.";
     public const string TrayCheckUpdate = "업데이트 확인";
 
+    // 업데이트 대화상자의 문장 조립 (77단계, C-5 — 창 안의 인라인 보간을 옮겼다. 바이트 동일).
+    /// <summary>"현재 버전: v1.3.6   →   최신 버전: v1.3.7" — 현재는 <see cref="Version"/>에 'v'를 붙이고, 최신은 태그 그대로다.</summary>
+    public static string UpdateVersionLine(Version current, string latestTag) =>
+        $"{UpdateCurrentVersionLabel} v{current}   →   {UpdateLatestVersionLabel} {latestTag}";
+
+    /// <summary>"업데이트 다운로드 중... (42%)". 백분율의 버림 판정은 <see cref="UpdateProgressText"/>가 한다.</summary>
+    public static string UpdateDownloadingPercent(int percent) => $"{UpdateDownloading} ({percent}%)";
+
+    /// <summary>다운로드·설치 실패 상자 본문: <see cref="UpdateFailedMessage"/>(끝이 "오류: ") 뒤에 원인을 잇는다.</summary>
+    public static string UpdateFailedDetail(string reason) => $"{UpdateFailedMessage}{reason}";
+
     // 캡처 결과 알림 (토스트). 이전에는 저장·복사 성공이 전부 침묵이었고 실패는 일반 치명적 대화상자로 샜다.
     public const string CaptureSaved = "캡처를 저장했습니다";
     public const string CaptureSaveFailed = "캡처를 저장하지 못했습니다. 저장 폴더의 권한과 남은 공간을 확인하세요.";

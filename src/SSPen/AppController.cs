@@ -31,6 +31,7 @@ public sealed class AppController : IShellActions, ISettingsHost
     private readonly SettingsBinder _settingsBinder;
     private readonly CaptureSessionController _capture;
     private readonly UpdateService _updateService;
+    private readonly UpdateCheckFlow _updateFlow;
     private ShellHotkeys? _shellHotkeys;
     private ToolbarWindow? _toolbar;
     private HotkeyService? _hotkeys;
@@ -96,6 +97,20 @@ public sealed class AppController : IShellActions, ISettingsHost
             ownerOf: element => _surfaces.FirstOrDefault(s => s.Document.Elements.Contains(element)));
         _settingsBinder = new SettingsBinder(_state, _fading, settingsService);
         _updateService = new UpdateService(_dispatcher, ExitApp);
+        // 업데이트 확인 흐름 (77단계, A1-2): 로그 수준·문구 폴백·판정별 표시는 UpdateCheckFlow가, 안내 상자 owner는
+        // DialogOwnerRules가 소유한다 — 루트는 창을 만들고 띄우는 어댑터만 넘긴다.
+        _updateFlow = new UpdateCheckFlow(
+            check: _updateService.CheckForUpdates,
+            current: () => UpdateService.CurrentVersion,
+            logInfo: Log.Info,
+            logWarn: Log.Warn,
+            showRelease: info =>
+            {
+                var dialog = new UpdateDialog(info, _updateService);
+                dialog.Show();
+                dialog.Activate();
+            },
+            showMessage: ShowUpdateMessage);
         // z-밴드 검증기 (72단계): 생성은 OS를 건드리지 않는다 — 훅 설치는 Start의 Install이다. BandOrder는 호출 시점에
         // 토스트·설정창·캡처·툴바·핀·서피스를 읽는 지연 조회라 아직 없는 창(0)은 Build가 건너뛴다.
         // 게시 우선순위는 Background를 명시한다 (AGENTS L14 — 입력·렌더보다 뒤).
@@ -356,60 +371,20 @@ public sealed class AppController : IShellActions, ISettingsHost
 
     public void CheckForUpdates() => CheckForUpdates(isManual: true);
 
-    /// <summary>표시 판정은 <see cref="UpdateCheckPresentation"/>이 소유한다 (35단계) — 여기는 결과별 UI 호출뿐이다.</summary>
-    private void CheckForUpdates(bool isManual)
-    {
-        var current = UpdateService.CurrentVersion;
-        Log.Info($"업데이트 확인 시작 (현재 {current}, {(isManual ? "수동" : "자동")})");
-        _updateService.CheckForUpdates(result =>
-        {
-            // 결과는 화면 판정과 무관하게 항상 남긴다 — 자동+최신은 Silent라 이 줄이 유일한 흔적이다.
-            var summary = UpdateCheckPresentation.Describe(result, current);
-            if (result.Success)
-            {
-                Log.Info(summary);
-            }
-            else
-            {
-                Log.Warn(summary);
-            }
-
-            switch (UpdateCheckPresentation.Decide(result, isManual))
-            {
-                case UpdateCheckOutcome.ShowDialog:
-                    var dialog = new UpdateDialog(result.ReleaseInfo!, _updateService);
-                    dialog.Show();
-                    dialog.Activate();
-                    break;
-
-                case UpdateCheckOutcome.ShowErrorDialog:
-                    ShowUpdateMessage(result.ErrorMessage ?? Strings.UpdateFailedTitle, MessageBoxImage.Warning);
-                    break;
-
-                case UpdateCheckOutcome.ShowUpToDate:
-                    ShowUpdateMessage(Strings.UpdateLatestAlready, MessageBoxImage.Information);
-                    break;
-
-                case UpdateCheckOutcome.LogError: // 위에서 이미 로그를 남겼다.
-                case UpdateCheckOutcome.Silent:
-                    break;
-            }
-        });
-    }
+    /// <summary>
+    /// 흐름(시작 로그 → 확인 → 요약 로그 → 판정별 표시)은 <see cref="UpdateCheckFlow"/>가, 표시 판정은
+    /// <see cref="UpdateCheckPresentation"/>이 소유한다 (35단계 → 77단계, A1-2).
+    /// </summary>
+    private void CheckForUpdates(bool isManual) => _updateFlow.Run(isManual);
 
     /// <summary>
     /// 수동 확인 안내창. 앱 창은 전부 Topmost라 owner 없는 MessageBox는 그 밑으로 숨어 설정창의 "지금 확인"이 먹통처럼
     /// 보인다 — 설정창(없으면 보이는 툴바)을 owner로 물려 같은 최상단 층에 올린다 (UpdateDialog의 실패 상자와 같은 방식).
-    /// 숨겨진 툴바는 owner로 못 쓴다.
+    /// 숨겨진 툴바는 owner로 못 쓴다 — 그 판정은 <see cref="DialogOwnerRules"/>다 (77단계, A1-2).
     /// </summary>
     private void ShowUpdateMessage(string text, MessageBoxImage image)
     {
-        Window? owner = _settingsWindow;
-        if (owner is null && _toolbar is { IsVisible: true })
-        {
-            owner = _toolbar;
-        }
-
+        var owner = DialogOwnerWindow();
         if (owner is null)
         {
             MessageBox.Show(text, Strings.AppName, MessageBoxButton.OK, image);
@@ -419,6 +394,15 @@ public sealed class AppController : IShellActions, ISettingsHost
             MessageBox.Show(owner, text, Strings.AppName, MessageBoxButton.OK, image);
         }
     }
+
+    /// <summary><see cref="DialogOwnerRules.Choose"/>의 판정을 실제 창으로 옮긴다 — 설정창 &gt; 보이는 툴바 &gt; 없음 (77단계, A1-2).</summary>
+    private Window? DialogOwnerWindow() =>
+        DialogOwnerRules.Choose(_settingsWindow is not null, _toolbar is { IsVisible: true }) switch
+        {
+            DialogOwner.Settings => _settingsWindow,
+            DialogOwner.Toolbar => _toolbar,
+            _ => null,
+        };
 
     public void ApplyGeneralSettings(AppSettings updated)
     {

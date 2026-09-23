@@ -2,12 +2,14 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using SSPen.Diagnostics;
 using SSPen.Updates;
 
 namespace SSPen.Shell;
 
 /// <summary>
-/// 새 버전 알림 및 무음 자동 업데이트 진행 대화상자.
+/// 새 버전 알림 및 무음 자동 업데이트 진행 대화상자. 보이는 문장은 <see cref="Strings"/>가, 진행 표시 판정은
+/// <see cref="UpdateProgressText"/>가 소유한다 (77단계, C-5) — 창은 조립하지 않고 대입만 한다.
 /// </summary>
 public sealed class UpdateDialog : Window
 {
@@ -57,7 +59,7 @@ public sealed class UpdateDialog : Window
         var versionPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
         var verText = new TextBlock
         {
-            Text = $"{Strings.UpdateCurrentVersionLabel} v{curVer}   →   {Strings.UpdateLatestVersionLabel} {info.TagName}",
+            Text = Strings.UpdateVersionLine(curVer, info.TagName),
             FontSize = 13,
             FontWeight = FontWeights.SemiBold,
             Foreground = new SolidColorBrush(Color.FromRgb(0, 102, 204)),
@@ -173,11 +175,7 @@ public sealed class UpdateDialog : Window
                 onProgress: p =>
                 {
                     _progressBar.Value = p * 100.0;
-                    _statusText.Text = $"{Strings.UpdateDownloading} ({(int)(p * 100)}%)";
-                    if (p >= 1.0)
-                    {
-                        _statusText.Text = Strings.UpdateInstalling;
-                    }
+                    _statusText.Text = UpdateProgressText.For(p);
                 },
                 onCompleted: ex =>
                 {
@@ -190,7 +188,7 @@ public sealed class UpdateDialog : Window
 
                         var res = MessageBox.Show(
                             this,
-                            $"{Strings.UpdateFailedMessage}{ex.Message}",
+                            Strings.UpdateFailedDetail(ex.Message),
                             Strings.UpdateFailedTitle,
                             MessageBoxButton.YesNo,
                             MessageBoxImage.Error);
@@ -223,14 +221,15 @@ public sealed class UpdateDialog : Window
         try
         {
             var url = string.IsNullOrEmpty(_info.HtmlUrl)
-                ? "https://github.com/getCurrentThread/sspen/releases"
+                ? UpdateService.ReleasesPageUrl
                 : _info.HtmlUrl;
 
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
         }
-        catch
+        catch (Exception ex) when (UpdateInstallPlan.IsLaunchFailure(ex))
         {
-            // 브라우저 실행 실패 무시
+            // 브라우저 실행 실패는 무시하되 로그는 남긴다 (77단계, A1-8).
+            Log.Warn($"릴리스 페이지 열기 실패: {ex.Message}");
         }
     }
 }
