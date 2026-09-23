@@ -397,8 +397,8 @@ public sealed class AppController : IShellActions, ISettingsHost
 
     /// <summary>
     /// 합성 루트가 띄우는 안내·확인 상자의 유일한 표시 지점(설정창·UpdateDialog 안의 상자는 그 창이 직접 띄운다). 앱 창은 전부 Topmost라 owner 없는 MessageBox는 그 밑으로 숨어 먹통처럼
-    /// 보인다 — 설정창(없으면 보이는 툴바)을 owner로 물려 같은 최상단 층에 올린다 (UpdateDialog의 실패 상자와 같은 방식).
-    /// 숨겨진 툴바는 owner로 못 쓴다 — 그 판정은 <see cref="DialogOwnerRules"/>다 (77단계, A1-2).
+    /// 보인다 — 설정창(없으면 툴바)을 owner로 물려 같은 최상단 층에 올린다 (UpdateDialog의 실패 상자와 같은 방식).
+    /// 숨겨진 툴바도 HWND가 있으면 owner다 — 판정과 z-밴드 근거는 <see cref="DialogOwnerRules"/>다 (77단계, A1-2 → 99단계).
     /// 업데이트 안내와 전체 지우기 확인이 이 분기 하나를 쓴다 (85단계, A1-4). owner가 없으면 예전과 똑같이 뜬다.
     /// </summary>
     private MessageBoxResult ShowShellMessage(string text, string title, MessageBoxButton buttons, MessageBoxImage image)
@@ -409,14 +409,26 @@ public sealed class AppController : IShellActions, ISettingsHost
             : MessageBox.Show(owner, text, title, buttons, image);
     }
 
-    /// <summary><see cref="DialogOwnerRules.Choose"/>의 판정을 실제 창으로 옮긴다 — 설정창 &gt; 보이는 툴바 &gt; 없음 (77단계, A1-2).</summary>
-    private Window? DialogOwnerWindow() =>
-        DialogOwnerRules.Choose(_settingsWindow is not null, _toolbar is { IsVisible: true }) switch
+    /// <summary>
+    /// <see cref="DialogOwnerRules.Choose"/>의 판정을 실제 창으로 옮긴다 — 설정창 &gt; 툴바(보이든 숨겨졌든) &gt; 없음 (77단계, A1-2 → 99단계).
+    /// 툴바 상태는 HWND로 가른다: WPF MessageBox는 owner의 HWND를 Win32 MessageBox에 넘기고, 그 값이 0이면 활성 창으로
+    /// 대신하는데 핫키 경로에는 활성 창이 없다 — HWND 없는 툴바는 owner가 될 수 없다.
+    /// </summary>
+    private Window? DialogOwnerWindow()
+    {
+        var toolbar = _toolbar switch
+        {
+            null or { Hwnd: 0 } => ToolbarPresence.Absent,
+            { IsVisible: true } => ToolbarPresence.Visible,
+            _ => ToolbarPresence.Hidden,
+        };
+        return DialogOwnerRules.Choose(_settingsWindow is not null, toolbar) switch
         {
             DialogOwner.Settings => _settingsWindow,
             DialogOwner.Toolbar => _toolbar,
             _ => null,
         };
+    }
 
     public void ApplyGeneralSettings(AppSettings updated)
     {
@@ -557,7 +569,8 @@ public sealed class AppController : IShellActions, ISettingsHost
     /// 마찰·알림 판정은 <see cref="DestructiveActionRules"/>가 소유하고 여기는 대화상자·알림 실행만 한다:
     /// 판서는 실행취소 1회로 돌아오지만 함께 닫히는 핀은 원장 밖이라 되돌릴 수 없다.
     /// 확인 상자는 <see cref="ShowShellMessage"/>로 띄운다 — 핫키 경로에는 활성 창이 없어 owner 없는 상자가 톱모스트
-    /// 서피스 밑에 숨고, 펜 도구가 켜져 있으면 보이는데도 클릭을 서피스가 삼킨다 (85단계, A1-4).
+    /// 서피스 밑에 숨고, 펜 도구가 켜져 있으면 보이는데도 클릭을 서피스가 삼킨다 (85단계, A1-4). 툴바를 숨긴 상태도
+    /// 숨긴 툴바를 owner로 써서 막는다 — 85단계는 이 경우에 owner가 없어 결함이 그대로 남아 있었다 (99단계).
     /// </summary>
     public void ClearAll()
     {
