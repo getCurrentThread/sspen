@@ -6,6 +6,7 @@ using SSPen.Annotation;
 using Xunit;
 
 using static SSPen.Tests.StaThread;
+using static SSPen.Tests.TestGeometry;
 namespace SSPen.Tests;
 
 /// <summary>
@@ -25,9 +26,6 @@ public class SurfaceCancelOrderTests
 {
     private const double SurfaceWidth = 1920;
     private const double SurfaceHeight = 1080;
-
-    private static StrokeElement Stroke(double x, double y, double w, double h) =>
-        new([new Point(x, y), new Point(x + w, y + h)], Colors.Red, 2, isHighlighter: false);
 
     // ---- 텍스트만 폐기가 아니라 커밋이다 (ARCH-2) ----
 

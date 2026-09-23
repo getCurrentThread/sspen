@@ -3,6 +3,8 @@ using System.Windows.Media;
 using SSPen.Annotation;
 using Xunit;
 
+using static SSPen.Tests.TestGeometry;
+
 namespace SSPen.Tests;
 
 /// <summary>
@@ -12,9 +14,6 @@ namespace SSPen.Tests;
 /// </summary>
 public class UndoLedgerTests
 {
-    private static StrokeElement NewStroke() =>
-        new([new Point(0, 0), new Point(10, 10)], Colors.Black, 3, isHighlighter: false);
-
     private sealed record Rig(
         UndoLedger Ledger,
         SelectionModel Selection,

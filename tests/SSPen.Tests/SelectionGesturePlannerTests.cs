@@ -4,6 +4,8 @@ using System.Windows.Media;
 using SSPen.Annotation;
 using Xunit;
 
+using static SSPen.Tests.TestGeometry;
+
 namespace SSPen.Tests;
 
 /// <summary>
@@ -17,9 +19,6 @@ namespace SSPen.Tests;
 public class SelectionGesturePlannerTests
 {
     private static readonly Rect Surface = new(0, 0, 1920, 1080);
-
-    private static StrokeElement Stroke(double x, double y, double w, double h) =>
-        new([new Point(x, y), new Point(x + w, y + h)], Colors.Red, 2, isHighlighter: false);
 
     /// <summary>선택집합 대역: 참조 동일성으로만 판정한다 (<c>SelectionModel.Contains</c>와 같은 의미).</summary>
     private static Func<AnnotationElement, bool> SelectedAmong(params AnnotationElement[] selected) =>

@@ -4,30 +4,13 @@ using Xunit;
 namespace SSPen.Tests;
 
 /// <summary>
-/// <see cref="ZOrderInvariant"/> (54단계 L2/L3). z-순서를 위→아래 배열로 흉내 내고 이웃 조회 두 방향을 그 배열에서 만든다.
+/// <see cref="ZOrderInvariant"/> (54단계 L2/L3). z-순서를 위→아래 배열로 흉내 내고 이웃 조회 두 방향을 그 배열에서 만든다
+/// (공용 <see cref="FakeZOrder"/> — 이 파일의 private 사본이었던 것을 58단계 A8-5에서 TestSupport로 올렸다).
 /// 잠그는 것: 직하가 아니어도 아래면 참, 위면 거짓, 목록에 없으면 거짓, 0/자기 자신은 거짓, 순서 검사는 사이에 낀 남의 창을 허용하고
 /// 0 항목을 건너뛰며, 항목이 하나 이하면 참, 워크는 상한에서 끝난다.
 /// </summary>
 public class ZOrderInvariantTests
 {
-    /// <summary>위→아래 배열 기반 가짜 z-순서.</summary>
-    private sealed class FakeZOrder(params nint[] topToBottom)
-    {
-        private readonly List<nint> _order = [.. topToBottom];
-
-        public nint Above(nint hwnd)
-        {
-            int i = _order.IndexOf(hwnd);
-            return i <= 0 ? 0 : _order[i - 1];
-        }
-
-        public nint Below(nint hwnd)
-        {
-            int i = _order.IndexOf(hwnd);
-            return i < 0 || i == _order.Count - 1 ? 0 : _order[i + 1];
-        }
-    }
-
     [Fact]
     public void IsBelow_AnchorDirectlyAbove_IsTrue()
     {

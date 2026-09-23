@@ -90,8 +90,11 @@ public sealed class FadingToggleTests
     [Fact]
     public void FadingToggle_RaisesChanged()
     {
-        // SettingsBinder가 Changed를 구독해 FadingInkController.Active를 갱신한다.
-        // 이벤트가 없으면 토글을 켜도 실제로 페이드가 예약되지 않는다.
+        // 페이딩 토글에 반응하는 Changed 구독자는 둘이다: RenderTickController.Refresh(AppController 배선)가
+        // FadingInk를 보고 프레임 틱을 붙이고, 툴바가 페이딩 버튼 눌림(ToolbarStateMap)을 다시 그린다.
+        // 이벤트가 없으면 토글을 켜도 틱이 붙지 않아 마감이 지난 요소가 사라지지 않고, 버튼도 꺼진 채로 보인다.
+        // 페이드 예약 여부 자체는 제스처 시작 스냅샷(GestureStyleSnapshot)이 상태를 직접 읽으므로 이 이벤트와 무관하다
+        // (SettingsBinder.SyncFromState도 구독하지만 FadingInk는 저장 항목이 아니다 — 57단계 C-1에서 Active 경로를 지웠다).
         var state = new AppState();
         int changes = 0;
         state.Changed += () => changes++;

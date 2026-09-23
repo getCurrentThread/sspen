@@ -23,35 +23,6 @@ namespace SSPen.Tests;
 /// </summary>
 public class ToolbarStripBuilderTests
 {
-    private sealed class FakeShellActions : IShellActions
-    {
-        public List<string> Calls { get; } = [];
-
-        public double FadingSeconds { get; private set; } = 1.0;
-
-        public void Undo() => Calls.Add("undo");
-
-        public void ClearAll() => Calls.Add("clear-all");
-
-        public void StartCapture() => Calls.Add("capture");
-
-        public void OpenSettings() => Calls.Add("settings");
-
-        public void HideToolbar() => Calls.Add("hide-toolbar");
-
-        public void RequestExit() => Calls.Add("request-exit");
-
-        public string? HotkeyLabel(string hotkeyId) => null;
-
-        public void SetFadingDuration(double seconds)
-        {
-            FadingSeconds = seconds;
-            Calls.Add($"fading:{seconds}");
-        }
-
-        public void ShowStatusReadout() => Calls.Add("status");
-    }
-
     private sealed record Strip(UIElement Host, ToolbarParts Parts, FakeShellActions Actions, AppState State, ToolbarFlyouts Flyouts);
 
     private static Strip BuildStrip()

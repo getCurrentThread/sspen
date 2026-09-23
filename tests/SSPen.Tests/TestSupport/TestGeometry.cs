@@ -17,6 +17,10 @@ namespace SSPen.Tests;
 /// 주의: 들여오는 파일이 같은 이름의 private 멤버를 두면 그쪽이 이 클래스의 오버로드 전체를 가린다
 /// (단순 이름 조회는 바깥 타입의 멤버를 먼저 찾고 using static은 그다음이다) — 그래서 승격하면서
 /// 원본 파일의 private 사본을 지웠다.
+/// 58단계(A8-5)에서 같은 규칙을 뒤늦게 적용했다 — 12개 파일에 흩어져 있던 private 획 팩토리 사본을 지웠다. 10개는 위
+/// 멤버와 글자까지 같았고, 두 파일(AnnotationVisualFactoryTests·SurfaceEntryPointTests)이 서로 같게 쓰던 <see cref="MakeStroke"/>는
+/// 새로 올렸다. 색·굵기·꼴이 다른 변종(HitTestTests·SelectionGeometryTests·WheelScaleControllerTests·
+/// SurfaceDecorationPlannerTests·SurfaceBoundsSeamTests)은 판정 입력이 달라 그 파일에 남긴다.
 /// </summary>
 internal static class TestGeometry
 {
@@ -34,6 +38,10 @@ internal static class TestGeometry
     /// </summary>
     public static StrokeElement NewStroke(params Point[] pts) =>
         new(pts, Colors.Black, thickness: 3, isHighlighter: false);
+
+    /// <summary>AnnotationVisualFactoryTests·SurfaceEntryPointTests 출신: 빨강 4px 두 점 획.</summary>
+    public static StrokeElement MakeStroke(Point a, Point b) =>
+        new([a, b], Colors.Red, thickness: 4, isHighlighter: false);
 
     /// <summary>TransformMathTests·SelectionRedTeamTests 출신: 핸들의 로컬 앵커 점을 상태 행렬로 월드에 올린다.</summary>
     public static Point AnchorWorld(ElementTransformState state, Rect bounds, HandleKind handle)

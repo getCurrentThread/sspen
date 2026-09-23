@@ -3,6 +3,8 @@ using System.Windows.Media;
 using SSPen.Annotation;
 using Xunit;
 
+using static SSPen.Tests.TestGeometry;
+
 namespace SSPen.Tests;
 
 /// <summary>
@@ -48,8 +50,6 @@ public class RenderTickControllerTests
             onCompleted(); // 시각물이 없는 창처럼 동기 완료 — 순서 관측이 목적
         }
     }
-
-    private static StrokeElement NewStroke() => new([new Point(0, 0), new Point(10, 10)], Colors.Black, 3, isHighlighter: false);
 
     [Theory]
     [InlineData(false, false, 0, false)]

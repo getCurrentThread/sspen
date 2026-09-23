@@ -4,6 +4,8 @@ using SSPen.Annotation;
 using SSPen.Interop;
 using Xunit;
 
+using static SSPen.Tests.TestGeometry;
+
 namespace SSPen.Tests;
 
 /// <summary>
@@ -18,9 +20,6 @@ namespace SSPen.Tests;
 /// </summary>
 public class SelectionTransferRedTeamTests
 {
-    private static StrokeElement NewStroke(params Point[] pts) =>
-        new(pts, Colors.Black, thickness: 3, isHighlighter: false);
-
     private static readonly PhysicalRect Left = new(-1920, 0, 1920, 1080);
     private static readonly PhysicalRect Center = new(0, 0, 1920, 1080);
     private static readonly PhysicalRect Right = new(1920, 0, 1920, 1080);

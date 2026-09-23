@@ -4,15 +4,14 @@ using System.Windows.Media;
 using SSPen.Annotation;
 using Xunit;
 
+using static SSPen.Tests.TestGeometry;
+
 namespace SSPen.Tests;
 
 /// <summary>WI-8: 페이딩 잉크 코어 (프리모템 1 — 타이머 추상화, 순수 로직).</summary>
 public class FadeSchedulerTests
 {
     private static readonly DateTime T0 = new(2026, 8, 25, 12, 0, 0, DateTimeKind.Utc);
-
-    private static StrokeElement NewStroke() =>
-        new([new Point(0, 0), new Point(10, 10)], Colors.Black, 3, isHighlighter: false);
 
     [Fact]
     public void Due_ReturnsExpiredInDeadlineOrder()

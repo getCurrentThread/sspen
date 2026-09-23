@@ -4,6 +4,7 @@ using SSPen.Annotation;
 using Xunit;
 
 using static SSPen.Tests.StaThread;
+using static SSPen.Tests.TestGeometry;
 namespace SSPen.Tests;
 
 /// <summary>
@@ -94,9 +95,6 @@ public class AnnotationVisualFactoryTests
             Assert.Equal(200 + AnnotationVisualFactory.TableBadgeOffset, System.Windows.Controls.Canvas.GetTop(badge));
         });
     }
-
-    private static StrokeElement MakeStroke(Point a, Point b) =>
-        new([a, b], Colors.Red, thickness: 4, isHighlighter: false);
 
     private static TextElement MakeText(Point origin) =>
         new(origin, "가나다", Colors.Black, fontSize: 20, measuredSize: new Size(60, 24));

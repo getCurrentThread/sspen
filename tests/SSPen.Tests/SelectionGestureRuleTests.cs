@@ -3,6 +3,8 @@ using System.Windows.Media;
 using SSPen.Annotation;
 using Xunit;
 
+using static SSPen.Tests.TestGeometry;
+
 namespace SSPen.Tests;
 
 /// <summary>
@@ -11,9 +13,6 @@ namespace SSPen.Tests;
 /// </summary>
 public class SelectionGestureRuleTests
 {
-    private static StrokeElement Stroke(double x, double y, double w, double h) =>
-        new([new Point(x, y), new Point(x + w, y + h)], Colors.Red, 2, isHighlighter: false);
-
     // ---- R2: 제자리 클릭 vs 드래그 ----
 
     [Fact]

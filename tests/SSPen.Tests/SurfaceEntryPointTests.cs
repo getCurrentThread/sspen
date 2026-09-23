@@ -5,6 +5,7 @@ using SSPen.Annotation;
 using Xunit;
 
 using static SSPen.Tests.StaThread;
+using static SSPen.Tests.TestGeometry;
 namespace SSPen.Tests;
 
 /// <summary>
@@ -319,9 +320,6 @@ public class SurfaceEntryPointTests
     }
 
     private static TextBox OpenTextBox(Harness h) => Assert.Single(h.Canvas.Children.OfType<TextBox>());
-
-    private static StrokeElement MakeStroke(Point a, Point b) =>
-        new([a, b], Colors.Red, thickness: 4, isHighlighter: false);
 
     /// <summary>
     /// 캔버스 미측정 — SurfaceBounds가 (0,0,0,0)이라 이 스위트는 어떤 핸들도 잡지 않는다 (파일 머리 문서).

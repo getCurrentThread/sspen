@@ -10,7 +10,7 @@ namespace SSPen.Tests;
 /// <summary>
 /// <see cref="ToolbarTooltips"/>의 증인 (37단계, TIP-REG/AC-20). ToolTip은 비주얼 트리 객체라 본문만 STA로 보낸다.
 /// 펌프가 없어 ToolTipOpening은 실제로 오지 않으므로(ToolTipEventArgs 생성자도 internal) 둘째 줄 표기는 순수
-/// <see cref="ToolbarTooltips.ComboLine"/>으로 따로 본다. 가짜 IShellActions는 무동작 + HotkeyLabel 사전이다.
+/// <see cref="ToolbarTooltips.ComboLine"/>으로 따로 본다. 가짜 IShellActions는 공용 <see cref="FakeShellActions"/>(58단계 승격)의 HotkeyLabel 사전·호출 수를 쓴다.
 /// </summary>
 public class ToolbarTooltipsTests
 {
@@ -71,36 +71,5 @@ public class ToolbarTooltipsTests
     public void ComboLine_NullLabel_EmptyAndHidden()
     {
         Assert.Equal((string.Empty, false), ToolbarTooltips.ComboLine(null));
-    }
-
-    private sealed class FakeShellActions : IShellActions
-    {
-        public Dictionary<string, string> Labels { get; } = [];
-
-        public int LabelCalls { get; private set; }
-
-        public void Undo() { }
-
-        public void ClearAll() { }
-
-        public void StartCapture() { }
-
-        public void OpenSettings() { }
-
-        public void HideToolbar() { }
-
-        public void RequestExit() { }
-
-        public string? HotkeyLabel(string hotkeyId)
-        {
-            LabelCalls++;
-            return Labels.TryGetValue(hotkeyId, out var label) ? label : null;
-        }
-
-        public double FadingSeconds => 1.0;
-
-        public void SetFadingDuration(double seconds) { }
-
-        public void ShowStatusReadout() { }
     }
 }
