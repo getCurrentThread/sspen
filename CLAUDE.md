@@ -38,14 +38,14 @@ dotnet run --project src/SSPen
 # projects, which open real fullscreen topmost windows and take over the physical screen.
 dotnet test SSPen.sln
 
-# unit & simulation tests (headless-safe, fast) — the default for everyday work (1427 cases, <1 s)
+# unit & simulation tests (headless-safe, fast) — the default for everyday work (2120 cases, ~1 s)
 dotnet test tests/SSPen.Tests/SSPen.Tests.csproj
 dotnet test tests/SSPen.Tests/SSPen.Tests.csproj --filter "FullyQualifiedName~HitTestTests"
 
-# integration tests (Win32 OS-bound)
+# integration tests (Win32 OS-bound; 57 cases, ~15 s — takes over the screen and cursor, run alone)
 dotnet test tests/SSPen.IntegrationTests/SSPen.IntegrationTests.csproj
 
-# end-to-end user workflow tests (AppController & UI actor simulation)
+# end-to-end user workflow tests (AppController & UI actor simulation; 18 cases, ~3 s, opens real windows)
 dotnet test tests/SSPen.E2ETests/SSPen.E2ETests.csproj
 
 # all-in-one local verification & packaging pipeline (build + all tests + publish verify + installer)
