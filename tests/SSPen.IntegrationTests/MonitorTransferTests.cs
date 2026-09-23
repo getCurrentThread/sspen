@@ -53,11 +53,7 @@ public class MonitorTransferTests
         {
             var document = new AnnotationDocument(monitor.DeviceName);
             selection.AttachTo(document);
-            surfaces.Add(new ContentSurfaceWindow(
-                monitor, state, document, ledger, fading,
-                selection, Owner, _ => 1.0,
-                (deltas, _) => ledger.RecordTransform(deltas), () => { }, () => 0,
-                (rows, columns) => $"{rows}x{columns}"));
+            surfaces.Add(SurfaceRigs.NewSurface(monitor, state, document, ledger, selection, Owner, fading));
         }
         return new Rig(surfaces, selection, ledger, state);
     }
@@ -142,8 +138,8 @@ public class MonitorTransferTests
             rig.DocumentOf(0).Add(element);
             StaRunner.PumpMessages();
 
-            var sourceInk = InkCanvasOf(rig.Surfaces[0]);
-            var targetInk = InkCanvasOf(rig.Surfaces[1]);
+            var sourceInk = rig.Surfaces[0].InkCanvas;
+            var targetInk = rig.Surfaces[1].InkCanvas;
             Assert.Single(sourceInk.Children);
 
             Transfer(rig, element, rig.Surfaces[1]);
@@ -250,7 +246,7 @@ public class MonitorTransferTests
             Transfer(rig, element, rig.Surfaces[1]);
             StaRunner.PumpMessages();
 
-            var visual = (FrameworkElement)InkCanvasOf(rig.Surfaces[1]).Children[0];
+            var visual = (FrameworkElement)rig.Surfaces[1].InkCanvas.Children[0];
             var actual = ((MatrixTransform)visual.RenderTransform).Matrix;
 
             // 새 시각물의 행렬이 **보정된 현재 상태**와 일치해야 한다.
@@ -332,8 +328,8 @@ public class MonitorTransferTests
             Assert.True(rig.Selection.Contains(element), "이관 undo에서 선택이 유지되어야 한다 (SEL-AC-10).");
 
             // 시각물도 원본 서피스로 돌아와야 한다 (R2/R15).
-            Assert.Single(InkCanvasOf(rig.Surfaces[0]).Children);
-            Assert.Empty(InkCanvasOf(rig.Surfaces[1]).Children);
+            Assert.Single(rig.Surfaces[0].InkCanvas.Children);
+            Assert.Empty(rig.Surfaces[1].InkCanvas.Children);
         }
         finally
         {
@@ -381,7 +377,4 @@ public class MonitorTransferTests
             CloseAll(rig);
         }
     });
-
-    private static System.Windows.Controls.Canvas InkCanvasOf(ContentSurfaceWindow surface) =>
-        (System.Windows.Controls.Canvas)((System.Windows.Controls.Grid)surface.Content).Children[1];
 }

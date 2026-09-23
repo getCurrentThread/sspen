@@ -83,11 +83,11 @@ public class ExStyleTests
         {
             nint hwnd = WindowStyling.GetHwnd(window);
             WindowStyling.SetNoActivate(hwnd, true);
-            Assert.NotEqual(0L, WindowStyling.GetExStyle(hwnd) & 0x08000000L);
+            Assert.NotEqual(0L, WindowStyling.GetExStyle(hwnd) & NativeMethodsProbe.WsExNoActivate);
 
             // 텍스트 도구 IME 핸드셰이크 (ARCH-2): 해제 → 복원.
             WindowStyling.SetNoActivate(hwnd, false);
-            Assert.Equal(0L, WindowStyling.GetExStyle(hwnd) & 0x08000000L);
+            Assert.Equal(0L, WindowStyling.GetExStyle(hwnd) & NativeMethodsProbe.WsExNoActivate);
         }
         finally
         {
@@ -107,7 +107,7 @@ public class ExStyleTests
             WindowStyling.PlacePhysical(hwnd, target);
             StaRunner.PumpMessages();
 
-            Assert.True(NativeMethods_GetWindowRect(hwnd, out var actual));
+            Assert.True(NativeMethodsProbe.GetWindowRect(hwnd, out var actual));
             Assert.Equal(target.X, actual.Left);
             Assert.Equal(target.Y, actual.Top);
             Assert.Equal(target.Width, actual.Right - actual.Left);
@@ -118,16 +118,4 @@ public class ExStyleTests
             window.Close();
         }
     });
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowRect", SetLastError = true)]
-    private static extern bool NativeMethods_GetWindowRect(nint hWnd, out RECT lpRect);
-
-    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-    private struct RECT
-    {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
-    }
 }

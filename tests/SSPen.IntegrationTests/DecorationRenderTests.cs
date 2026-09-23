@@ -31,31 +31,12 @@ public class DecorationRenderTests
         selection.AttachTo(document);
         var ledger = new UndoLedger(
             e => document.Elements.Contains(e) ? document : null, selection);
-        var surface = new ContentSurfaceWindow(
-            monitor,
-            state,
-            document,
-            ledger,
-            new FadingInkController(new FadeSchedulerCore()),
-            selection,
-            e => document.Elements.Contains(e) ? document : null,
-            _ => 1.0,
-            (deltas, _) => ledger.RecordTransform(deltas),
-            () => { },
-            () => 0,
-            (rows, columns) => $"{rows}x{columns}");
+        var surface = SurfaceRigs.NewSurface(monitor, state, document, ledger, selection);
         return new Rig(surface, document, selection, state);
     }
 
     private static StrokeElement NewStroke() =>
         new([new Point(100, 100), new Point(300, 250)], Colors.Red, 6, isHighlighter: false);
-
-    /// <summary>장식 레이어는 <c>_root</c>의 마지막 자식이다 (최상단 계약).</summary>
-    private static System.Windows.Controls.Canvas DecorationLayer(ContentSurfaceWindow surface)
-    {
-        var root = (System.Windows.Controls.Grid)surface.Content;
-        return (System.Windows.Controls.Canvas)root.Children[^1];
-    }
 
     [Fact]
     public void Select_SingleElement_PopulatesDecorationLayer() => StaRunner.Run(() =>
@@ -71,7 +52,7 @@ public class DecorationRenderTests
             rig.Selection.Set([element]);
             StaRunner.PumpMessages();
 
-            var layer = DecorationLayer(rig.Surface);
+            var layer = rig.Surface.DecorationLayer;
             Assert.Equal(DecorationsPerElement, layer.Children.Count);
         }
         finally
@@ -93,12 +74,12 @@ public class DecorationRenderTests
             rig.Document.Add(element);
             rig.Selection.Set([element]);
             StaRunner.PumpMessages();
-            Assert.NotEmpty(DecorationLayer(rig.Surface).Children);
+            Assert.NotEmpty(rig.Surface.DecorationLayer.Children);
 
             rig.Selection.Clear();
             StaRunner.PumpMessages();
 
-            Assert.Empty(DecorationLayer(rig.Surface).Children);
+            Assert.Empty(rig.Surface.DecorationLayer.Children);
         }
         finally
         {
@@ -123,9 +104,7 @@ public class DecorationRenderTests
             rig.Document.Add(element);
             StaRunner.PumpMessages();
 
-            var ink = (System.Windows.Controls.Canvas)
-                ((System.Windows.Controls.Grid)rig.Surface.Content).Children[1];
-            var visual = (FrameworkElement)ink.Children[0];
+            var visual = (FrameworkElement)rig.Surface.InkCanvas.Children[0];
             var identity = ((MatrixTransform)visual.RenderTransform).Matrix;
 
             // 변형 커밋: 이동 + 확대. 알림은 원장의 공개 경로로 흔러가게 둔다 —
@@ -174,7 +153,7 @@ public class DecorationRenderTests
             rig.Selection.Set([element]);
             StaRunner.PumpMessages();
 
-            var layer = DecorationLayer(rig.Surface);
+            var layer = rig.Surface.DecorationLayer;
 
             rig.Surface.SetDecorationsVisible(false);
             StaRunner.PumpMessages();

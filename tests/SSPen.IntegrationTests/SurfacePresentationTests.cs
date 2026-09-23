@@ -24,10 +24,7 @@ public class SurfacePresentationTests
         var selection = new SelectionModel();
         selection.AttachTo(document);
         var ledger = new UndoLedger(e => document.Elements.Contains(e) ? document : null, selection);
-        var surface = new ContentSurfaceWindow(
-            monitor, state, document, ledger, new FadingInkController(new FadeSchedulerCore()), selection,
-            e => document.Elements.Contains(e) ? document : null, _ => 1.0,
-            (deltas, _) => ledger.RecordTransform(deltas), () => { }, () => 0, (r, c) => $"{r}x{c}");
+        var surface = SurfaceRigs.NewSurface(monitor, state, document, ledger, selection);
         return new Rig(surface, state);
     }
 

@@ -56,7 +56,7 @@ public class InputRoutingTests
             Thread.Sleep(150); // 레이어드 비트맵 커밋 대기.
 
             // 프로브 지점은 실제 창 사각형 중심에서 도출 (DPI 배율 무관 — 아키텍트 어드바이저리).
-            Assert.True(GetWindowRect(bottomHwnd, out var rect));
+            Assert.True(NativeMethodsProbe.GetWindowRect(bottomHwnd, out var rect));
             var point = new NativePoint
             {
                 X = (rect.Left + rect.Right) / 2,
@@ -101,16 +101,4 @@ public class InputRoutingTests
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern nint GetAncestor(nint hwnd, uint flags);
-
-    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-    private struct NativeRect
-    {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
-    }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern bool GetWindowRect(nint hwnd, out NativeRect rect);
 }

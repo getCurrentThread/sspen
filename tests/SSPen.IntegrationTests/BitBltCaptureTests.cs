@@ -34,7 +34,10 @@ public class BitBltCaptureTests
         window.Show();
         WindowStyling.PlacePhysical(WindowStyling.GetHwnd(window), bounds);
         StaRunner.PumpMessages();
-        Thread.Sleep(400); // DWM 합성 대기
+        // DWM 합성 대기: 고정 슬립이 아니라 마커가 실제로 찍힐 때까지(최대 3초) 기다린다 (A8-7).
+        // 결과는 버린다 — 판정은 호출부의 캡처·단언이 한다. BitBlt가 막힌 세션이면 곧바로 null이 오고,
+        // 호출부의 기존 try/catch 대체 경로가 그대로 이어받는다. 시간 초과면 호출부의 같은 단언이 실패한다.
+        _ = PixelProbe.CaptureUntil(bounds, s => CenterPixel(s) == MarkerColor, 3000);
         return window;
     }
 

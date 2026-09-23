@@ -14,8 +14,6 @@ namespace SSPen.IntegrationTests;
 /// </summary>
 public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
 {
-    private const uint GW_HWNDNEXT = 2;
-    private const uint GW_OWNER = 4;
     private const uint SwpFlags = 0x0001 | 0x0002 | 0x0010; // NOSIZE | NOMOVE | NOACTIVATE
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -48,24 +46,24 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
             StaRunner.PumpMessages();
 
             // HWND_TOPMOST 올리기 → 앵커 바로 아래로 돌려져야 한다.
-            SetWindowPos(hookedHwnd, (nint)(-1) /* HWND_TOPMOST */, 0, 0, 0, 0, SwpFlags);
+            NativeMethodsProbe.SetWindowPos(hookedHwnd, (nint)(-1) /* HWND_TOPMOST */, 0, 0, 0, 0, SwpFlags);
             StaRunner.PumpMessages();
-            Assert.Equal(hookedHwnd, GetWindow(anchorHwnd, GW_HWNDNEXT));
+            Assert.Equal(hookedHwnd, NativeMethodsProbe.GetWindow(anchorHwnd, NativeMethodsProbe.GwHwndNext));
 
             // HWND_TOP 올리기도 동일하게 앵커 아래 유지.
-            SetWindowPos(hookedHwnd, 0 /* HWND_TOP */, 0, 0, 0, 0, SwpFlags);
+            NativeMethodsProbe.SetWindowPos(hookedHwnd, 0 /* HWND_TOP */, 0, 0, 0, 0, SwpFlags);
             StaRunner.PumpMessages();
-            Assert.Equal(hookedHwnd, GetWindow(anchorHwnd, GW_HWNDNEXT));
+            Assert.Equal(hookedHwnd, NativeMethodsProbe.GetWindow(anchorHwnd, NativeMethodsProbe.GwHwndNext));
 
             // HWND_NOTOPMOST 분기 (gen-4 자문): 강등 시 OS가 톱모스트 밴드에서 빼므로 직하 고정은
             // 보장되지 않는다 — 불변식(앵커 위로 올라가지 않음)만 단언하고, 재상승으로 복구를 확인.
-            SetWindowPos(hookedHwnd, (nint)(-2) /* HWND_NOTOPMOST */, 0, 0, 0, 0, SwpFlags);
+            NativeMethodsProbe.SetWindowPos(hookedHwnd, (nint)(-2) /* HWND_NOTOPMOST */, 0, 0, 0, 0, SwpFlags);
             StaRunner.PumpMessages();
-            Assert.True(IsBelow(anchorHwnd, hookedHwnd));
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(anchorHwnd, hookedHwnd));
 
-            SetWindowPos(hookedHwnd, (nint)(-1) /* HWND_TOPMOST 재상승 */, 0, 0, 0, 0, SwpFlags);
+            NativeMethodsProbe.SetWindowPos(hookedHwnd, (nint)(-1) /* HWND_TOPMOST 재상승 */, 0, 0, 0, 0, SwpFlags);
             StaRunner.PumpMessages();
-            Assert.Equal(hookedHwnd, GetWindow(anchorHwnd, GW_HWNDNEXT));
+            Assert.Equal(hookedHwnd, NativeMethodsProbe.GetWindow(anchorHwnd, NativeMethodsProbe.GwHwndNext));
 
             // 훅 델리게이트는 검증 동안 살아 있어야 한다 (GC 핀 의도 명시, gen-4 자문).
             GC.KeepAlive(hook);
@@ -105,7 +103,7 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
                     var pos = System.Runtime.InteropServices.Marshal.PtrToStructure<WindowPos>(l);
                     if ((pos.flags & 0x0004 /* SWP_NOZORDER */) == 0)
                     {
-                        nint owner = GetWindow(pos.hwndInsertAfter, GW_OWNER);
+                        nint owner = NativeMethodsProbe.GetWindow(pos.hwndInsertAfter, NativeMethodsProbe.GwOwner);
                         rawInsertAfter.Add($"0x{pos.hwndInsertAfter:X}(owner=0x{owner:X}{(owner == hookedHwnd ? "=self" : string.Empty)}) flags=0x{pos.flags:X}");
                     }
                 }
@@ -121,23 +119,23 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
             // S1: 첫 활성화 (IME 창의 소유자가 된다).
             hooked.Activate();
             StaRunner.PumpMessages();
-            Assert.True(IsBelow(anchorHwnd, hookedHwnd), $"첫 활성화 뒤 앵커 위: {string.Join(" | ", rawInsertAfter)}");
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(anchorHwnd, hookedHwnd), $"첫 활성화 뒤 앵커 위: {string.Join(" | ", rawInsertAfter)}");
 
             // S4: 포그라운드를 남에게 넘긴 뒤 다시 활성화 — 상승 요청이 자기 IME 창 바로 아래로 온다.
-            nint tray = FindWindow("Shell_TrayWnd", null);
+            nint tray = NativeMethodsProbe.FindWindow("Shell_TrayWnd", null);
             if (tray != 0)
             {
-                SetForegroundWindow(tray);
+                NativeMethodsProbe.SetForegroundWindow(tray);
                 StaRunner.PumpMessages();
             }
             hooked.Activate();
             StaRunner.PumpMessages();
-            Assert.True(IsBelow(anchorHwnd, hookedHwnd), $"재활성화 뒤 앵커 위: {string.Join(" | ", rawInsertAfter)}");
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(anchorHwnd, hookedHwnd), $"재활성화 뒤 앵커 위: {string.Join(" | ", rawInsertAfter)}");
 
             // S7: 활성 상태에서 명시적 TOPMOST 올리기도 같은 모양으로 온다.
-            SetWindowPos(hookedHwnd, (nint)(-1), 0, 0, 0, 0, SwpFlags);
+            NativeMethodsProbe.SetWindowPos(hookedHwnd, (nint)(-1), 0, 0, 0, 0, SwpFlags);
             StaRunner.PumpMessages();
-            Assert.True(IsBelow(anchorHwnd, hookedHwnd), $"TOPMOST 올리기 뒤 앵커 위: {string.Join(" | ", rawInsertAfter)}");
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(anchorHwnd, hookedHwnd), $"TOPMOST 올리기 뒤 앵커 위: {string.Join(" | ", rawInsertAfter)}");
 
             System.Windows.Interop.HwndSource.FromHwnd(hookedHwnd)!.RemoveHook(recorder);
             // 병리(자기 IME 창 바로 아래로 오는 상승)가 실제로 재현됐어야 이 테스트가 L1의 증인이다 — 대상 PC(CRIT-2)는 IME가 있다.
@@ -182,7 +180,7 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
                 if (msg == 0x0046 /* WM_WINDOWPOSCHANGING */)
                 {
                     var pos = System.Runtime.InteropServices.Marshal.PtrToStructure<WindowPos>(l);
-                    if ((pos.flags & 0x0004) == 0 && GetWindow(pos.hwndInsertAfter, GW_OWNER) == hookedHwnd)
+                    if ((pos.flags & 0x0004) == 0 && NativeMethodsProbe.GetWindow(pos.hwndInsertAfter, NativeMethodsProbe.GwOwner) == hookedHwnd)
                     {
                         seenOwnImeInsert = true;
                     }
@@ -196,8 +194,8 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
 
             System.Windows.Interop.HwndSource.FromHwnd(hookedHwnd)!.RemoveHook(recorder);
             Assert.True(seenOwnImeInsert, "형제 뒤 삽입이 자기 IME 창 바로 아래로 오지 않았다 — 이 머신에서는 병리가 재현되지 않는다.");
-            Assert.True(IsBelow(anchorHwnd, siblingHwnd));
-            Assert.True(IsBelow(siblingHwnd, hookedHwnd), "밴드 적용의 형제 뒤 삽입이 앵커 아래로 돌려져 순서가 뒤집혔다.");
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(anchorHwnd, siblingHwnd));
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(siblingHwnd, hookedHwnd), "밴드 적용의 형제 뒤 삽입이 앵커 아래로 돌려져 순서가 뒤집혔다.");
             GC.KeepAlive(hook);
             GC.KeepAlive(siblingHook);
         }
@@ -228,15 +226,15 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
 
             WindowStyling.ApplyZBand([anchorHwnd, keptHwnd]);
             StaRunner.PumpMessages();
-            Assert.True(IsBelow(anchorHwnd, keptHwnd));
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(anchorHwnd, keptHwnd));
 
-            SetWindowPos(keptHwnd, (nint)(-1) /* HWND_TOPMOST */, 0, 0, 0, 0, SwpFlags);
+            NativeMethodsProbe.SetWindowPos(keptHwnd, (nint)(-1) /* HWND_TOPMOST */, 0, 0, 0, 0, SwpFlags);
             StaRunner.PumpMessages();
-            Assert.True(IsBelow(anchorHwnd, keptHwnd));
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(anchorHwnd, keptHwnd));
 
-            SetWindowPos(keptHwnd, 0 /* HWND_TOP */, 0, 0, 0, 0, SwpFlags);
+            NativeMethodsProbe.SetWindowPos(keptHwnd, 0 /* HWND_TOP */, 0, 0, 0, 0, SwpFlags);
             StaRunner.PumpMessages();
-            Assert.True(IsBelow(anchorHwnd, keptHwnd));
+            Assert.True(NativeMethodsProbe.IsBelowByNextWalk(anchorHwnd, keptHwnd));
 
             GC.KeepAlive(hook);
         }
@@ -246,19 +244,6 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
             anchor.Close();
         }
     });
-
-    /// <summary>z-순서에서 above 아래 어딘가에 below가 있는지 (직하가 아니어도 됨).</summary>
-    private static bool IsBelow(nint above, nint below)
-    {
-        for (nint w = GetWindow(above, GW_HWNDNEXT); w != 0; w = GetWindow(w, GW_HWNDNEXT))
-        {
-            if (w == below)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
 
     private static Window NewTestWindow(double left, double top) => new()
     {
@@ -274,17 +259,4 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
         Width = 120,
         Height = 120,
     };
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(
-        nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern nint GetWindow(nint hWnd, uint uCmd);
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
-    private static extern nint FindWindow(string? lpClassName, string? lpWindowName);
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(nint hWnd);
 }
