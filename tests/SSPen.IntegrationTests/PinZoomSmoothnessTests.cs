@@ -46,7 +46,7 @@ public class PinZoomSmoothnessTests(ITestOutputHelper output)
     [Fact]
     public void Wheel_EachNotch_MovesAndResizesInOneWindowPosChange() => StaRunner.Run(() =>
     {
-        using var rig = new Rig(Swatch(400, 300), tx: 0.3, ty: 0.7);
+        using var rig = new Rig(TestImages.Solid(400, 300), tx: 0.3, ty: 0.7);
         var failures = new List<string>();
 
         // 한 칸씩 넣고 매번 끝까지 펌프한다 — 칸마다 창 적용이 몇 번 나가는지를 본다.
@@ -73,7 +73,7 @@ public class PinZoomSmoothnessTests(ITestOutputHelper output)
     [Fact]
     public void Wheel_TenNotchBurst_KeepsImagePointUnderCursorWithinOnePixel() => StaRunner.Run(() =>
     {
-        using var rig = new Rig(Swatch(400, 300), tx: 0.3, ty: 0.7);
+        using var rig = new Rig(TestImages.Solid(400, 300), tx: 0.3, ty: 0.7);
 
         // 빠르게 굴린 휠: 열 칸이 한꺼번에 큐에 쌓인 뒤 처리된다.
         for (int i = 0; i < 10; i++)
@@ -102,7 +102,7 @@ public class PinZoomSmoothnessTests(ITestOutputHelper output)
     [Fact]
     public void Wheel_TenUpThenTenDownOneByOne_ReturnsToTheOriginalRect() => StaRunner.Run(() =>
     {
-        using var rig = new Rig(Swatch(400, 300), tx: 0.3, ty: 0.7);
+        using var rig = new Rig(TestImages.Solid(400, 300), tx: 0.3, ty: 0.7);
         var original = rig.Pin.PhysicalBounds();
 
         for (int i = 0; i < 10; i++)
@@ -129,7 +129,7 @@ public class PinZoomSmoothnessTests(ITestOutputHelper output)
     [Fact]
     public void ResetZoom_AfterZooming_ReturnsToThePhysicalBaseSizeAroundTheCenter() => StaRunner.Run(() =>
     {
-        using var rig = new Rig(Swatch(400, 300), tx: 0.3, ty: 0.7);
+        using var rig = new Rig(TestImages.Solid(400, 300), tx: 0.3, ty: 0.7);
         for (int i = 0; i < 3; i++)
         {
             rig.PostWheel(Notch);
@@ -160,7 +160,7 @@ public class PinZoomSmoothnessTests(ITestOutputHelper output)
     [Fact]
     public void Wheel_AfterExternalMove_AnchorsOnTheMovedWindow() => StaRunner.Run(() =>
     {
-        using var rig = new Rig(Swatch(400, 300), tx: 0.3, ty: 0.7);
+        using var rig = new Rig(TestImages.Solid(400, 300), tx: 0.3, ty: 0.7);
         rig.PostWheel(Notch);
         StaRunner.PumpMessages();
 
@@ -302,19 +302,6 @@ public class PinZoomSmoothnessTests(ITestOutputHelper output)
         }
         output.WriteLine($"평소 흐름 5칸 중 옛 내용·새 원점 프레임이 화면에 나간 칸: {shown}");
     });
-
-    /// <summary>테스트용 핀 이미지 — 크기만 맞으면 된다.</summary>
-    private static BitmapSource Swatch(int width, int height)
-    {
-        var visual = new DrawingVisual();
-        using (var dc = visual.RenderOpen())
-        {
-            dc.DrawRectangle(Brushes.CornflowerBlue, null, new System.Windows.Rect(0, 0, width, height));
-        }
-        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
-        bitmap.Render(visual);
-        return bitmap;
-    }
 
     /// <summary>왼쪽 절반 빨강, 오른쪽 절반 파랑 — 경계 x 하나로 그려진 배율과 원점을 읽는다.</summary>
     private static BitmapSource HalfAndHalf(int width, int height)

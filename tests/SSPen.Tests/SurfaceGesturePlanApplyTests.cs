@@ -215,8 +215,10 @@ public class SurfaceGesturePlanApplyTests
     // 공통 배치: a는 마퀴 (350,350)–(470,470) 안, c는 그 밖. c를 먼저 고른 상태에서 시작한다.
 
     /// <summary>
-    /// Shift 없는 마퀴 드래그는 선택을 마퀴 안의 요소로 <b>교체</b>한다. 드래그이므로 클릭 통과는 켜지지 않는다 —
+    /// Shift 없는 마퀴 드래그가 끝나면 선택은 마퀴 안의 요소뿐이다. 드래그이므로 클릭 통과는 켜지지 않는다 —
     /// 걸쇠(다운 시점에 선택이 있었음)가 서 있어도 제자리 클릭이 아니면 R5가 아니다.
+    /// 교체/누적 구분의 증인은 아니다: Shift 없는 다운이 이미 선택을 비우므로 업이 누적해도 결과가 같다. 업 시점의 교체/누적은
+    /// <see cref="PointerUp_ShiftReleasedBeforeUp_Replaces_Today"/>·<see cref="PointerUp_ShiftMarqueeDrag_AccumulatesIntoExistingSelection"/>가 잡는다 (92단계).
     /// </summary>
     [Fact]
     public void PointerUp_MarqueeDrag_ReplacesSelectionWithHits()

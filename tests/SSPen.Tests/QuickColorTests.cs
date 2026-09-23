@@ -157,6 +157,7 @@ public sealed class QuickColorTests
     /// <summary>
     /// 66단계 (A4-5·A9-2): 깨진 도구 색은 <see cref="ColorPalette.DefaultToolColor"/>로, 범위 밖 굵기는
     /// <see cref="ThicknessScale.FromStored"/>의 양끝 단계로 복원된다 — 바인더가 매직 인덱스·리터럴 4를 다시 유도하지 않는다.
+    /// 세 그룹(펜·형광펜·도형)이 모두 같은 규칙을 탄다 — 도형 팔은 92단계에 더했다(바인더의 도형 줄이 빠지면 여기가 빨개진다).
     /// </summary>
     [Fact]
     public void SettingsBinder_ApplyToState_CorruptToolColorAndOutOfRangeThickness_FallsBackToDefaults()
@@ -165,19 +166,25 @@ public sealed class QuickColorTests
         var seeded = new AppState();
         seeded.SetColor(ToolStyleGroup.Pen, Purple);
         seeded.SetColor(ToolStyleGroup.Highlighter, Purple);
+        seeded.SetColor(ToolStyleGroup.Shape, Purple);
 
         var state = ApplyThroughBinder(new AppSettings
         {
             PenColor = "broken",
             HighlighterColor = "",
+            ShapeColor = "#GGGGGG",
             PenThickness = 99,
             HighlighterThickness = -1,
+            // 열거 길이 = 열거에서 파생한 상한 바로 위의 첫 범위 밖 값.
+            ShapeThickness = Enum.GetValues<ThicknessStep>().Length,
         }, seeded);
 
         Assert.Equal(ColorPalette.DefaultToolColor(ToolStyleGroup.Pen), state.ColorOf(ToolStyleGroup.Pen));
         Assert.Equal(ColorPalette.DefaultToolColor(ToolStyleGroup.Highlighter), state.ColorOf(ToolStyleGroup.Highlighter));
         Assert.Equal(ThicknessStep.XLarge, state.ThicknessOf(ToolStyleGroup.Pen));
         Assert.Equal(ThicknessStep.XSmall, state.ThicknessOf(ToolStyleGroup.Highlighter));
+        Assert.Equal(ColorPalette.DefaultToolColor(ToolStyleGroup.Shape), state.ColorOf(ToolStyleGroup.Shape));
+        Assert.Equal(ThicknessStep.XLarge, state.ThicknessOf(ToolStyleGroup.Shape));
     }
 
     /// <summary>임시 디렉터리에 <paramref name="saved"/>를 저장·로드해 AppState(없으면 새 인스턴스)에 적용한 결과 (실제 설정 파일은 건드리지 않는다).</summary>

@@ -157,6 +157,32 @@ public class CaptureSessionControllerTests
         });
     }
 
+    /// <summary>
+    /// 연속체의 우선순위는 정확히 <c>ContextIdle</c>다 (92단계): 시작 <b>뒤</b>에 건 <c>Background</c> 작업이 스냅샷보다 먼저,
+    /// 시작 <b>전</b>에 건 <c>ApplicationIdle</c> 작업은 z-밴드 재적용보다 뒤에 돈다 — 같은 우선순위끼리는 먼저 건 것이 먼저 돌므로
+    /// 연속체를 Background 이상으로 올리거나 ApplicationIdle 이하로 내리면 여기서 빨갛다.
+    /// ARCH-4는 숨김 뒤의 렌더·레이아웃·Background 작업이 다 돈 다음에 찍는 것을 전제한다.
+    /// </summary>
+    [Fact]
+    public void StartCapture_Continuation_RunsAtContextIdle_AfterBackgroundBeforeApplicationIdle()
+    {
+        RunSta(() =>
+        {
+            var rig = Rig.Create(toolbarVisible: true);
+            var dispatcher = Dispatcher.CurrentDispatcher;
+
+            dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => rig.Calls.Add("application-idle"));
+            rig.Controller.StartCapture();
+            dispatcher.BeginInvoke(DispatcherPriority.Background, () => rig.Calls.Add("background"));
+            rig.Pump();
+
+            Assert.Equal(
+                ["active", "toolbar:False", "decorations:False", "surfaces:True", "toast:True",
+                 "background", "snapshot", "overlay:create", "overlay:Show", "zband", "application-idle"],
+                rig.Calls);
+        });
+    }
+
     /// <summary>오버레이는 스냅샷의 이미지와 그 이미지를 찍은 가상 스크린을 한 쌍으로 받는다 — 크롭이 같은 쌍을 기준으로 영역을 환산한다.</summary>
     [Fact]
     public void StartCapture_OverlayReceivesSnapshotImageAndVirtualScreen()

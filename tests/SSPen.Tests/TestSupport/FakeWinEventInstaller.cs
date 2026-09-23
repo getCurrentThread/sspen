@@ -10,6 +10,10 @@ namespace SSPen.Tests;
 /// <see cref="Fire"/>는 설치 범위(Min..Max)가 그 이벤트를 덮는 프로시저에만 간다(OS와 같다). 설치별 결과는
 /// <see cref="NextHandles"/> 큐로 따로 줄 수 있다(비어 있으면 <see cref="NextHandle"/>). 기존 단일 훅 API(<see cref="Proc"/>·
 /// <see cref="LiveHandle"/>·<see cref="IsInstalled"/>)는 그대로다 — 마지막 설치를 가리킨다.
+///
+/// 92단계: 핸들은 경로마다 다르다(OS와 같다). 큐가 비었을 때의 기본 핸들은 <see cref="NextHandle"/> + 경로 번호(첫 설치 순서, 0부터)라
+/// 첫 경로는 예전처럼 <see cref="NextHandle"/>을 받고, 두 번째 경로는 그다음 값을 받는다 — 두 경로가 같은 핸들을 받아
+/// <see cref="Uninstall"/>이 엉뚱한 경로를 푸는 모호함이 없다. 큐로 준 값이든 기본값이든 다른 살아 있는 경로의 핸들과 겹치면 설치가 던진다.
 /// </summary>
 internal sealed class FakeWinEventInstaller : IWinEventInstaller
 {
@@ -20,6 +24,7 @@ internal sealed class FakeWinEventInstaller : IWinEventInstaller
 
     public List<nint> Uninstalls { get; } = [];
 
+    /// <summary>큐가 비었을 때의 기본 핸들 — 경로 번호만큼 더해서 준다. 0이면 모든 설치가 실패한다.</summary>
     public nint NextHandle { get; set; } = 0x2000;
 
     /// <summary>설치별 결과 큐 — 비어 있지 않으면 Install이 <see cref="NextHandle"/> 대신 하나를 꺼낸다 (0 = 그 설치만 실패).</summary>
@@ -39,13 +44,19 @@ internal sealed class FakeWinEventInstaller : IWinEventInstaller
     {
         Installs.Add((eventMin, eventMax, proc));
         Proc = proc;
-        nint handle = NextHandles.Count > 0 ? NextHandles.Dequeue() : NextHandle;
 
         var route = _routes.Find(r => ReferenceEquals(r.Proc, proc));
         if (route is null)
         {
             route = new Route(proc);
             _routes.Add(route);
+        }
+        nint handle = NextHandles.Count > 0
+            ? NextHandles.Dequeue()
+            : NextHandle == 0 ? 0 : NextHandle + _routes.IndexOf(route);
+        if (handle != 0 && _routes.Exists(r => !ReferenceEquals(r, route) && r.Handle == handle))
+        {
+            throw new InvalidOperationException($"두 경로가 같은 핸들 0x{handle:X}를 받는다 — Uninstall이 모호해진다. NextHandles로 경로마다 다른 값을 주라.");
         }
         route.Min = eventMin;
         route.Max = eventMax;

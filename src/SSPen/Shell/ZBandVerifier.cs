@@ -8,7 +8,8 @@ namespace SSPen.Shell;
 /// <see cref="ZBandVerifyPolicy"/>가, 순서 판정은 <see cref="ZOrderInvariant"/>가 가진다. 이 클래스가 소유하는 것은 둘을 잇는 규칙이다:
 /// (a) 검증은 토스트를 <b>빼고</b> 복구는 토스트를 <b>넣는다</b> — 토스트는 클릭 통과 창이라 설정창이 그 위로 올라도 입력에 영향이 없다.
 /// (b) 닫힌 창의 낡은 HWND는 검사 전에 거른다. (c) 검증의 복구(<see cref="Repair"/>)는 백오프를 풀지 않는다 — 정규 재적용
-/// <see cref="Apply"/>만 푼다. (d) <see cref="Stop"/> 뒤에는 요청을 받지 않고, 이미 큐에 든 검증은 pending만 풀고 끝난다.
+/// <see cref="Apply"/>만 푼다. (d) <see cref="Stop"/> 뒤에는 요청을 받지 않고, 이미 큐에 든 검증은 pending만 풀고 끝난다 —
+/// 폴러 경로(<see cref="IsOrdered"/>·<see cref="Repair"/>)도 밴드를 적용하지 않는다 (92단계).
 /// (e) WinEvent 두 훅(REORDER, FOREGROUND)의 소유 — 생성은 OS를 건드리지 않고, <see cref="Install"/>이 둘 다 시도한다 (70단계).
 ///
 /// <b>언제</b> 적용하고 검증을 깨우는가(AppState.Changed·핀·캡처·설정·툴바 전이·ZBandRequested·툴바 ZOrderChanged)는 합성 루트가
@@ -98,9 +99,14 @@ public sealed class ZBandVerifier : IDisposable
     /// <summary>
     /// 실제 z-순서가 밴드 순서와 같은가 — 토스트를 뺀 목록에서 낡은 HWND를 거른 뒤 <see cref="ZOrderInvariant.IsOrdered"/>로 판정한다.
     /// 정책 상태(pending·연속 복구 카운터)는 건드리지 않는다 — 73단계 <see cref="ZBandPoller"/>가 주기 검사에 이것을 쓴다.
+    /// <see cref="Stop"/> 뒤에는 z-순서를 읽지 않고 참(정렬됨)을 돌려준다 — 정지 뒤에 한 번 더 도는 폴러 틱이 정정으로 가지 않게 (92단계).
     /// </summary>
     public bool IsOrdered()
     {
+        if (_stopped)
+        {
+            return true;
+        }
         var order = _bandOrder(false).Where(_isWindow).ToList();
         return ZOrderInvariant.IsOrdered(order, _below);
     }
@@ -109,12 +115,22 @@ public sealed class ZBandVerifier : IDisposable
     /// 백오프를 건드리지 않는 적용 — 토스트를 포함한 밴드 전체를 다시 적용하되 <see cref="ZBandVerifyPolicy.Reset"/>은 부르지 않는다.
     /// 검증의 복구 경로가 이것이다(<see cref="Apply"/>를 부르면 연속 복구 카운터가 매번 지워져 백오프가 영영 걸리지 않는다).
     /// 73단계 <see cref="ZBandPoller"/>의 정정도 이것이다 — 백오프를 우회하되 풀지 않는다(사용자 결정).
+    /// <see cref="Stop"/> 뒤에는 무동작이다 — 창 닫기 뒤에 폴러 틱이 한 번 더 돌아도 파괴 중인 창에 SetWindowPos가 걸리지 않게
+    /// (54단계 L5와 같은 위험, 92단계). 증인: <c>ZBandVerifierTests.IsOrderedAndRepair_AfterStop_ReadNothingAndApplyNothing</c>.
     /// </summary>
-    public void Repair() => _applyBand(_bandOrder(true));
+    public void Repair()
+    {
+        if (_stopped)
+        {
+            return;
+        }
+        _applyBand(_bandOrder(true));
+    }
 
     /// <summary>
     /// 종료: WinEvent 두 훅을 해제하고 이후의 검증 요청을 무시한다(예전 <c>AppController._shuttingDown</c>의 의미).
     /// 이미 디스패처 큐에 든 검증은 돌 때 pending만 풀고 아무것도 적용하지 않는다 — 파괴 중인 창에 SetWindowPos가 걸리지 않게 (54단계 L5).
+    /// 폴러가 쓰는 <see cref="IsOrdered"/>·<see cref="Repair"/>도 이 뒤로는 z-순서를 읽거나 밴드를 적용하지 않는다 (92단계).
     /// </summary>
     public void Stop()
     {

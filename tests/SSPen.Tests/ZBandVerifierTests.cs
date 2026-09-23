@@ -10,7 +10,7 @@ namespace SSPen.Tests;
 /// 밴드 적용은 기록형 가짜다. 밴드 목록은 실제 <see cref="ZBandOrder.Build"/>(71단계: 툴바 &gt; 핀 &gt; 서피스)로 만든다.
 /// 잠그는 것: 정렬 시 무정정, 어긋남마다 토스트 포함 1회 정정, 코얼레싱, 검증의 복구는 Reset을 부르지 않아 3회 헛정정 뒤 쉰다
 /// (구 AppController 781행 회귀), Apply가 백오프를 푼다, Wakes 필터, 토스트 제외, 낡은 HWND 필터, Stop 뒤 요청 무시·훅 해제,
-/// Install이 한쪽 실패에도 다른 쪽을 시도, IsOrdered/Repair가 정책 상태를 바꾸지 않는다.
+/// Install이 한쪽 실패에도 다른 쪽을 시도, IsOrdered/Repair가 정책 상태를 바꾸지 않는다, Stop 뒤 IsOrdered/Repair는 읽지도 적용하지도 않는다(92단계).
 /// </summary>
 public class ZBandVerifierTests
 {
@@ -34,6 +34,9 @@ public class ZBandVerifierTests
 
         public List<IReadOnlyList<nint>> Applied { get; } = [];
 
+        /// <summary>밴드 목록 조회 횟수 — z-순서를 읽거나 적용하려 했는지의 흔적이다.</summary>
+        public int BandReads { get; private set; }
+
         public Queue<Action> Posted { get; } = new();
 
         public FakeWinEventInstaller WinEvents { get; } = new();
@@ -48,7 +51,11 @@ public class ZBandVerifierTests
             WinEvents.NextHandles.Enqueue(0x2001); // REORDER
             WinEvents.NextHandles.Enqueue(0x2002); // FOREGROUND
             Verifier = new ZBandVerifier(
-                bandOrder: includeToast => ZBandOrder.Build(includeToast ? Toast : 0, Settings, 0, Toolbar, Pins, [SurfaceA, SurfaceB]),
+                bandOrder: includeToast =>
+                {
+                    BandReads++;
+                    return ZBandOrder.Build(includeToast ? Toast : 0, Settings, 0, Toolbar, Pins, [SurfaceA, SurfaceB]);
+                },
                 applyBand: order =>
                 {
                     Applied.Add([.. order]);
@@ -269,6 +276,24 @@ public class ZBandVerifierTests
         Assert.Equal(1, rig.Drain());
 
         Assert.Empty(rig.Applied);
+        Assert.False(rig.Verifier.Suspended);
+    }
+
+    [Fact]
+    public void IsOrderedAndRepair_AfterStop_ReadNothingAndApplyNothing()
+    {
+        // 92단계: 창 닫기 뒤에 폴러 틱이 한 번 더 돌아도(54단계 L5와 같은 위험) 정지한 검증기는 z-순서를 읽지 않고
+        // 정렬됨으로 답하며, Repair는 파괴 중인 창에 SetWindowPos를 걸지 않는다.
+        var rig = new Rig();
+        rig.Disorder();
+        rig.Verifier.Stop();
+        int readsAtStop = rig.BandReads;
+
+        Assert.True(rig.Verifier.IsOrdered());
+        rig.Verifier.Repair();
+
+        Assert.Empty(rig.Applied);
+        Assert.Equal(readsAtStop, rig.BandReads);
         Assert.False(rig.Verifier.Suspended);
     }
 

@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using SSPen.Annotation;
 using SSPen.Interop;
 using SSPen.Pin;
@@ -277,7 +276,7 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
         {
             surface.Show();
             var region = new PhysicalRect(monitor.WorkArea.X + 200, monitor.WorkArea.Y + 200, 240, 180);
-            pin = new PinWindow(SolidImage(region.Width, region.Height), region, () => toolbarHwnd, () => false);
+            pin = new PinWindow(TestImages.Solid(region.Width, region.Height), region, () => toolbarHwnd, () => false);
             pin.Show();
             WindowStyling.PlacePhysical(pin.Hwnd, region);
             StaRunner.PumpMessages();
@@ -310,19 +309,6 @@ public class AnchorBelowTests(Xunit.Abstractions.ITestOutputHelper output)
             toolbar.Close();
         }
     });
-
-    private static BitmapSource SolidImage(int width, int height)
-    {
-        var pixels = new byte[width * height * 4];
-        for (int i = 0; i < pixels.Length; i += 4)
-        {
-            pixels[i] = 0xED;     // B
-            pixels[i + 1] = 0x95; // G
-            pixels[i + 2] = 0x64; // R
-            pixels[i + 3] = 0xFF; // A
-        }
-        return BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
-    }
 
     private static Window NewTestWindow(double left, double top) => new()
     {

@@ -148,7 +148,7 @@ public class AnchorBelowRulesTests
 
     [Theory]
     [InlineData(0)] // 앵커 없음(툴바가 아직 없다)
-    [InlineData(0x1000)] // 자기 자신 = Self
+    [InlineData((int)Self)] // 자기 자신 — 리터럴이 아니라 Self 상수에 묶는다 (92단계)
     public void RedirectTarget_AnchorZeroOrSelf_ReturnsZero(int anchor)
     {
         nint target = AnchorBelowRules.RedirectTarget(

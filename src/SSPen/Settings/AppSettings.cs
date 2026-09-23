@@ -63,25 +63,29 @@ public sealed class AppSettings
     /// </summary>
     public bool ZBandPolling { get; set; } = true;
 
-    // 도구 그룹 기본 색·굵기 리터럴 (66단계, A4-5·A9-2): JSON 표기 호환·가독성 때문에 hex 문자열과 정수 2를 그대로 둔다.
-    // 값의 원천은 ColorPalette.DefaultToolColor·ThicknessScale.Default이며, 일치는 ToolStyleTests·ThicknessScaleTests 증인이 잠근다.
-
-    /// <summary>펜 색 (#RRGGBB).</summary>
+    /// <summary>
+    /// 펜 색 (#RRGGBB). 깨진 값은 로드 시 <see cref="Annotation.ColorPalette.DefaultToolColor"/>로 돌아온다.
+    /// 기본값 리터럴은 JSON 표기 호환·가독성 때문에 hex 문자열로 둔다 — 원천은 <c>DefaultToolColor</c>이고 일치는 ToolStyleTests가 잠근다 (66단계, A4-5·A9-2).
+    /// </summary>
     public string PenColor { get; set; } = "#E74C3C";
 
-    /// <summary>펜 굵기 단계 (0..4, 2=보통).</summary>
+    /// <summary>
+    /// 펜 굵기 단계 — <see cref="Annotation.ThicknessStep"/>의 정수값(기본 2 = 보통). 범위 밖 값은 로드 시
+    /// <see cref="Annotation.ThicknessScale.FromStored"/>가 양끝 단계로 재단한다(상한은 열거 길이에서 온다).
+    /// 기본값 리터럴 2는 JSON 표기 호환 때문에 정수로 둔다 — 원천은 <see cref="Annotation.ThicknessScale.Default"/>이고 일치는 ThicknessScaleTests가 잠근다 (66단계).
+    /// </summary>
     public int PenThickness { get; set; } = 2;
 
-    /// <summary>형광펜 색 (#RRGGBB).</summary>
+    /// <summary>형광펜 색 (#RRGGBB). 폴백·리터럴 규칙은 <see cref="PenColor"/>와 같다.</summary>
     public string HighlighterColor { get; set; } = "#FEF200";
 
-    /// <summary>형광펜 굵기 단계 (0..4, 2=보통).</summary>
+    /// <summary>형광펜 굵기 단계 — 재단·리터럴 규칙은 <see cref="PenThickness"/>와 같다.</summary>
     public int HighlighterThickness { get; set; } = 2;
 
-    /// <summary>도형 색 (#RRGGBB).</summary>
+    /// <summary>도형 색 (#RRGGBB). 폴백·리터럴 규칙은 <see cref="PenColor"/>와 같다.</summary>
     public string ShapeColor { get; set; } = "#1FD430";
 
-    /// <summary>도형 굵기 단계 (0..4, 2=보통).</summary>
+    /// <summary>도형 굵기 단계 — 재단·리터럴 규칙은 <see cref="PenThickness"/>와 같다.</summary>
     public int ShapeThickness { get; set; } = 2;
 
     /// <summary>핫키 재지정 오버라이드 (id → 정의). 비어 있으면 스펙 기본 맵.</summary>

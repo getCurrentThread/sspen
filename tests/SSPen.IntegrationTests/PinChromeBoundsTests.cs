@@ -1,5 +1,3 @@
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using SSPen.Interop;
 using SSPen.Pin;
 using Xunit;
@@ -16,23 +14,11 @@ namespace SSPen.IntegrationTests;
 /// </summary>
 public class PinChromeBoundsTests
 {
-    private static BitmapSource Swatch(int width, int height)
-    {
-        var visual = new DrawingVisual();
-        using (var dc = visual.RenderOpen())
-        {
-            dc.DrawRectangle(Brushes.CornflowerBlue, null, new System.Windows.Rect(0, 0, width, height));
-        }
-        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
-        bitmap.Render(visual);
-        return bitmap;
-    }
-
     [Fact]
     public void PhysicalBounds_WithChromeShown_StillCoversTheWholeWindow() => StaRunner.Run(() =>
     {
         var region = new PhysicalRect(180, 180, 320, 240);
-        var pin = new PinWindow(Swatch(region.Width, region.Height), region, () => 0, () => false);
+        var pin = new PinWindow(TestImages.Solid(region.Width, region.Height), region, () => 0, () => false);
         pin.Show();
         WindowStyling.PlacePhysical(pin.Hwnd, region);
         StaRunner.PumpMessages();
@@ -60,7 +46,7 @@ public class PinChromeBoundsTests
     public void PhysicalBounds_AfterEngagingClickThrough_IsUnchanged() => StaRunner.Run(() =>
     {
         var region = new PhysicalRect(200, 200, 260, 200);
-        var pin = new PinWindow(Swatch(region.Width, region.Height), region, () => 0, () => false);
+        var pin = new PinWindow(TestImages.Solid(region.Width, region.Height), region, () => 0, () => false);
         pin.Show();
         WindowStyling.PlacePhysical(pin.Hwnd, region);
         StaRunner.PumpMessages();

@@ -8,7 +8,8 @@ namespace SSPen.Tests;
 /// 2초를 기다리지 않고 <see cref="FakeIdleScheduler.Fire"/>로 틱을 일으킨다. MTA, WPF 불필요.
 /// 잠그는 것: 켜면 <see cref="ZBandPoller.Interval"/>로 무장, 멱등 구독, 끄면 취소·구독 해제·틱 무동작, 정렬 시 무정정,
 /// 어긋남마다 틱당 정정 1회, blocked면 검사 없이 재무장만, 재무장이 검사보다 먼저, 로그는 전이에서만, Dispose 뒤 켜기 무시,
-/// 그리고 실제 <see cref="ZBandVerifier"/>와 묶어 "백오프로 쉬는 중에도 정정하되 백오프는 풀지 않는다"(사용자 결정).
+/// 그리고 실제 <see cref="ZBandVerifier"/>와 묶어 "백오프로 쉬는 중에도 정정하되 백오프는 풀지 않는다"(사용자 결정),
+/// 검증기 Stop 뒤에 한 번 더 도는 틱은 정정도 로그도 없다(92단계).
 /// </summary>
 public class ZBandPollerTests
 {
@@ -339,5 +340,35 @@ public class ZBandPollerTests
         Assert.True(verifier.Suspended);
         verifier.RequestVerify();
         Assert.Empty(posted);
+    }
+
+    /// <summary>
+    /// 92단계: 종료 순서가 어긋나 검증기 <c>Stop</c> 뒤에 폴러 틱이 한 번 더 돌아도(창 닫기 뒤 — 54단계 L5와 같은 위험)
+    /// 정지한 검증기는 정렬됨으로 답하므로 정정도 전이 로그도 없다.
+    /// </summary>
+    [Fact]
+    public void Tick_AfterVerifierStop_RepairsNothing_LogsNothing()
+    {
+        var zOrder = new FakeZOrder(Toast, Surface, Toolbar, Pin); // 어긋난 순서 — 정지 전이라면 정정했을 상태
+        var applied = new List<IReadOnlyList<nint>>();
+        using var verifier = new ZBandVerifier(
+            bandOrder: includeToast => ZBandOrder.Build(includeToast ? Toast : 0, 0, 0, Toolbar, [Pin], [Surface]),
+            applyBand: order => applied.Add([.. order]),
+            isWindow: hwnd => hwnd != 0,
+            below: zOrder.Below,
+            desktop: () => 0x9000,
+            postBackground: _ => { },
+            winEvents: new FakeWinEventInstaller());
+        var timer = new FakeIdleScheduler();
+        var logs = new List<string>();
+        using var poller = new ZBandPoller(timer, blocked: () => false, verifier.IsOrdered, verifier.Repair, logs.Add);
+        poller.SetEnabled(true);
+        logs.Clear();
+
+        verifier.Stop();
+        timer.Fire();
+
+        Assert.Empty(applied);
+        Assert.Empty(logs);
     }
 }
