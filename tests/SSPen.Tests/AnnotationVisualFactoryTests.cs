@@ -96,6 +96,39 @@ public class AnnotationVisualFactoryTests
         });
     }
 
+    // ---- 도형·표 외곽선 Path (88단계, A4-8): 스트로크 스타일은 한 벌 ----
+
+    /// <summary>
+    /// 도형과 표의 미리보기 Path가 같은 외곽선 스타일을 쓴다 — 날카로운 모서리(마이터/플랫, 사용자 조타),
+    /// 채우기 없음. 한쪽 팩토리만 고치는 드리프트가 생기면 빨간불.
+    /// </summary>
+    [Fact]
+    public void ShapeAndTablePreviewPaths_ShareOutlineStrokeStyle()
+    {
+        RunSta(() =>
+        {
+            var color = Color.FromRgb(0x12, 0x34, 0x56);
+
+            var shape = AnnotationVisualFactory.CreateShapeVisual(color, 3);
+            var table = AnnotationVisualFactory.CreateTableVisual(color, 3);
+
+            Assert.IsType<System.Windows.Shapes.Path>(shape);
+            Assert.IsType<System.Windows.Shapes.Path>(table);
+            Assert.Equal(color, Assert.IsType<SolidColorBrush>(shape.Stroke).Color);
+            Assert.Equal(color, Assert.IsType<SolidColorBrush>(table.Stroke).Color);
+            Assert.Equal(3, shape.StrokeThickness);
+            Assert.Equal(shape.StrokeThickness, table.StrokeThickness);
+            Assert.Equal(PenLineJoin.Miter, shape.StrokeLineJoin);
+            Assert.Equal(shape.StrokeLineJoin, table.StrokeLineJoin);
+            Assert.Equal(PenLineCap.Flat, shape.StrokeStartLineCap);
+            Assert.Equal(shape.StrokeStartLineCap, table.StrokeStartLineCap);
+            Assert.Equal(PenLineCap.Flat, shape.StrokeEndLineCap);
+            Assert.Equal(shape.StrokeEndLineCap, table.StrokeEndLineCap);
+            Assert.Null(shape.Fill);
+            Assert.Null(table.Fill);
+        });
+    }
+
     // ---- 도형 지오메트리 (87단계, A4-1): 그려진 것 == 맞는 것 ----
 
     public static TheoryData<ShapeKind> AllShapeKinds()

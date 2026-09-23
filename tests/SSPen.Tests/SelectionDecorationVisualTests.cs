@@ -16,16 +16,33 @@ namespace SSPen.Tests;
 /// </summary>
 public class SelectionDecorationVisualTests
 {
-    private static Color DecorationColor()
+    private static Color FactoryBrushColor(string fieldName)
     {
         var field = typeof(AnnotationVisualFactory)
-            .GetField("DecorationBrush", BindingFlags.NonPublic | BindingFlags.Static)!;
+            .GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Static)!;
         return ((SolidColorBrush)field.GetValue(null)!).Color;
     }
+
+    private static Color DecorationColor() => FactoryBrushColor("DecorationBrush");
 
     [Fact]
     public void DecorationColor_MatchesTheShellAccent() =>
         Assert.Equal(ShellPalette.Accent, DecorationColor());
+
+    /// <summary>
+    /// 마퀴 채움도 같은 "선택됨" 색이다 — 알파만 낮다(88단계, A4-8). 예전에는 RGB 리터럴 사본이라
+    /// 강조색이 바뀌어도 이 브러시만 옛 색으로 남은 채 초록이었다.
+    /// </summary>
+    [Fact]
+    public void MarqueeFill_IsDecorationColorAtLowAlpha()
+    {
+        var fill = FactoryBrushColor("MarqueeFillBrush");
+
+        Assert.Equal(ShellPalette.Accent.R, fill.R);
+        Assert.Equal(ShellPalette.Accent.G, fill.G);
+        Assert.Equal(ShellPalette.Accent.B, fill.B);
+        Assert.Equal(0x22, fill.A);
+    }
 
     /// <summary>흰 보드에서 4.5:1, 검은 보드에서는 더 높다 — 양쪽 보드에서 보여야 한다.</summary>
     [Fact]

@@ -70,7 +70,7 @@ public sealed class DrawingGestureController(
         _previewKind = kind;
         // 시작 시점 스냅샷: 드래그 중 색/굵기/페이딩 토글 변경이 미리보기·커밋 스타일을 어긋내지 않도록 고정.
         _activeShapeStyle = GestureStyleSnapshot.ForShape(state, effectiveTool);
-        _previewShape = AnnotationVisualFactory.CreateShapeVisual(kind, _activeShapeStyle.Color, _activeShapeStyle.Thickness);
+        _previewShape = AnnotationVisualFactory.CreateShapeVisual(_activeShapeStyle.Color, _activeShapeStyle.Thickness);
         AnnotationVisualFactory.UpdateShapeVisual(_previewShape, kind, pos, pos);
         inkCanvas.Children.Add(_previewShape);
     }

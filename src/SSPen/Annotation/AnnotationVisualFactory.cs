@@ -66,7 +66,7 @@ public static class AnnotationVisualFactory
 
     private static FrameworkElement BuildShapeVisual(ShapeElement shape)
     {
-        var visual = CreateShapeVisual(shape.Kind, shape.Color, shape.Thickness);
+        var visual = CreateShapeVisual(shape.Color, shape.Thickness);
         UpdateShapeVisual(visual, shape.Kind, shape.Start, shape.End);
         return visual;
     }
@@ -78,17 +78,7 @@ public static class AnnotationVisualFactory
         return visual;
     }
 
-    public static Shape CreateTableVisual(Color color, double thickness)
-    {
-        return new Path
-        {
-            Stroke = CreateFrozen(color),
-            StrokeThickness = thickness,
-            StrokeLineJoin = PenLineJoin.Miter,
-            StrokeStartLineCap = PenLineCap.Flat,
-            StrokeEndLineCap = PenLineCap.Flat,
-        };
-    }
+    public static Shape CreateTableVisual(Color color, double thickness) => CreateOutlinePath(color, thickness);
 
     public static void UpdateTableVisual(Shape visual, Point start, Point end, int rows, int columns)
     {
@@ -139,21 +129,25 @@ public static class AnnotationVisualFactory
         };
     }
 
-    /// <summary>도형은 채우기 없이 외곽선만 (Round 13).</summary>
-    public static Shape CreateShapeVisual(ShapeKind kind, Color color, double thickness)
+    /// <summary>
+    /// 도형은 채우기 없이 외곽선만 (Round 13). 도형 종류별 분기는 없다 — 종류는 <see cref="UpdateShapeVisual"/>의
+    /// 지오메트리(<see cref="CreateShapeGeometry"/>)만 가른다(88단계, A4-8: 쓰이지 않던 <c>ShapeKind</c> 인자 제거).
+    /// </summary>
+    public static Shape CreateShapeVisual(Color color, double thickness) => CreateOutlinePath(color, thickness);
+
+    /// <summary>
+    /// 도형·표의 미리보기와 커밋이 함께 쓰는 외곽선 <see cref="Path"/> (88단계, A4-8). 스트로크 스타일이 한 벌이라
+    /// 한쪽만 바뀌는 드리프트가 없다. <c>Fill</c>은 설정하지 않는다 — 기본값 <c>null</c>(채우기 없음)이다.
+    /// </summary>
+    private static Path CreateOutlinePath(Color color, double thickness) => new()
     {
-        // 도형은 날카로운 모서리 (사용자 조타): 둥근 조인/캡 대신 마이터/플랫.
-        var path = new Path
-        {
-            Stroke = CreateFrozen(color),
-            StrokeThickness = thickness,
-            StrokeLineJoin = PenLineJoin.Miter,
-            StrokeStartLineCap = PenLineCap.Flat,
-            StrokeEndLineCap = PenLineCap.Flat,
-            Fill = null,
-        };
-        return path;
-    }
+        // 도형·표는 날카로운 모서리 (사용자 조타): 둥근 조인/캡 대신 마이터/플랫.
+        Stroke = CreateFrozen(color),
+        StrokeThickness = thickness,
+        StrokeLineJoin = PenLineJoin.Miter,
+        StrokeStartLineCap = PenLineCap.Flat,
+        StrokeEndLineCap = PenLineCap.Flat,
+    };
 
     public static void UpdateShapeVisual(Shape visual, ShapeKind kind, Point start, Point end) =>
         ((Path)visual).Data = CreateShapeGeometry(kind, start, end);
@@ -207,9 +201,15 @@ public static class AnnotationVisualFactory
     // 값은 셸의 강조색(ShellPalette.Accent, #0071A8)과 같아야 한다 — 같은 앱에서 "선택됨"을 뜻하는 색이
     // 두 가지면 사용자가 둘을 다른 의미로 읽는다. 여기서 Shell을 참조하지 않는 이유는 계층 규약이다
     // (Annotation/은 using SSPen.Shell 금지). 대신 SelectionDecorationVisualTests.DecorationColor_MatchesTheShellAccent가 두 값이 갈라지면 빨간불을 낸다.
-    private static readonly SolidColorBrush DecorationBrush = CreateFrozen(Color.FromRgb(0x00, 0x71, 0xA8));
+    // 마퀴 채움은 같은 색의 낮은 알파라 RGB를 다시 적지 않고 DecorationColor에서 파생한다(88단계, A4-8) —
+    // SelectionDecorationVisualTests.MarqueeFill_IsDecorationColorAtLowAlpha가 지킨다.
+    // 선언 순서가 계약이다: 정적 필드는 적힌 순서로 초기화되므로 DecorationColor가 브러시들보다 먼저 와야 한다
+    // (뒤에 두면 브러시가 default(Color), 즉 투명색으로 굳는다).
+    private static readonly Color DecorationColor = Color.FromRgb(0x00, 0x71, 0xA8);
+    private static readonly SolidColorBrush DecorationBrush = CreateFrozen(DecorationColor);
     private static readonly SolidColorBrush HandleFillBrush = CreateFrozen(Colors.White);
-    private static readonly SolidColorBrush MarqueeFillBrush = CreateFrozen(Color.FromArgb(0x22, 0x00, 0x71, 0xA8));
+    private static readonly SolidColorBrush MarqueeFillBrush =
+        CreateFrozen(Color.FromArgb(0x22, DecorationColor.R, DecorationColor.G, DecorationColor.B));
 
     /// <summary>핸들 외곽선 두께: 1px 선은 검은 보드·복잡한 배경 위에서 사라진다.</summary>
     private const double HandleStrokeThickness = 2;
