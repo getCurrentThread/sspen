@@ -119,6 +119,8 @@ public static class Strings
     public static string FadingDuration(double seconds) => $"{seconds:0.#}초";
     public const string SettingsHighlightCursor = "강조된 커서";
     public const string SettingsPressKeys = "키 조합을 누르세요";
+    /// <summary>단축키 캡처가 Shift 단독 + 글자 입력 키를 거부할 때 대화상자에 보이는 이유 (80단계, A6-7).</summary>
+    public const string HotkeyShiftOnlyRejected = "Shift만으로는 글자 입력과 겹칩니다. Ctrl이나 Alt를 함께 누르세요.";
     public const string SettingsOk = "확인";
     public const string SettingsCancel = "취소";
     public const string SettingsExitApp = "프로그램 종료";

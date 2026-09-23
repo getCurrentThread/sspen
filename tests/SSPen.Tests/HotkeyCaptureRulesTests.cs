@@ -140,4 +140,160 @@ public class HotkeyCaptureRulesTests
 
         Assert.Equal(new HotkeyDef(ModAlt | ModControl | ModShift, 0x31), verdict.Captured);
     }
+
+    // ── Shift 단독 + 글자 입력 키 거부 (80단계, A6-7) ──────────────────────────────────────────────
+    // Shift는 글자 입력의 일부다. Shift+P를 전역으로 등록하면 WM_HOTKEY가 모든 앱의 대문자 P를 삼킨다 —
+    // "최소 1개의 수식키"가 지키려던 "다른 앱 입력을 빼앗지 않는다"를 Shift 하나로는 지키지 못한다.
+
+    /// <summary>회귀: Shift+P는 조합으로 잡히지 않는다 — 거부하고 이유 문구를 싣는다. 조합은 비워 둔다.</summary>
+    [Fact]
+    public void Decide_ShiftOnlyLetter_Rejected()
+    {
+        var verdict = HotkeyCaptureRules.Decide(Key.P, Key.None, ModifierKeys.Shift);
+
+        Assert.Equal(HotkeyCaptureAction.Rejected, verdict.Action);
+        Assert.Null(verdict.Captured);
+        Assert.Equal(Strings.HotkeyShiftOnlyRejected, verdict.Reason);
+    }
+
+    /// <summary>회귀: Shift+1은 '!' 입력이다 — 거부한다.</summary>
+    [Fact]
+    public void Decide_ShiftOnlyDigit_Rejected()
+    {
+        var verdict = HotkeyCaptureRules.Decide(Key.D1, Key.None, ModifierKeys.Shift);
+
+        Assert.Equal(HotkeyCaptureAction.Rejected, verdict.Action);
+        Assert.Null(verdict.Captured);
+    }
+
+    /// <summary>회귀: Shift+기호 키({ &lt; _ ? ~ |)도 글자 입력이다 — 거부한다.</summary>
+    [Theory]
+    [InlineData(Key.OemOpenBrackets)]
+    [InlineData(Key.OemComma)]
+    [InlineData(Key.OemMinus)]
+    [InlineData(Key.OemQuestion)]
+    [InlineData(Key.OemTilde)]
+    [InlineData(Key.Oem102)]
+    public void Decide_ShiftOnlyOem_Rejected(Key key)
+    {
+        var verdict = HotkeyCaptureRules.Decide(key, Key.None, ModifierKeys.Shift);
+
+        Assert.Equal(HotkeyCaptureAction.Rejected, verdict.Action);
+        Assert.Null(verdict.Captured);
+    }
+
+    [Fact]
+    public void Decide_ShiftOnlySpace_Rejected()
+    {
+        var verdict = HotkeyCaptureRules.Decide(Key.Space, Key.None, ModifierKeys.Shift);
+
+        Assert.Equal(HotkeyCaptureAction.Rejected, verdict.Action);
+    }
+
+    [Fact]
+    public void Decide_ShiftOnlyNumPad5_Rejected()
+    {
+        var verdict = HotkeyCaptureRules.Decide(Key.NumPad5, Key.None, ModifierKeys.Shift);
+
+        Assert.Equal(HotkeyCaptureAction.Rejected, verdict.Action);
+    }
+
+    /// <summary>
+    /// Windows 수식키는 조합에서 버려지므로(특성화 위) Win+Shift+P는 실제로 Shift+P로 등록된다 — 같은 이유로 거부한다.
+    /// 판정이 등록될 수식키(mods)를 보고 하는 것이지 눌린 수식키 전체를 보는 것이 아님을 고정한다.
+    /// </summary>
+    [Fact]
+    public void Decide_WindowsShiftLetter_Rejected()
+    {
+        var verdict = HotkeyCaptureRules.Decide(Key.P, Key.None, ModifierKeys.Windows | ModifierKeys.Shift);
+
+        Assert.Equal(HotkeyCaptureAction.Rejected, verdict.Action);
+    }
+
+    /// <summary>글자를 입력하지 않는 키는 Shift 하나로도 지금처럼 잡는다 — 거부 이유 문구는 없다.</summary>
+    [Fact]
+    public void Decide_ShiftF5_Captured()
+    {
+        var verdict = HotkeyCaptureRules.Decide(Key.F5, Key.None, ModifierKeys.Shift);
+
+        Assert.Equal(HotkeyCaptureAction.Capture, verdict.Action);
+        Assert.Equal(new HotkeyDef(ModShift, 0x74), verdict.Captured);
+        Assert.Null(verdict.Reason);
+    }
+
+    [Fact]
+    public void Decide_ShiftInsert_Captured()
+    {
+        var verdict = HotkeyCaptureRules.Decide(Key.Insert, Key.None, ModifierKeys.Shift);
+
+        Assert.Equal(HotkeyCaptureAction.Capture, verdict.Action);
+        Assert.Equal(new HotkeyDef(ModShift, 0x2D), verdict.Captured);
+    }
+
+    /// <summary>회귀: Ctrl이나 Alt가 섞이면 글자 입력이 아니다 — 기본 표(Ctrl+Shift, Alt+Shift)는 그대로 잡힌다.</summary>
+    [Fact]
+    public void Decide_CtrlShiftP_Captured()
+    {
+        var verdict = HotkeyCaptureRules.Decide(Key.P, Key.None, ModifierKeys.Control | ModifierKeys.Shift);
+
+        Assert.Equal(HotkeyCaptureAction.Capture, verdict.Action);
+        Assert.Equal(new HotkeyDef(ModControl | ModShift, 0x50), verdict.Captured);
+        Assert.Null(verdict.Reason);
+    }
+
+    /// <summary>순서 회귀: 대화상자 조작 키는 Shift 거부보다 먼저 본다 — Shift+Esc는 여전히 기본 처리로 흘러 취소가 동작한다.</summary>
+    [Fact]
+    public void Decide_ShiftEscape_StillPassThrough()
+    {
+        var verdict = HotkeyCaptureRules.Decide(Key.Escape, Key.None, ModifierKeys.Shift);
+
+        Assert.Equal(HotkeyCaptureAction.PassThrough, verdict.Action);
+        Assert.Null(verdict.Reason);
+    }
+
+    /// <summary>
+    /// 글자 입력 키 집합의 경계 (명시 집합: 0x20, 0x30–0x39, 0x41–0x5A, 0x60–0x6F, 0xBA–0xC0, 0xDB–0xDF, 0xE2).
+    /// PrtScn·Insert·Delete·방향키·F1 같은 비입력 키는 집합 밖이다.
+    /// </summary>
+    [Theory]
+    [InlineData(0x20u, true)]   // Space
+    [InlineData(0x21u, false)]  // PageUp
+    [InlineData(0x25u, false)]  // Left
+    [InlineData(0x2Cu, false)]  // PrtScn
+    [InlineData(0x2Du, false)]  // Insert
+    [InlineData(0x2Eu, false)]  // Delete
+    [InlineData(0x2Fu, false)]  // Help
+    [InlineData(0x30u, true)]   // 0
+    [InlineData(0x39u, true)]   // 9
+    [InlineData(0x3Au, false)]
+    [InlineData(0x40u, false)]
+    [InlineData(0x41u, true)]   // A
+    [InlineData(0x5Au, true)]   // Z
+    [InlineData(0x5Bu, false)]  // LWin
+    [InlineData(0x5Fu, false)]  // Sleep
+    [InlineData(0x60u, true)]   // NumPad0
+    [InlineData(0x6Fu, true)]   // Divide
+    [InlineData(0x70u, false)]  // F1
+    [InlineData(0xB9u, false)]
+    [InlineData(0xBAu, true)]   // ;
+    [InlineData(0xC0u, true)]   // `
+    [InlineData(0xC1u, false)]
+    [InlineData(0xDAu, false)]
+    [InlineData(0xDBu, true)]   // [
+    [InlineData(0xDFu, true)]   // OEM_8
+    [InlineData(0xE0u, false)]
+    [InlineData(0xE1u, false)]
+    [InlineData(0xE2u, true)]   // OEM_102
+    [InlineData(0xE3u, false)]
+    public void IsTextInputKey_Boundaries_MatchExplicitSet(uint vk, bool expected)
+    {
+        Assert.Equal(expected, HotkeyCaptureRules.IsTextInputKey(vk));
+    }
+
+    /// <summary>거부 문구는 대화상자가 그대로 보여 준다 — 비면 사용자는 왜 눌러도 안 잡히는지 알 수 없다.</summary>
+    [Fact]
+    public void HotkeyShiftOnlyRejected_Text_IsNotBlank()
+    {
+        Assert.False(string.IsNullOrWhiteSpace(Strings.HotkeyShiftOnlyRejected));
+    }
 }
