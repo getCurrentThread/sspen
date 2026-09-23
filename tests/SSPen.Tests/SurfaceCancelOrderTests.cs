@@ -10,7 +10,8 @@ using static SSPen.Tests.TestGeometry;
 namespace SSPen.Tests;
 
 /// <summary>
-/// <c>SurfaceInputController.CancelActiveInput</c>의 증인 (ARCH-2, ARCH-6, R7, R15, SEL-LIM-6).
+/// <c>SurfaceInputController.CancelActiveInput</c>의 증인 (ARCH-2, ARCH-6, R7, R15, SEL-LIM-6), 그리고
+/// 버튼 업 유실 뒤 새 누름의 잔여 정리 <c>SettleOrphanedPress</c>의 증인 (91단계, A3-1 — 파일 끝 절).
 ///
 /// 이 메서드는 "진행 중인 것을 전부 정리한다"가 아니라 <b>취소 의미가 서로 다른 다섯 가지</b>를
 /// 정해진 순서로 마감하는 오케스트레이터다 — 획·도형은 폐기, 텍스트는 <b>커밋</b>, 변형은 롤백,
@@ -212,14 +213,18 @@ public class SurfaceCancelOrderTests
     // ---- 피어 불변식: 머리의 null 푸시를 ResetSelectGesture로 바꾸면 안 된다 ----
 
     /// <summary>
-    /// 버튼 업을 잃은 그룹 회전이 <b>살아 있는 채로</b> 다음 마우스 다운을 맞아도, 그 뒤의 취소는
-    /// 여전히 시작 상태로 롤백해야 한다 (R15).
+    /// 버튼 업을 잃은 그룹 회전이 다음 마우스 다운을 맞은 뒤에도, 요소는 시작 상태로 돌아가고
+    /// 원장에는 아무것도 실리지 않아야 한다 (R15).
     ///
-    /// <c>BeginSelectGesture</c> 머리는 각도만 지우는 <c>setGestureGroupFrame(null)</c>이고,
-    /// 거기서 <c>ResetSelectGesture()</c>를 부르면 시작 상태 스냅샷이 함께 사라져 롤백이 예외도
+    /// 91단계(A3-1)부터는 <b>새 누름이 롤백한다</b> — <c>PointerDown</c>이 <c>SettleOrphanedPress</c>로
+    /// 잔여 제스처를 롤백 → Reset한 뒤 새 제스처를 시작하므로, 뒤의 취소가 만나는 스냅샷은 이미 비어 있다.
+    /// 그 전에는 스냅샷이 살아남아 뒤의 취소가 롤백했다. 어느 쪽이든 관측 결과(항등 상태 + 빈 커밋)는 같아야 한다.
+    ///
+    /// 피어 불변식은 그대로다: <c>BeginSelectGesture</c> 머리는 각도만 지우는 <c>setGestureGroupFrame(null)</c>이고,
+    /// 거기서 롤백 없이 <c>ResetSelectGesture()</c>를 부르면 시작 상태 스냅샷이 함께 사라져 롤백이 예외도
     /// 로그도 없이 무동작이 된다 — 원장에 없는 변형이 화면에 남아 실행취소로 지울 수 없게 된다.
     /// 이어지는 마우스 다운을 <b>Shift+빈 곳</b>으로 잡는 이유: 그 경로는 마퀴라서 스냅샷을 새로
-    /// 잡지 않으므로(SEL-AC-3/R15), 살아남아야 할 스냅샷이 덮이지 않고 그대로 관측된다.
+    /// 잡지 않고(SEL-AC-3/R15) 선택도 비우지 않으므로, 롤백 대상이 선택에 남은 채 관측된다.
     /// </summary>
     [Fact]
     public void LostMouseUp_ThenNewPress_CancelStillRollsBackInFlightTransform()
@@ -249,6 +254,162 @@ public class SurfaceCancelOrderTests
             Assert.Equal(ElementTransformState.Identity, a.TransformState);
             Assert.Equal(ElementTransformState.Identity, b.TransformState);
             Assert.Empty(h.Commits); // 롤백은 원장에 아무것도 싣지 않는다
+        });
+    }
+
+    // ---- 버튼 업 유실 뒤 새 누름: SettleOrphanedPress (91단계, A3-1) ----
+    //
+    // 캡처를 잃어 버튼 업이 오지 않으면, 인터랙티브가 유지되는 한 진행 중 필드가 그대로 남는다
+    // (도구 전환은 CancelActiveInput을 부르지 않는다). 다음 누름은 먼저 그 잔여를 정리해야 한다 —
+    // 획·도형·표는 폐기, 변형은 롤백 → Reset. 아래 다섯 증인은 정리가 없을 때의 네 결함
+    // (유령 지우기, 원장 없는 변형, 되살아난 회전, 고아 미리보기)을 하나씩 잠근다.
+
+    /// <summary>
+    /// 지우개 드래그의 업을 잃은 뒤 선택 도구로 요소를 끌면 <b>이동</b>이어야 한다.
+    /// 걸쇠(<c>_eraserDragging</c>)가 남아 있으면 이동 사다리가 지우개 분기로 떨어져 지나간 요소를 지운다.
+    /// </summary>
+    [Fact]
+    public void LostMouseUp_EraserThenSelectDrag_DoesNotErase()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            var a = Stroke(400, 400, 50, 50);
+            var b = Stroke(600, 600, 50, 50);
+            h.Document.Add(a);
+            h.Document.Add(b);
+            h.State.ActiveTool = ToolKind.Eraser;
+            h.Controller.PointerDown(new Point(100, 100), shift: false); // 빈 곳 — 지운 것 없이 걸쇠만 선다
+
+            // 버튼 업 유실: 업 없이 도구가 바뀌고 다음 누름이 온다.
+            h.State.ActiveTool = ToolKind.Select;
+            h.Controller.PointerDown(new Point(425, 425), shift: false);
+            h.Controller.PointerMove(new Point(625, 625), shift: false, leftPressed: true);
+
+            Assert.Equal([a, b], h.Document.Elements);
+            Assert.Equal(0, h.Ledger.Count);
+            Assert.Equal(new Vector(200, 200), a.TransformState.Translation); // 지우개가 아니라 이동 분기를 탔다
+        });
+    }
+
+    /// <summary>
+    /// 이동의 업을 잃은 뒤 다른 요소를 클릭하면, 원장에 없는 이동은 <b>롤백</b>되어야 한다 (R15).
+    /// 정리가 없으면 새 스냅샷이 옛 스냅샷을 덮어 a가 변위된 채 남고, 실행취소로도 되돌릴 수 없다.
+    /// </summary>
+    [Fact]
+    public void LostMouseUp_MoveThenElementClick_RollsBackUnledgeredTransform()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            var a = Stroke(400, 400, 50, 50);
+            var b = Stroke(600, 600, 50, 50);
+            h.Document.Add(a);
+            h.Document.Add(b);
+            h.State.ActiveTool = ToolKind.Select;
+
+            h.Controller.PointerDown(new Point(425, 425), shift: false);
+            h.Controller.PointerMove(new Point(505, 485), shift: false, leftPressed: true);
+            Assert.Equal(new Vector(80, 60), a.TransformState.Translation); // 이동이 실제로 걸려 있었다 (거짓 안심 방지)
+
+            // 버튼 업 유실: 업 없이 b를 누르고 뗀다.
+            h.Controller.PointerDown(new Point(625, 625), shift: false);
+            h.Controller.PointerUp(new Point(625, 625), shift: false);
+
+            Assert.Equal(ElementTransformState.Identity, a.TransformState);
+            Assert.Equal(ElementTransformState.Identity, b.TransformState);
+            Assert.Equal([b], h.Selection.Elements);
+            Assert.Empty(h.Commits);
+        });
+    }
+
+    /// <summary>
+    /// 그룹 회전의 업을 잃은 뒤 Shift+요소 토글은 이동을 시작하지 않는다 (SEL-AC-3) — 옛 회전도 되살리면 안 된다.
+    /// 토글 분기는 <c>_dragKind</c>를 갱신하지 않고 돌아가므로, 정리가 없으면 옛 GroupRotate가
+    /// 새 누름 지점을 기준으로 이어져 a·b가 다시 돌고 가이드 프레임이 밀린다.
+    /// </summary>
+    [Fact]
+    public void LostMouseUp_GroupRotateThenShiftToggle_DoesNotResumeRotation()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            var a = Stroke(400, 400, 50, 50);
+            var b = Stroke(600, 600, 50, 50);
+            var c = Stroke(1000, 200, 50, 50);
+            h.Document.Add(a);
+            h.Document.Add(b);
+            h.Document.Add(c);
+            h.Selection.Set([a, b]);
+            h.State.ActiveTool = ToolKind.Select;
+            var frame = SelectionGroup.Frame([a, b])!.Value;
+
+            h.Controller.PointerDown(SelectionGroup.RotateHandle(frame), shift: false);
+            h.Controller.PointerMove(new Point(frame.Right + 120, frame.Top + 40), shift: false, leftPressed: true);
+            Assert.NotEqual(ElementTransformState.Identity, a.TransformState);
+
+            // 버튼 업 유실: 업 없이 c를 Shift+누르고 끈다.
+            h.Controller.PointerDown(new Point(1025, 225), shift: true);
+            h.Controller.PointerMove(new Point(1100, 300), shift: false, leftPressed: true);
+
+            Assert.Equal([a, b, c], h.Selection.Elements); // 토글은 됐다
+            Assert.Equal(ElementTransformState.Identity, a.TransformState);
+            Assert.Equal(ElementTransformState.Identity, b.TransformState);
+            Assert.Null(h.FramePushes[^1]);
+            Assert.Empty(h.Commits);
+        });
+    }
+
+    /// <summary>
+    /// 획의 업을 잃은 뒤 새 획을 시작하면 미리보기는 <b>하나</b>여야 한다. 정리가 없으면 옛 Path가 참조만 잃고
+    /// 캔버스에 남는다 — 문서에 없는 시각물이라 지우개·전체 지우기로도 사라지지 않는다.
+    /// </summary>
+    [Fact]
+    public void LostMouseUp_StrokeThenNewStroke_LeavesSinglePreview()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            h.State.ActiveTool = ToolKind.Pen;
+            h.Controller.PointerDown(new Point(100, 100), shift: false);
+            h.Controller.PointerMove(new Point(180, 160), shift: false, leftPressed: true);
+
+            // 버튼 업 유실: 업 없이 다음 획이 시작된다.
+            h.Controller.PointerDown(new Point(300, 300), shift: false);
+
+            Assert.Single(h.Canvas.Children.OfType<Shape>());
+            Assert.Empty(h.Document.Elements);
+            Assert.Equal(0, h.Ledger.Count);
+        });
+    }
+
+    /// <summary>
+    /// 획의 업을 잃은 뒤 선택 도구로 요소를 끌면 그 요소가 움직여야 한다. 정리가 없으면 그리기 분기가 이동을
+    /// 선점해 옛 획에 점을 잇고, 업에서 그 획을 문서에 커밋해 버린다 — 선택 이동은 한 번도 돌지 않는다.
+    /// </summary>
+    [Fact]
+    public void LostMouseUp_StrokeThenSelectDrag_MovesElementNotStroke()
+    {
+        RunSta(() =>
+        {
+            var h = new Harness();
+            var a = Stroke(400, 400, 50, 50);
+            h.Document.Add(a);
+            h.State.ActiveTool = ToolKind.Pen;
+            h.Controller.PointerDown(new Point(100, 100), shift: false);
+            h.Controller.PointerMove(new Point(180, 160), shift: false, leftPressed: true);
+
+            // 버튼 업 유실: 업 없이 도구가 바뀌고 a를 끈다.
+            h.State.ActiveTool = ToolKind.Select;
+            h.Controller.PointerDown(new Point(425, 425), shift: false);
+            h.Controller.PointerMove(new Point(505, 485), shift: false, leftPressed: true);
+            h.Controller.PointerUp(new Point(505, 485), shift: false);
+
+            Assert.Equal([a], h.Document.Elements);
+            Assert.Empty(h.Canvas.Children.OfType<Shape>());
+            var delta = Assert.Single(Assert.Single(h.Commits).Deltas);
+            Assert.Same(a, delta.Element);
+            Assert.Equal(new Vector(80, 60), delta.After.Translation);
         });
     }
 

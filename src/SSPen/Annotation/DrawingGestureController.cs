@@ -179,6 +179,8 @@ public sealed class DrawingGestureController(
     /// 진행 중 획·도형·표를 <b>폐기</b>한다 — 커밋이 아니다 (원장 항목이 없으므로 미리보기 시각물만 지운다).
     /// 세 슬롯의 순서(획 → 도형 → 표)는 옮기기 전 <c>CancelActiveInput</c> 그대로이며, 표 슬롯은 표가 없어도
     /// 배지 null 힌트를 민다 — 배지를 지우는 것은 창이고, 커밋·폐기 어느 쪽이든 소멸 신호는 이 한 곳에서 나간다.
+    /// 업 유실 뒤 새 누름의 정리(<c>SurfaceInputController.SettleOrphanedPress</c>, 91단계)는 <see cref="Active"/>일 때만
+    /// 이 메서드를 부른다 — 정상 누름마다 배지 null 힌트가 흐르지 않게 하려는 것이다.
     /// </summary>
     public void DiscardAll()
     {

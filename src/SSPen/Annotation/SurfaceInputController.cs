@@ -28,7 +28,8 @@ namespace SSPen.Annotation;
 ///
 /// 이 클래스에 남는 것은 진행 중 필드와 창·문서·원장으로 흘려보내는 배선뿐이다 (ARCH-2).
 /// 그 배선 중 <b>순서 자체가 계약</b>인 것은 <see cref="CancelActiveInput"/> 하나이며,
-/// 다섯 가지 취소 의미와 그 순서 의무는 그 메서드의 문서가 소유한다.
+/// 다섯 가지 취소 의미와 그 순서 의무는 그 메서드의 문서가 소유한다. 버튼 업 유실 뒤 새 누름의 잔여 정리는
+/// 그중 폐기·롤백 두 의미만 쓰는 별개 메서드 <see cref="SettleOrphanedPress"/>다 (91단계) — 둘을 합치지 않는다.
 /// </summary>
 public sealed class SurfaceInputController(
     Canvas inkCanvas,
@@ -224,6 +225,9 @@ public sealed class SurfaceInputController(
             return false; // Handled 미대입 — 오늘 이 클릭은 소비되지 않는다 (ARCH-2).
         }
 
+        // 버튼 업을 잃은 제스처의 잔여를 새 제스처보다 먼저 정리한다 (91단계, A3-1). 정상 경로에서는 무동작이다.
+        SettleOrphanedPress();
+
         switch (gesture)
         {
             // 그리기 여섯 갈래: 시작은 DrawingGestureController, 캡처(ARCH-6)는 여기 — 해제(PointerUp/CancelActiveInput)와 같은 클래스에 둔다.
@@ -265,6 +269,46 @@ public sealed class SurfaceInputController(
                 break;
         }
         return SurfaceInputRouter.MarksHandled(gesture);
+    }
+
+    /// <summary>
+    /// <b>버튼 업 유실 뒤 새 누름</b>에만 쓰는 잔여 제스처 정리 (91단계, A3-1). 부르는 곳은
+    /// <see cref="PointerDown(Point, bool, bool, bool, float)"/> 한 곳이다. 캡처를 잃어 업이 오지 않으면, 인터랙티브가
+    /// 유지되는 한(도구 전환은 <see cref="CancelActiveInput"/>을 부르지 않는다) 진행 중 필드가 그대로 남아 다음 누름이
+    /// 유령 지우기(지우개 걸쇠), 원장 없는 변형(스냅샷 덮어쓰기·버림), 되살아난 회전(토글은 <c>_dragKind</c>를 갱신하지 않는다),
+    /// 고아 미리보기(참조만 잃은 Path)를 낸다. 업이 도착한 정상 경로에서는 모든 필드가 이미 초기값이라 무동작이다.
+    ///
+    /// 의미는 둘뿐이다 — 획·도형·표 = <b>폐기</b>(비인터랙티브 전환과 같다), 변형(드래그) = <b>롤백 → Reset</b>.
+    /// 롤백이 Reset보다 <b>앞</b>이다: Reset이 시작 상태 스냅샷을 버리므로 뒤집으면 롤백이 조용히 무동작이 된다.
+    /// 나머지 셋은 하지 않는다.
+    /// <list type="bullet">
+    ///   <item>텍스트 커밋 — 열린 상자 바깥 누름은 라우터의 <c>CommitTextOnly</c>가 이 호출보다 먼저 선점한다.</item>
+    ///   <item>휠 확정 — <see cref="BeginSelectGesture"/>/<see cref="EraseAt"/> 머리의 Flush가 맡는다 (드래그 중 휠은 불활성이라
+    ///         롤백할 드래그와 휠 세션은 공존하지 않는다, R7(a)).</item>
+    ///   <item>캡처 해제 — 새 제스처가 다시 잡는다 (ARCH-6).</item>
+    /// </list>
+    /// 빈 곳 걸쇠(<c>_hadSelectionOnPress</c>)는 따로 지우지 않는다 — 마퀴 갈래에서만 서므로(<c>_dragKind == Marquee</c>)
+    /// 아래 <see cref="ResetSelectGesture"/>가 지운다 (63단계). 표 배지 null 힌트는 <c>Drawing.Active</c> 가드 덕분에 정상 누름마다 흐르지 않는다.
+    ///
+    /// <b><see cref="CancelActiveInput"/>과 합치지 말 것.</b> 그쪽은 다섯 가지 취소 의미(텍스트 커밋·휠 확정·캡처 해제 포함)를
+    /// 무조건 순서대로 도는 오케스트레이터라, 누름마다 부르면 정상 경로에서도 캡처 해제·배지 null 힌트·휠 확정이 흐른다.
+    /// </summary>
+    private void SettleOrphanedPress()
+    {
+        _eraserDragging = false;
+        if (Drawing.Active)
+        {
+            Drawing.DiscardAll(); // 획·도형·표 = 폐기 — 원장 항목이 없으므로 미리보기 시각물만 지운다.
+        }
+        if (_dragKind != SelectionDragKind.None)
+        {
+            _base.RollbackAll(); // 원장에 없는 변형을 시작 상태로 (R15). 반드시 Reset보다 앞이다.
+            if (_dragKind == SelectionDragKind.Marquee)
+            {
+                setMarquee(null);
+            }
+            ResetSelectGesture();
+        }
     }
 
     public void PointerMove(Point pos, bool shift, bool leftPressed, float pressure = StrokeGeometry.DefaultPressure)
@@ -392,11 +436,11 @@ public sealed class SurfaceInputController(
     {
         WheelScale.Flush(commit: true); // 휠 확대 중 클릭은 그 확대를 먼저 확정한다 (원장 순서 보존).
 
-        // 캡처를 잃어 버튼 업이 유실된 제스처가 그려지는 프레임에 각도를 남길 수 있다.
         // 마우스 다운 시점에는 각도가 반드시 0이어야 한다 — 그래야 아래 히트 테스트,
         // R6 내부 판정(IsInsideSelectionFrame), 휠 고정점(WheelPivot)이 전부
         // "화면에 그려진 것과 같은 축 정렬 프레임"을 본다.
-        // ResetSelectGesture()를 부르면 안 된다: 진행 중이던 변형을 커밋도 롤백도 하지 않아
+        // PointerDown이 먼저 SettleOrphanedPress로 롤백한 뒤 Reset하므로, 여기서 ResetSelectGesture를 다시 부를 이유는 없다
+        // (이 null 푸시는 방어로 남긴다). 롤백 없이 Reset하는 것은 여전히 금지다: 진행 중이던 변형을 커밋도 롤백도 하지 않아
         // 원장에 없는 변형이 화면에 남고 실행취소로 지울 수 없게 된다 (CancelActiveInput의 규칙).
         setGestureGroupFrame(null);
 
@@ -641,7 +685,7 @@ public sealed class SurfaceInputController(
 
     private void ResetSelectGesture()
     {
-        // 빈 곳 걸쇠(R5)를 지우는 유일한 지점 — 마퀴 업(제자리/드래그)·일반 드래그 업·CancelActiveInput이 모두 여기를 지난다.
+        // 빈 곳 걸쇠(R5)를 지우는 유일한 지점 — 마퀴 업(제자리/드래그)·일반 드래그 업·CancelActiveInput·SettleOrphanedPress가 모두 여기를 지난다.
         _hadSelectionOnPress = false;
         _dragKind = SelectionDragKind.None;
         _dragHandleTarget = null;
@@ -793,6 +837,7 @@ public sealed class SurfaceInputController(
     /// <b>이 메서드는 <see cref="BeginSelectGesture"/> 머리의 <c>setGestureGroupFrame(null)</c>과
     /// 한 곳으로 합칠 수 없다.</b> 그쪽은 각도만 지우는 것이고 여기는 커밋/롤백 의미를 가진다 —
     /// 합치는 순간 진행 중 변형이 커밋도 롤백도 되지 않고 화면에 남는다 (그 함수의 주석 참고).
+    /// 업 유실 뒤 새 누름의 정리(<see cref="SettleOrphanedPress"/>, 폐기·롤백 두 의미뿐)와도 합치지 않는다 (그 메서드의 문서 참고).
     /// </summary>
     public void CancelActiveInput()
     {

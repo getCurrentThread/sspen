@@ -19,8 +19,10 @@ namespace SSPen.Tests;
 /// 컨트롤러 수준 end-to-end 증인은 9단계(a3046fd)가 <c>Point</c> 진입점을 분리한 뒤
 /// <c>SurfaceCancelOrderTests.LostMouseUp_ThenNewPress_CancelStillRollsBackInFlightTransform</c>
 /// 으로 붙었다 (8단계가 예약했던 이름 <c>Cancel_MidGroupRotateWithClearedSelection_…</c>은
-/// 도착하지 않았다 — 링크는 실제 증인 이름을 가리켜야 한다). 아래 타입 수준 증인 +
-/// 리플렉션 트립와이어는 그 위에 남는 방어선이다.
+/// 도착하지 않았다 — 링크는 실제 증인 이름을 가리켜야 한다). 그 증인의 전제는 91단계(A3-1)에서 바뀌었다 —
+/// 업을 잃은 제스처의 스냅샷이 새 누름을 넘어 살아남아 뒤의 취소가 롤백하는 것이 아니라, <b>새 누름이 롤백한다</b>
+/// (<c>SettleOrphanedPress</c>: 롤백 → Reset). 업 유실 경로별 증인은 같은 파일의 <c>LostMouseUp_*</c> 절이다.
+/// 아래 타입 수준 증인 + 리플렉션 트립와이어는 그 위에 남는 방어선이다.
 /// </summary>
 public class DragBaseStatesTests
 {
