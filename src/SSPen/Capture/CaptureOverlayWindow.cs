@@ -169,7 +169,7 @@ public sealed class CaptureOverlayWindow : Window
         ReleaseMouseCapture();
 
         var released = e.GetPosition(_canvas);
-        double moved = Math.Max(Math.Abs(released.X - _dragStart.X), Math.Abs(released.Y - _dragStart.Y));
+        double moved = CaptureOverlayRules.MovedPixels(_dragStart, released);
         var verdict = CaptureOverlayRules.PointerVerdict(_barVisibleOnPress, insideBar: false, moved);
         _barVisibleOnPress = false;
         if (verdict == CapturePointerVerdict.CommitDefault)
@@ -180,7 +180,7 @@ public sealed class CaptureOverlayWindow : Window
             return;
         }
 
-        if (_selection.Width < 4 || _selection.Height < 4)
+        if (CaptureOverlayRules.IsTooSmall(_selection))
         {
             _selection = Rect.Empty;
             _sizeReadout.Visibility = Visibility.Collapsed;
@@ -281,14 +281,9 @@ public sealed class CaptureOverlayWindow : Window
 
     private void ShowActionBar()
     {
-        double x = Math.Clamp(_selection.Right - 240, 0, _virtualScreen.Width - 250);
-        double y = _selection.Bottom + 8;
-        if (y > _virtualScreen.Height - 44)
-        {
-            y = Math.Max(_selection.Top - 44, 0);
-        }
-        Canvas.SetLeft(_actionBar, x);
-        Canvas.SetTop(_actionBar, y);
+        var p = CaptureOverlayRules.ActionBarOrigin(_selection, _virtualScreen);
+        Canvas.SetLeft(_actionBar, p.X);
+        Canvas.SetTop(_actionBar, p.Y);
         _actionBar.Visibility = Visibility.Visible;
     }
 
@@ -317,16 +312,8 @@ public sealed class CaptureOverlayWindow : Window
         }
         _committed = true;
 
-        // 캔버스/이미지는 스냅샷 물리 픽셀 크기로 잡혀 있으므로 캔버스 단위 == 스냅샷 픽셀이다.
-        // 따라서 변환은 항등 + 가상 스크린 원점 보정만 수행한다 (아키텍트 2세대 권고:
-        // dpi 곱셈은 오히려 시각적 선택과 어긋난다. 혼합 DPI는 이연 목록 4번/Non-Goal).
-        var region = _selection.IsEmpty
-            ? new PhysicalRect(0, 0, 0, 0)
-            : new PhysicalRect(
-                _virtualScreen.X + (int)Math.Round(_selection.X),
-                _virtualScreen.Y + (int)Math.Round(_selection.Y),
-                (int)Math.Round(_selection.Width),
-                (int)Math.Round(_selection.Height));
+        // 캔버스 단위 == 스냅샷 픽셀이므로 항등 + 원점 보정뿐이다 — 계약과 증인은 CaptureOverlayRules.ToPhysicalRegion.
+        var region = CaptureOverlayRules.ToPhysicalRegion(_selection, _virtualScreen);
         _onComplete(action, region);
     }
 }

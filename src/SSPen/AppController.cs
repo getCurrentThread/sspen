@@ -581,8 +581,9 @@ public sealed class AppController : IShellActions, ISettingsHost
     public void StartCapture() => _capture.StartCapture();
 
     /// <summary>
-    /// 캡처 결과를 사용자에게 알린다 — 판정은 <see cref="CaptureOutcomeRules"/>, 표시는 <see cref="ToastHost"/>,
-    /// 문구는 <see cref="Strings"/>가 각각 소유하고 여기는 셋을 잇는 배선뿐이다.
+    /// 캡처 결과를 사용자에게 알린다 — 판정은 <see cref="CaptureOutcomeRules"/>, 문구·액션 라벨은
+    /// <see cref="CaptureOutcomeText"/>(68단계, C-2), 표시는 <see cref="ToastHost"/>가 각각 소유하고
+    /// 여기는 셋을 잇는 배선과 탐색기 실행뿐이다.
     /// </summary>
     private void ReportCaptureOutcome(CaptureOutcome outcome)
     {
@@ -590,23 +591,9 @@ public sealed class AppController : IShellActions, ISettingsHost
         {
             return;
         }
-        string text = outcome.Message switch
-        {
-            CaptureMessageId.Saved => outcome.Path is { } path
-                ? Strings.CaptureSavedDetail(System.IO.Path.GetFileName(path))
-                : Strings.CaptureSaved,
-            CaptureMessageId.SaveFailed => Strings.CaptureSaveFailed,
-            CaptureMessageId.Copied => Strings.CaptureCopied,
-            CaptureMessageId.CopyFailed => Strings.ClipboardCopyFailed,
-            CaptureMessageId.Pinned => Strings.CapturePinned,
-            CaptureMessageId.PinFailed => Strings.CapturePinFailed,
-            _ => string.Empty,
-        };
-        Action? open = outcome.OfferOpenFolder && outcome.Path is { } saved
-            ? () => RevealInExplorer(saved)
-            : null;
-        _toasts.Show(new ToastRequest(
-            outcome.Kind, text, open is null ? null : Strings.OpenFolder, open));
+        var label = CaptureOutcomeText.ActionLabel(outcome);
+        Action? open = label is null ? null : () => RevealInExplorer(outcome.Path!);
+        _toasts.Show(new ToastRequest(outcome.Kind, CaptureOutcomeText.Text(outcome), label, open));
     }
 
     /// <summary>저장한 파일을 탐색기에서 선택된 상태로 연다. 실패해도 알림 자체를 잃지 않는다.</summary>

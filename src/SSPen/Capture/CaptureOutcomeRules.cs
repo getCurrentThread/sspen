@@ -2,7 +2,10 @@ using SSPen.Shell;
 
 namespace SSPen.Capture;
 
-/// <summary>캡처 결과 알림의 문구 식별자. <b>문장은 여기 없다</b> — 사용자 문자열은 <see cref="Strings"/>에만 산다.</summary>
+/// <summary>
+/// 캡처 결과 알림의 문구 식별자. <b>문장은 여기 없다</b> — 사용자 문자열은 <see cref="Strings"/>에만 살고,
+/// 식별자 → 문장 매핑은 <see cref="CaptureOutcomeText"/>가 소유한다 (값을 더하면 그 표의 전수 증인이 빨갛게 된다).
+/// </summary>
 public enum CaptureMessageId
 {
     /// <summary>알릴 것이 없다 (취소·빈 영역). 아무 일도 하지 않은 조작은 말을 걸지 않는다.</summary>
