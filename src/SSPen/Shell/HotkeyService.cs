@@ -13,17 +13,23 @@ public sealed record HotkeyBinding(string Name, uint Modifiers, uint VirtualKey,
 /// - 재등록 API: 설정 재지정(AC-23)·트레이 "판서 켜기" 시 재시도.
 /// - 억제/복원 API: 설정 창 모달 "키 조합을 누르세요" 동안 라이브 맵 정지 (ARCH-8).
 /// 캡처(Alt+Shift+S)는 Epic Pen과 충돌하지 않는 스펙 보장 조합이다.
+/// 76단계(C-3): OS 등록 두 호출은 <see cref="IHotkeyRegistrar"/> 이음매 뒤에 있다(프로덕션 <see cref="HotkeyRegistrar.Native"/>).
+/// 등록 정책 — id = 바인딩 인덱스, <c>MOD_NOREPEAT</c> 합성, 실패 목록, 억제 중 무등록, 복원 시 현재 바인딩 재등록 — 과
+/// <see cref="Dispatch"/>의 처리 판정은 이 클래스에 남아 <c>FakeHotkeyRegistrar</c>로 헤드리스 증인을 갖는다.
 /// </summary>
 public sealed class HotkeyService : IDisposable
 {
+    private readonly IHotkeyRegistrar _registrar;
     private readonly HwndSource _source;
     private readonly List<HotkeyBinding> _bindings = [];
     private readonly List<string> _failed = [];
     private bool _suppressed;
     private bool _disposed;
 
-    public HotkeyService()
+    /// <param name="registrar">OS 등록 이음매. 생략하면 <see cref="HotkeyRegistrar.Native"/>(실제 RegisterHotKey).</param>
+    public HotkeyService(IHotkeyRegistrar? registrar = null)
     {
+        _registrar = registrar ?? HotkeyRegistrar.Native;
         // 메시지 전용 창 (HWND_MESSAGE 부모).
         var parameters = new HwndSourceParameters("SSPen.Hotkeys")
         {
@@ -59,7 +65,7 @@ public sealed class HotkeyService : IDisposable
         for (int i = 0; i < _bindings.Count; i++)
         {
             var binding = _bindings[i];
-            bool ok = NativeMethods.RegisterHotKey(
+            bool ok = _registrar.Register(
                 _source.Handle, i, binding.Modifiers | NativeMethods.MOD_NOREPEAT, binding.VirtualKey);
             Log.Info($"RegisterHotKey [{binding.Name}] vk=0x{binding.VirtualKey:X2} mods=0x{binding.Modifiers:X} → {(ok ? "성공" : "실패")}");
             if (!ok)
@@ -113,29 +119,38 @@ public sealed class HotkeyService : IDisposable
     {
         for (int i = 0; i < _bindings.Count; i++)
         {
-            NativeMethods.UnregisterHotKey(_source.Handle, i);
+            _registrar.Unregister(_source.Handle, i);
         }
     }
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
-        if (msg == NativeMethods.WM_HOTKEY)
+        if (msg == NativeMethods.WM_HOTKEY && Dispatch((int)wParam))
         {
-            int id = (int)wParam;
-            if (id >= 0 && id < _bindings.Count && !_suppressed)
-            {
-                try
-                {
-                    _bindings[id].Action();
-                }
-                catch (Exception ex)
-                {
-                    Log.Error($"핫키 [{_bindings[id].Name}] 처리 중 오류", ex);
-                }
-                handled = true;
-            }
+            handled = true;
         }
         return 0;
+    }
+
+    /// <summary>
+    /// WM_HOTKEY 1건의 처리 (76단계에 WndProc에서 분리 — 판정은 그대로다). 범위 안의 id이고 억제 중이 아니면 동작을 실행하고
+    /// true(handled)를 돌려준다. 동작이 던진 예외는 로그로 남기고 삼킨다 — 그래도 handled다. 범위 밖이거나 억제 중이면 false.
+    /// </summary>
+    internal bool Dispatch(int id)
+    {
+        if (id < 0 || id >= _bindings.Count || _suppressed)
+        {
+            return false;
+        }
+        try
+        {
+            _bindings[id].Action();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"핫키 [{_bindings[id].Name}] 처리 중 오류", ex);
+        }
+        return true;
     }
 }
 

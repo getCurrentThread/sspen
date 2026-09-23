@@ -1,3 +1,4 @@
+using SSPen.Annotation;
 using SSPen.Settings;
 using SSPen.Shell;
 using Xunit;
@@ -75,9 +76,9 @@ public class HotkeyConflictRulesTests
     [Fact]
     public void Find_EveryQuickColorDef_IsReserved()
     {
-        for (int slot = 0; slot < 6; slot++)
+        for (int slot = 0; slot < AppState.QuickColorCount; slot++)
         {
-            var conflict = HotkeyConflictRules.Find(Table(), editingId: "undo", QuickColorHotkeys.For(slot), quickColorSlots: 6);
+            var conflict = HotkeyConflictRules.Find(Table(), editingId: "undo", QuickColorHotkeys.For(slot), quickColorSlots: AppState.QuickColorCount);
 
             Assert.Equal(QuickColorHotkeys.Name(slot), conflict);
         }

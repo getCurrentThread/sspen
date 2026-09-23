@@ -202,7 +202,8 @@ public sealed class AppController : IShellActions, ISettingsHost
             // 핫키와 툴바 버튼이 같은 경로를 타야 마찰과 알림이 한쪽에서만 빠지지 않는다.
             Undo, ClearAll, StartCapture, ToggleToolbar, _commands.DeleteSelection);
 
-        _hotkeys = new HotkeyService();
+        // OS 등록은 Interop/HotkeyRegistrar.Native — 핀·선택 키 훅의 hooks: 인자와 같은 이음매 관용구다 (76단계, C-3).
+        _hotkeys = new HotkeyService(registrar: HotkeyRegistrar.Native);
         _hotkeys.SetBindings(_shellHotkeys.BuildHotkeyMap());
 
         _tray = new TrayIcon(_state, OpenSettings, ExitApp, () => CheckForUpdates(isManual: true), ShowToolbar);
