@@ -96,6 +96,70 @@ public class AnnotationVisualFactoryTests
         });
     }
 
+    // ---- 도형 지오메트리 (87단계, A4-1): 그려진 것 == 맞는 것 ----
+
+    public static TheoryData<ShapeKind> AllShapeKinds()
+    {
+        var data = new TheoryData<ShapeKind>();
+        foreach (var kind in Enum.GetValues<ShapeKind>())
+        {
+            data.Add(kind);
+        }
+        return data;
+    }
+
+    /// <summary>
+    /// 팩토리가 그리는 지오메트리를 평탄화한 모든 꼭짓점이 요소 히트에 잡힌다 — 화살촉 날개 끝이 빠지면 빨간불.
+    /// 타원은 모델이 128샘플 현으로 거리를 재지만 현 오차(r·3e-4 수준)가 굵기/2 안에 든다.
+    /// <c>Geometry</c>는 MTA에서 만들 수 있으므로 STA 도우미를 쓰지 않는다.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AllShapeKinds))]
+    public void CreateShapeGeometry_AllShapeKinds_EveryFlattenedVertexHitsElement(ShapeKind kind)
+    {
+        var start = new Point(10, 20);
+        var end = new Point(210, 120);
+        var element = new ShapeElement(kind, start, end, Colors.Red, 2);
+
+        var flattened = AnnotationVisualFactory.CreateShapeGeometry(kind, start, end).GetFlattenedPathGeometry();
+
+        var vertices = FlattenedVertices(flattened).ToList();
+        Assert.NotEmpty(vertices);
+        Assert.All(vertices, v => Assert.True(element.HitTest(v, tolerance: 0.5), $"{kind} 꼭짓점 {v}"));
+    }
+
+    [Fact]
+    public void CreateShapeGeometry_UnknownKind_Throws()
+    {
+        Assert.Throws<InvalidOperationException>(
+            () => AnnotationVisualFactory.CreateShapeGeometry((ShapeKind)99, new Point(0, 0), new Point(10, 10)));
+    }
+
+    private static IEnumerable<Point> FlattenedVertices(PathGeometry geometry)
+    {
+        foreach (var figure in geometry.Figures)
+        {
+            yield return figure.StartPoint;
+            foreach (var segment in figure.Segments)
+            {
+                switch (segment)
+                {
+                    case LineSegment line:
+                        yield return line.Point;
+                        break;
+                    case PolyLineSegment poly:
+                        foreach (var p in poly.Points)
+                        {
+                            yield return p;
+                        }
+                        break;
+                    default:
+                        throw new InvalidOperationException($"평탄화 뒤 남은 곡선 세그먼트: {segment.GetType().Name}");
+                }
+            }
+        }
+    }
+
     private static TextElement MakeText(Point origin) =>
         new(origin, "가나다", Colors.Black, fontSize: 20, measuredSize: new Size(60, 24));
 }

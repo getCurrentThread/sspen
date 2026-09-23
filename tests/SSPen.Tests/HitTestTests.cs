@@ -94,6 +94,21 @@ public class HitTestTests
         Assert.False(line.HitTest(new Point(80, 20), tolerance: 1));
     }
 
+    /// <summary>
+    /// 87단계(A4-1): 길이 200 화살표의 날개 끝은 축에서 24·sin(π/7)≈10.4px 떨어져 있어, 축만 보던 히트는
+    /// 지우개 허용치(6 + 굵기/2 = 7px) 밖으로 흘려 화면에 보이는 촉 바깥쪽을 지우지 못했다.
+    /// </summary>
+    [Fact]
+    public void Arrow_OnWingTip_Hits()
+    {
+        var start = new Point(0, 0);
+        var end = new Point(200, 0);
+        var arrow = new ShapeElement(ShapeKind.Arrow, start, end, Colors.Red, 2);
+        var (wing1, _) = ShapeGeometry.ArrowHead(start, end);
+
+        Assert.True(arrow.HitTest(wing1, SelectionGestureRules.EraseHitTolerancePixels));
+    }
+
     [Fact]
     public void Text_BoundingBoxHit()
     {

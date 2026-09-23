@@ -221,8 +221,17 @@ public sealed class ShapeElement : AnnotationElement
         switch (Kind)
         {
             case ShapeKind.Line:
-            case ShapeKind.Arrow:
                 return DistanceToSegment(p, Start, End);
+
+            case ShapeKind.Arrow:
+            {
+                // 87단계(A4-1): 축만 보면 그려진 촉 바깥쪽 절반(날개 끝은 축에서 최대 24·sin(π/7)≈10.4px)을
+                // 지우개가 놓친다. 날개는 렌더·경계와 같은 함수(ShapeGeometry.ArrowHead)로 구한다 (ARCH-16).
+                var (h1, h2) = ShapeGeometry.ArrowHead(Start, End);
+                return Math.Min(
+                    DistanceToSegment(p, Start, End),
+                    Math.Min(DistanceToSegment(p, End, h1), DistanceToSegment(p, End, h2)));
+            }
 
             case ShapeKind.Rectangle:
             {

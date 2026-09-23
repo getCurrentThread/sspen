@@ -155,14 +155,25 @@ public static class AnnotationVisualFactory
         return path;
     }
 
-    public static void UpdateShapeVisual(Shape visual, ShapeKind kind, Point start, Point end)
+    public static void UpdateShapeVisual(Shape visual, ShapeKind kind, Point start, Point end) =>
+        ((Path)visual).Data = CreateShapeGeometry(kind, start, end);
+
+    /// <summary>
+    /// 도형 지오메트리 (87단계, A4-1). 미리보기(<see cref="UpdateShapeVisual"/>)와 커밋(<see cref="BuildVisual"/>)이
+    /// 같은 함수를 쓴다. 화살촉 날개는 <see cref="ShapeGeometry.ArrowHead"/> — 모델 경계와 히트테스트
+    /// (<see cref="ShapeElement"/>의 <c>ModelBounds</c>·<c>ModelDistanceTo</c>)가 부르는 바로 그 함수다(ARCH-16).
+    /// 모델이 이 팩토리를 부르지 않는 이유는 계층 방향(모델 → 뷰 역전 금지)이고, "그려진 것 == 맞는 것"은
+    /// 평탄화한 모든 꼭짓점이 요소에 맞는다는 헤드리스 증인
+    /// (<c>AnnotationVisualFactoryTests.CreateShapeGeometry_AllShapeKinds_EveryFlattenedVertexHitsElement</c>)이 지킨다.
+    /// 모르는 도형은 던진다 — 예전처럼 <c>Data</c>를 조용히 비워 두면 모델(<c>ModelDistanceTo</c>는 던진다)과 갈라진다.
+    /// 반환값은 얼리지 않는다(예전 동작 그대로).
+    /// </summary>
+    public static Geometry CreateShapeGeometry(ShapeKind kind, Point start, Point end)
     {
-        var path = (Path)visual;
         switch (kind)
         {
             case ShapeKind.Line:
-                path.Data = new LineGeometry(start, end);
-                break;
+                return new LineGeometry(start, end);
 
             case ShapeKind.Arrow:
             {
@@ -171,23 +182,23 @@ public static class AnnotationVisualFactory
                 var (h1, h2) = ShapeGeometry.ArrowHead(start, end);
                 group.Children.Add(new LineGeometry(end, h1));
                 group.Children.Add(new LineGeometry(end, h2));
-                path.Data = group;
-                break;
+                return group;
             }
 
             case ShapeKind.Rectangle:
-                path.Data = new RectangleGeometry(new Rect(start, end));
-                break;
+                return new RectangleGeometry(new Rect(start, end));
 
             case ShapeKind.Ellipse:
             {
                 var rect = new Rect(start, end);
-                path.Data = new EllipseGeometry(
+                return new EllipseGeometry(
                     new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2),
                     rect.Width / 2,
                     rect.Height / 2);
-                break;
             }
+
+            default:
+                throw new InvalidOperationException($"알 수 없는 도형: {kind}");
         }
     }
 

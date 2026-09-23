@@ -132,6 +132,38 @@ public class ShapeGeometryTests
         Assert.True(arrow.LocalBounds.Contains(wing2));
     }
 
+    /// <summary>
+    /// 87단계(A4-1): 렌더와 히트가 같은 날개 — 날개 선분 중점마다 요소가 맞고, 촉 바깥의 빈 곳은 맞지 않는다
+    /// (<c>TableGeometryTests.Dividers_MidpointOfEverySegment_HitsTableElement</c>와 같은 형태). 짧은 화살표는
+    /// 촉 길이가 최소 8로 clamp되는 경우다.
+    /// </summary>
+    [Theory]
+    [InlineData(0, 0, 200, 0)]
+    [InlineData(20, 30, 140, 90)]
+    [InlineData(0, 0, 10, 0)]
+    public void ArrowWings_MidpointOfEverySegment_HitsShapeElement(double sx, double sy, double ex, double ey)
+    {
+        var start = new Point(sx, sy);
+        var end = new Point(ex, ey);
+        var arrow = new ShapeElement(ShapeKind.Arrow, start, end, System.Windows.Media.Colors.Red, 2);
+
+        var (wing1, wing2) = ShapeGeometry.ArrowHead(start, end);
+        foreach (var wing in new[] { wing1, wing2 })
+        {
+            var mid = new Point((end.X + wing.X) / 2, (end.Y + wing.Y) / 2);
+            Assert.True(arrow.HitTest(mid, tolerance: 0.5), $"날개 중점 {mid}");
+        }
+    }
+
+    [Fact]
+    public void ArrowWings_PointFarOutsideHead_Misses()
+    {
+        var arrow = new ShapeElement(ShapeKind.Arrow, new Point(0, 0), new Point(200, 0), System.Windows.Media.Colors.Red, 2);
+
+        // 날개 끝 (≈178.3, ±10.4)보다 한참 바깥 — 축에서도 날개에서도 20px 넘게 떨어져 있다.
+        Assert.False(arrow.HitTest(new Point(170, 35), tolerance: 2));
+    }
+
     [Fact]
     public void ArrowHead_LivesOnlyInShapeGeometry_ByReflection()
     {

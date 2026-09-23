@@ -4,8 +4,9 @@ namespace SSPen.Annotation;
 
 /// <summary>
 /// 도형의 순수 기하 (21단계, ARCH-16). 렌더(<see cref="AnnotationVisualFactory"/>)와 모델 경계
-/// (<see cref="ShapeElement"/>의 <c>ModelBounds</c>)가 <b>같은 함수</b>를 부른다 — 화살촉 날개점을 두 벌로
-/// 계산하면 마퀴가 촉을 놓치거나 선택 프레임이 촉을 자르는 상태가 표현 가능해진다.
+/// (<see cref="ShapeElement"/>의 <c>ModelBounds</c>), 히트테스트(<c>ModelDistanceTo</c>, 87단계 A4-1)가
+/// <b>같은 함수</b>를 부른다 — 화살촉 날개점을 두 벌로 계산하면 마퀴가 촉을 놓치거나 선택 프레임이 촉을 자르거나
+/// 지우개가 그려진 촉을 놓치는 상태가 표현 가능해진다.
 ///
 /// 시각 팩토리가 아니라 모델 옆에 있는 이유: 모델(<c>AnnotationElements.cs</c>)이 뷰 팩토리를 부르는 것은
 /// 저장소의 유일한 모델→뷰 방향 역전이었다. 기하를 여기로 내리면 팩토리와 모델이 함께 이 파일을 보고
