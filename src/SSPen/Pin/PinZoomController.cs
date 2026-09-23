@@ -21,7 +21,8 @@ namespace SSPen.Pin;
 ///     칸마다의 배율·고정점 계산은 그대로 칸마다 하고, 창 적용만 한 번이다.</item>
 /// </list>
 /// 줌 밖의 창 변화(드래그 이동, DPI가 다른 모니터로 옮길 때의 크기 조정)는 다음 입력 때 마지막 적용 사각형과
-/// 실제 창을 비교해 흡수한다(<see cref="PinZoom.Resync"/>).
+/// 실제 창을 비교해 흡수한다(<see cref="PinZoom.Resync"/>). 적용 자체가 DPI 경계를 넘긴 경우(95단계)는 적용 직후 같은
+/// Resync로 보이는 배율을 채택한다 — 두 경로가 같은 의미다. 적용 뒤 크기 차이를 OS 크기 제한으로 보는 것은 DPI가 그대로일 때뿐이다.
 /// </summary>
 public sealed class PinZoomController
 {
@@ -29,7 +30,7 @@ public sealed class PinZoomController
     private readonly double _baseHeight;
     private readonly Func<PhysicalRect?> _windowRect;
     private readonly Func<(int X, int Y)?> _cursor;
-    private readonly Action<PhysicalRect> _moveResize;
+    private readonly Func<PhysicalRect, bool> _moveResize;
     private readonly Action<Action> _postCoalesced;
     private readonly Action _applied;
     private PinZoomResult _ideal;
@@ -39,14 +40,16 @@ public sealed class PinZoomController
     /// <param name="region">캡처 영역 (물리 px) — 핀이 처음 놓이는 사각형이자 배율 1.0의 기준 크기.</param>
     /// <param name="windowRect">지금 창 사각형 (물리 px, <c>GetWindowRect</c>). 창이 없으면 <c>null</c> — 아무것도 하지 않는다.</param>
     /// <param name="cursor">커서의 화면 물리 좌표 (<c>GetCursorPos</c>). 읽지 못하면 <c>null</c> — 그 칸은 버린다.</param>
-    /// <param name="moveResize">위치+크기를 한 번에 적용한다 (<see cref="WindowStyling.MoveResizePhysical"/>).</param>
+    /// <param name="moveResize">위치+크기를 한 번에 적용하고(<see cref="WindowStyling.MoveResizePhysical"/>), 그 적용 안에서 창의
+    /// DPI가 바뀌었는지 돌려준다(적용 전후 DPI 비교, 95단계). 적용 뒤 크기가 목표와 다를 때 DPI 전환(보이는 배율을 채택)과
+    /// OS 크기 제한(이상적 배율을 지킴)을 가르는 유일한 근거다.</param>
     /// <param name="postCoalesced">적용을 예약한다. 대기 중인 입력이 모두 처리된 뒤에 돌아야 버스트가 묶인다.</param>
     /// <param name="applied">적용이 끝났다 — 어댑터가 크롬(배율 표시·크기 판정)을 새로 그린다.</param>
     public PinZoomController(
         PhysicalRect region,
         Func<PhysicalRect?> windowRect,
         Func<(int X, int Y)?> cursor,
-        Action<PhysicalRect> moveResize,
+        Func<PhysicalRect, bool> moveResize,
         Action<Action> postCoalesced,
         Action applied)
     {
@@ -86,8 +89,7 @@ public sealed class PinZoomController
         }
         Resync(window);
         _ideal = PinZoom.ZoomAtCursor(
-            _ideal.Scale, delta, _ideal.Left, _ideal.Top, _baseWidth, _baseHeight,
-            cursor.X - _ideal.Left, cursor.Y - _ideal.Top);
+            _ideal, delta, _baseWidth, _baseHeight, cursor.X - _ideal.Left, cursor.Y - _ideal.Top);
         Schedule();
     }
 
@@ -99,7 +101,7 @@ public sealed class PinZoomController
             return;
         }
         Resync(window);
-        _ideal = PinZoom.ResetToOriginal(_ideal.Scale, _ideal.Left, _ideal.Top, _baseWidth, _baseHeight);
+        _ideal = PinZoom.ResetToOriginal(_ideal, _baseWidth, _baseHeight);
         Schedule();
     }
 
@@ -131,10 +133,18 @@ public sealed class PinZoomController
         var target = PinZoom.ToPhysicalRect(_ideal);
         if (target != window)
         {
-            _moveResize(target);
-            // OS가 크기를 제한했을 수도 있으니 실제 결과를 마지막 적용으로 삼는다 — 목표를 적으면 다음 칸이 그 차이를
-            // "밖에서 바뀜"으로 오판해 이상적 사각형을 버린다.
-            _lastApplied = _windowRect() ?? target;
+            bool dpiChanged = _moveResize(target);
+            var landed = _windowRect() ?? target;
+            if (dpiChanged)
+            {
+                // 이 적용이 핀을 DPI가 다른 모니터로 넘겼고 WPF가 권장 사각형(DPI 비율만큼 큰/작은 크기)을 적용했다 (95단계).
+                // 그 크기는 보이는 배율이다 — 드래그로 경계를 넘은 경로가 다음 입력의 Resync에서 하는 것과 같이 보이는 창에서
+                // 다시 잡는다. 크롬 새로 그리기(_applied)가 그 배율을 보도록 먼저 한다.
+                _ideal = PinZoom.Resync(_ideal, target, landed, _baseWidth);
+            }
+            // DPI가 그대로인데 크기가 다르면 OS가 크기를 제한한 것이다 — 이상적 사각형은 지키고 실제 결과를 마지막 적용으로
+            // 삼는다. 목표를 적으면 다음 칸이 그 차이를 "밖에서 바뀜"으로 오판해 이상적 사각형을 버린다.
+            _lastApplied = landed;
         }
         _applied();
     }

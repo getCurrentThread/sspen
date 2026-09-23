@@ -154,8 +154,7 @@ public class PinZoomControllerTests
         // 이동량만큼 옮겨진 이상적 사각형에서 커서 고정 확대를 한 것과 같다.
         var translated = before with { Left = before.Left + 37, Top = before.Top - 23 };
         var expected = PinZoom.ZoomAtCursor(
-            translated.Scale, 120, translated.Left, translated.Top, Region.Width, Region.Height,
-            880 - translated.Left, 576 - translated.Top);
+            translated, 120, Region.Width, Region.Height, 880 - translated.Left, 576 - translated.Top);
         Assert.Equal(expected, rig.Zoom.Ideal);
     }
 
@@ -191,6 +190,135 @@ public class PinZoomControllerTests
 
         Assert.Equal(Math.Pow(PinZoom.StepFactor, 4), rig.Zoom.Scale, 9);
         Assert.Equal(500, rig.Window!.Value.Width);
+    }
+
+    // ---- 95단계 (최종 리뷰: 82단계 회귀) — DPI 전환과 OS 크기 제한 구분, 범위 밖 크기에서의 칸 ----
+
+    /// <summary>
+    /// 한 칸 적용이 핀을 150% 모니터로 넘기면 WPF가 창을 1.5배로 다시 잡는다(SetWindowPos 안의 동기 WM_DPICHANGED).
+    /// 그 크기는 OS 제한이 아니라 보이는 배율이다 — 이상적 사각형을 보이는 창에서 다시 잡고, 크롬 새로 그리기는 그 배율을 본다.
+    /// 옛 코드는 결과 사각형을 마지막 적용으로만 적어 배율이 1.1에 남았고 라벨은 110%를 보였다.
+    /// </summary>
+    [Fact]
+    public void Apply_DpiChangesInsideTheMove_AdoptsTheVisibleScaleBeforeTheChromeRefresh()
+    {
+        var rig = new Rig(Region, cursor: (880, 576)) { DpiRatioOnNextMove = 1.5 };
+
+        rig.Zoom.Wheel(120);
+        rig.RunPosted();
+
+        Assert.Equal(660, rig.Window!.Value.Width);
+        Assert.Equal(660.0 / Region.Width, rig.Zoom.Scale, 9);
+        Assert.Equal(rig.Window, PinZoom.ToPhysicalRect(rig.Zoom.Ideal));
+        Assert.Equal(660.0 / Region.Width, Assert.Single(rig.ScalesSeenByChrome), 9);
+    }
+
+    /// <summary>
+    /// DPI 전환 뒤의 확대 칸은 핀을 키운다 — 드래그로 같은 경계를 넘은 경로(다음 입력의 Resync가 보이는 배율을 채택)와
+    /// 배율·창이 같다. 옛 코드는 낡은 배율 1.1에서 1.21로 걸어 660px 핀을 484px로 줄였다.
+    /// </summary>
+    [Fact]
+    public void Wheel_ZoomInAfterADpiChangingApply_GrowsLikeTheDragPath()
+    {
+        var viaApply = new Rig(Region, cursor: (880, 576)) { DpiRatioOnNextMove = 1.5 };
+        viaApply.Zoom.Wheel(120);
+        viaApply.RunPosted();
+        var crossed = viaApply.Window!.Value;
+        // 같은 칸을 같은 모니터에서 적용한 뒤 드래그가 같은 보이는 사각형으로 넘긴다.
+        var viaDrag = new Rig(Region, cursor: (880, 576));
+        viaDrag.Zoom.Wheel(120);
+        viaDrag.RunPosted();
+        viaDrag.Window = crossed;
+
+        viaApply.Zoom.Wheel(120);
+        viaApply.RunPosted();
+        viaDrag.Zoom.Wheel(120);
+        viaDrag.RunPosted();
+
+        Assert.True(viaApply.Window!.Value.Width > crossed.Width,
+            $"확대 칸이 핀을 줄였다: {crossed.Width} → {viaApply.Window!.Value.Width}");
+        Assert.Equal(viaDrag.Zoom.Scale, viaApply.Zoom.Scale, 9);
+        Assert.Equal(viaDrag.Window, viaApply.Window);
+    }
+
+    /// <summary>
+    /// DPI가 그대로인 적용에서 크기가 달라지면 OS 크기 제한이다 — 같은 1.5배 재조정이라도 DPI 알림이 없으면 이상적 배율을
+    /// 지킨다(<see cref="Apply_OsClampsTheSize_KeepsTheIdealScale"/>와 같은 판정). DPI 알림 유무만이 둘을 가른다.
+    /// </summary>
+    [Fact]
+    public void Apply_ResizedWithoutADpiChange_KeepsTheIdealAsAnOsLimit()
+    {
+        var rig = new Rig(Region, cursor: (880, 576)) { DpiRatioOnNextMove = 1.5, ReportsDpiChange = false };
+
+        rig.Zoom.Wheel(120);
+        rig.RunPosted();
+
+        Assert.Equal(660, rig.Window!.Value.Width);
+        Assert.Equal(PinZoom.StepFactor, rig.Zoom.Scale, 9);
+        Assert.Equal(PinZoom.StepFactor, Assert.Single(rig.ScalesSeenByChrome), 9);
+    }
+
+    /// <summary>
+    /// 8배 핀을 150% 모니터로 드래그하면 보이는 폭이 기준의 12배다. 그 자리의 확대 칸은 핀을 줄이지 않고(이미 한계),
+    /// 라벨의 배율은 800%다 — 옛 코드는 배율 12(1200%)에서 8로 걸어 핀을 1/3 줄였다.
+    /// </summary>
+    [Fact]
+    public void Wheel_ZoomInFromAVisibleSizeAboveMaxScale_NeverShrinks()
+    {
+        var rig = new Rig(Region, cursor: (880, 576));
+        for (int i = 0; i < 40; i++)
+        {
+            rig.Zoom.Wheel(120);
+            rig.RunPosted();
+        }
+        var crossed = new PhysicalRect(1900, 80, 4800, 3600);
+        rig.Window = crossed;
+        rig.Cursor = (crossed.X + 2400, crossed.Y + 1800);
+        rig.Applies.Clear();
+
+        rig.Zoom.Wheel(120);
+        rig.RunPosted();
+
+        Assert.Empty(rig.Applies);
+        Assert.Equal(crossed, rig.Window);
+        Assert.Equal(PinZoom.MaxScale, rig.Zoom.Scale);
+    }
+
+    /// <summary>대칭: 최소 배율 핀을 DPI가 낮은 모니터로 옮긴 자리의 축소 칸은 핀을 키우지 않는다.</summary>
+    [Fact]
+    public void Wheel_ZoomOutFromAVisibleSizeBelowMinScale_NeverGrows()
+    {
+        var rig = new Rig(Region, cursor: (880, 576));
+        for (int i = 0; i < 40; i++)
+        {
+            rig.Zoom.Wheel(-120);
+            rig.RunPosted();
+        }
+        var crossed = new PhysicalRect(1900, 80, 27, 20);
+        rig.Window = crossed;
+        rig.Cursor = (crossed.X + 13, crossed.Y + 10);
+        rig.Applies.Clear();
+
+        rig.Zoom.Wheel(-120);
+        rig.RunPosted();
+
+        Assert.Empty(rig.Applies);
+        Assert.Equal(crossed, rig.Window);
+        Assert.Equal(PinZoom.MinScale, rig.Zoom.Scale);
+    }
+
+    /// <summary>범위 밖 크기에서의 원래 크기 복귀도 보이는 창의 중심을 고정한다 — 배율을 클램프해도 중심은 실제 폭에서 잰다.</summary>
+    [Fact]
+    public void Reset_FromAVisibleSizeAboveMaxScale_KeepsTheVisibleCenter()
+    {
+        var rig = new Rig(Region, cursor: (880, 576));
+        var crossed = new PhysicalRect(1900, 80, 4800, 3600);
+        rig.Window = crossed;
+
+        rig.Zoom.Reset();
+        rig.RunPosted();
+
+        Assert.Equal(new PhysicalRect(1900 + 2400 - 200, 80 + 1800 - 150, Region.Width, Region.Height), rig.Window);
     }
 
     [Fact]
@@ -259,7 +387,11 @@ public class PinZoomControllerTests
         Assert.Equal(PinZoom.MinBaseExtent, rig.Zoom.BaseHeight);
     }
 
-    /// <summary>가짜 창·커서·디스패처. 적용은 창 사각형을 바꾸고(<see cref="MaxWidth"/>면 OS처럼 폭을 자른다) 기록한다.</summary>
+    /// <summary>
+    /// 가짜 창·커서·디스패처. 적용은 창 사각형을 바꾸고(<see cref="MaxWidth"/>면 OS처럼 폭을 자른다) 기록한다.
+    /// <see cref="DpiRatioOnNextMove"/>가 있으면 다음 적용 한 번이 DPI가 다른 모니터로 넘어간다 — WPF가 권장 사각형을
+    /// 적용하듯 크기에 그 비율을 곱하고, <see cref="ReportsDpiChange"/>대로 DPI 변화를 알린다.
+    /// </summary>
     private sealed class Rig
     {
         public Rig(PhysicalRect region, (int X, int Y)? cursor)
@@ -273,11 +405,36 @@ public class PinZoomControllerTests
                 moveResize: bounds =>
                 {
                     Applies.Add(bounds);
-                    Window = bounds with { Width = Math.Min(bounds.Width, MaxWidth) };
+                    var landed = bounds with { Width = Math.Min(bounds.Width, MaxWidth) };
+                    if (DpiRatioOnNextMove is not { } ratio)
+                    {
+                        Window = landed;
+                        return false;
+                    }
+                    DpiRatioOnNextMove = null;
+                    Window = landed with
+                    {
+                        Width = PinZoom.RoundEdge(landed.Width * ratio),
+                        Height = PinZoom.RoundEdge(landed.Height * ratio),
+                    };
+                    return ReportsDpiChange;
                 },
                 postCoalesced: Posted.Add,
-                applied: () => AppliedCallbacks++);
+                applied: () =>
+                {
+                    AppliedCallbacks++;
+                    ScalesSeenByChrome.Add(Zoom!.Scale); // 콜백은 생성자가 끝난 뒤에만 불린다.
+                });
         }
+
+        /// <summary>다음 적용 한 번이 핀을 DPI가 다른 모니터로 넘긴다 — 새 DPI / 옛 DPI (예: 100% → 150%면 1.5).</summary>
+        public double? DpiRatioOnNextMove { get; set; }
+
+        /// <summary>그 적용이 DPI 변화를 알리는가. false면 같은 크기 변화가 DPI 없이 온다 — OS 크기 제한과 같은 모양이다.</summary>
+        public bool ReportsDpiChange { get; init; } = true;
+
+        /// <summary>적용 완료 콜백(크롬 새로 그리기)이 읽은 배율 — 라벨이 보일 %다.</summary>
+        public List<double> ScalesSeenByChrome { get; } = [];
 
         public PinZoomController Zoom { get; }
 

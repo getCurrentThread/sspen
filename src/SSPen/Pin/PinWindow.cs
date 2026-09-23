@@ -43,7 +43,7 @@ public sealed class PinWindow : Window, IClickThroughPin
             region,
             windowRect: () => Hwnd == 0 ? null : PhysicalBounds(),
             cursor: () => NativeMethods.GetCursorPos(out var c) ? (c.X, c.Y) : null,
-            moveResize: bounds => WindowStyling.MoveResizePhysical(Hwnd, bounds),
+            moveResize: MoveResizeReportingDpiChange,
             // Input 우선순위 = 디스패처가 "Win32 큐에 입력·게시 메시지가 남아 있으면 기다리는" 대역(Background..Input)의 맨 위다.
             // 그래서 빠르게 굴린 휠 여러 칸이 먼저 모두 처리된 뒤 한 번만 적용된다. Loaded 이상(전경 대역)으로 올리면
             // 게시 메시지로 곧바로 끼어들어 칸마다 적용되어 병합이 깨진다. 그 대역 안에서는 가장 높은 값이라, 입력이 비는 즉시
@@ -174,6 +174,20 @@ public sealed class PinWindow : Window, IClickThroughPin
     /// 휠과 같은 적용 경로(중심 고정, 물리 기준 크기, 한 번의 SetWindowPos)를 탄다 (82단계).
     /// </summary>
     internal void ResetZoom() => _zoom.Reset();
+
+    /// <summary>
+    /// 확대/축소 적용 한 번 + 그 적용 안에서 창의 DPI가 바뀌었는가 (95단계, 적용 전후 DPI 비교).
+    /// 매니페스트가 PerMonitorV2라 한 칸으로 핀 대부분이 DPI가 다른 모니터로 넘어가면 <c>SetWindowPos</c> 안에서 WM_DPICHANGED가
+    /// 동기로 오고, WPF(<c>HwndTarget.OnDpiChanged</c>)가 DPI 플래그를 바꾼 뒤 권장 사각형을 적용해 창이 DPI 비율만큼 커지거나
+    /// 작아진다. 그 크기를 OS 크기 제한으로 읽으면 다음 확대 칸이 핀을 줄였다 — 컨트롤러가 둘을 가르도록 이 판정을 돌려준다.
+    /// </summary>
+    private bool MoveResizeReportingDpiChange(PhysicalRect bounds)
+    {
+        var before = VisualTreeHelper.GetDpi(this);
+        WindowStyling.MoveResizePhysical(Hwnd, bounds);
+        var after = VisualTreeHelper.GetDpi(this);
+        return after.PixelsPerInchX != before.PixelsPerInchX || after.PixelsPerInchY != before.PixelsPerInchY;
+    }
 
     private static readonly Brush ChromeBackground =
         Shell.ToolbarTheme.Freeze(new SolidColorBrush(Color.FromArgb(0xCC, 0x1F, 0x1F, 0x1F)));

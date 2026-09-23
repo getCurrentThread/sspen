@@ -5,6 +5,8 @@ namespace SSPen.Pin;
 /// <summary>
 /// 확대/축소 후 창 배치 결과 — 반올림하지 않은 <b>이상적</b> 사각형. 단위는 호출자가 정하며 <see cref="PinZoomController"/>는
 /// 물리 픽셀을 준다 (82단계). 정수 사각형은 적용할 때만 <see cref="PinZoom.ToPhysicalRect"/>로 만든다.
+/// 보통은 크기 = 기준 × 배율이지만, <see cref="PinZoom.Resync"/>가 범위 밖 크기에서 다시 잡으면 배율만 범위 안이고 크기는
+/// 보이는 그대로다 (95단계).
 /// </summary>
 public readonly record struct PinZoomResult(double Scale, double Left, double Top, double Width, double Height);
 
@@ -44,55 +46,67 @@ public static class PinZoom
     /// <summary>
     /// 원래 크기(100%)로 되돌린 창 사각형. <b>중심을 고정</b>한다 — 좌상단을 고정하면 크게 확대해 둔 핀이
     /// 되돌아갈 때 화면 반대편으로 훌쩍 물러나 사용자가 다시 찾아야 한다.
+    /// 중심은 현재 사각형의 <b>실제</b> 크기에서 잰다 — <see cref="Resync"/>가 범위 밖 크기에서 배율만 클램프한 사각형
+    /// (배율 8, 폭 12배)을 배율로 재면 중심이 어긋난다 (95단계).
     /// </summary>
-    public static PinZoomResult ResetToOriginal(
-        double currentScale, double left, double top, double baseWidth, double baseHeight)
-    {
-        double currentWidth = baseWidth * currentScale;
-        double currentHeight = baseHeight * currentScale;
-        return new PinZoomResult(
-            1.0,
-            left + (currentWidth - baseWidth) / 2.0,
-            top + (currentHeight - baseHeight) / 2.0,
-            baseWidth,
-            baseHeight);
-    }
+    public static PinZoomResult ResetToOriginal(PinZoomResult current, double baseWidth, double baseHeight) => new(
+        1.0,
+        current.Left + (current.Width - baseWidth) / 2.0,
+        current.Top + (current.Height - baseHeight) / 2.0,
+        baseWidth,
+        baseHeight);
 
     /// <summary>
     /// 커서를 고정점으로 삼아 확대/축소한 창 사각형을 계산한다.
+    ///
+    /// 95단계(최종 리뷰): 현재 사각형의 크기는 기준 × 배율과 다를 수 있다 — 8배 핀을 150% 모니터로 옮기면 보이는 폭이
+    /// 기준의 12배가 되고, <see cref="Resync"/>는 그 사각형을 지키면서 배율만 범위로 클램프한다. 그래서
+    /// <list type="bullet">
+    ///   <item>한 칸은 <b>클램프한</b> 배율에서 걷는다(범위 밖 배율 12에서 걸으면 13.2 → 8로 잘려 확대 칸이 핀을 1/3 줄였다).</item>
+    ///   <item>확대 칸은 절대 줄이지 않고 축소 칸은 절대 키우지 않는다 — 새 폭이 보이는 폭의 반대쪽이면(이미 한계) 창은 그대로다.
+    ///     보이는 배율은 폭으로 정의한다(<see cref="Resync"/>와 같은 정의).</item>
+    ///   <item>커서 고정의 비율은 배율 비가 아니라 <b>보이는 크기</b>에 대한 새 크기의 비다 — 둘이 다르면 그림이 커서에서 달아난다.
+    ///     크기가 기준 × 배율인 보통 상태에서는 배율 비와 같다.</item>
+    /// </list>
     /// </summary>
-    /// <param name="currentScale">현재 배율.</param>
+    /// <param name="current">현재 (이상적) 창 사각형과 배율.</param>
     /// <param name="wheelDelta">휠 델타 (양수=확대).</param>
-    /// <param name="left">현재 (이상적) 창 좌측.</param>
-    /// <param name="top">현재 (이상적) 창 상단.</param>
     /// <param name="baseWidth">배율 1.0일 때 폭.</param>
     /// <param name="baseHeight">배율 1.0일 때 높이.</param>
     /// <param name="cursorX">커서의 <b>창 내부</b> X — (이상적) 좌상단 기준. 반올림된 실제 창 기준이 아니다.</param>
     /// <param name="cursorY">커서의 <b>창 내부</b> Y — (이상적) 좌상단 기준.</param>
     public static PinZoomResult ZoomAtCursor(
-        double currentScale,
+        PinZoomResult current,
         int wheelDelta,
-        double left,
-        double top,
         double baseWidth,
         double baseHeight,
         double cursorX,
         double cursorY)
     {
-        double newScale = NextScale(currentScale, wheelDelta);
+        double from = Math.Clamp(current.Scale, MinScale, MaxScale);
+        double newScale = NextScale(from, wheelDelta);
         double newWidth = baseWidth * newScale;
         double newHeight = baseHeight * newScale;
 
-        // 클램프에 걸려 배율이 그대로면 창도 그대로다 — 0으로 나누는 경로도 함께 막힌다.
-        if (currentScale <= 0)
+        // 크기가 없는 사각형에서는 비율이 없다 — 0으로 나누지 않고 새 크기만 준다.
+        if (current.Width <= 0 || current.Height <= 0)
         {
-            return new PinZoomResult(newScale, left, top, newWidth, newHeight);
+            return new PinZoomResult(newScale, current.Left, current.Top, newWidth, newHeight);
         }
 
-        double ratio = newScale / currentScale;
+        // 한계에 걸린 칸: 클램프한 목표가 보이는 크기의 반대쪽이면 창은 그대로다(배율만 범위 안으로).
+        bool wrongWay = wheelDelta > 0 ? newWidth < current.Width : newWidth > current.Width;
+        if (wrongWay)
+        {
+            return current with { Scale = from };
+        }
+
+        double ratioX = newWidth / current.Width;
+        double ratioY = newHeight / current.Height;
         // 커서의 화면 좌표는 left + cursorX. 새 원점은 그 지점에서 축척된 오프셋을 뺀 값이다.
-        double newLeft = left + cursorX - cursorX * ratio;
-        double newTop = top + cursorY - cursorY * ratio;
+        // 클램프에 걸려 배율이 그대로면(비율 1) 창도 그대로다 — 최대 배율에서 굴려도 창이 밀려나지 않는다.
+        double newLeft = current.Left + cursorX - cursorX * ratioX;
+        double newTop = current.Top + cursorY - cursorY * ratioY;
         return new PinZoomResult(newScale, newLeft, newTop, newWidth, newHeight);
     }
 
@@ -119,6 +133,8 @@ public static class PinZoom
     /// 다른 DPI 모니터로 옮길 때 OS·WPF가 하는 크기 조정이다. 마지막으로 적용한 사각형과 같으면 그대로 둔다.
     /// 크기가 같으면 정수 이동량만큼 평행 이동해 반올림 전 소수부를 지키고, 크기까지 바뀌었으면 실제 창에서 다시 잡는다
     /// (배율 = 실제 폭 / 기준 폭 — 보이는 그대로에서 다음 칸이 이어지게).
+    /// 그 배율은 [<see cref="MinScale"/>, <see cref="MaxScale"/>]로 클램프하고 사각형은 보이는 그대로 둔다 (95단계) — 8배 핀을
+    /// 150% 모니터로 옮기면 보이는 폭이 기준의 12배라 라벨이 1200%를 보였다. 범위 밖 크기에서의 칸은 <see cref="ZoomAtCursor"/>가 다룬다.
     /// </summary>
     public static PinZoomResult Resync(PinZoomResult ideal, PhysicalRect lastApplied, PhysicalRect actual, double baseWidth)
     {
@@ -134,6 +150,7 @@ public static class PinZoom
                 Top = ideal.Top + (actual.Y - lastApplied.Y),
             };
         }
-        return new PinZoomResult(actual.Width / baseWidth, actual.X, actual.Y, actual.Width, actual.Height);
+        double visible = Math.Clamp(actual.Width / baseWidth, MinScale, MaxScale);
+        return new PinZoomResult(visible, actual.X, actual.Y, actual.Width, actual.Height);
     }
 }

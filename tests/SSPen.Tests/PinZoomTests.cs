@@ -48,7 +48,7 @@ public class PinZoomTests
         double cursorX = 120, cursorY = 90;
         double scale = 1.0;
 
-        var result = PinZoom.ZoomAtCursor(scale, 120, left, top, baseW, baseH, cursorX, cursorY);
+        var result = PinZoom.ZoomAtCursor(At(scale, left, top, baseW, baseH), 120, baseW, baseH, cursorX, cursorY);
 
         // 확대 전 커서가 가리키던 정규화 위치.
         double t = cursorX / (baseW * scale);
@@ -69,7 +69,7 @@ public class PinZoomTests
         double cursorX = 500, cursorY = 400;
         double scale = 2.0;
 
-        var result = PinZoom.ZoomAtCursor(scale, -120, left, top, baseW, baseH, cursorX, cursorY);
+        var result = PinZoom.ZoomAtCursor(At(scale, left, top, baseW, baseH), -120, baseW, baseH, cursorX, cursorY);
 
         double t = cursorX / (baseW * scale);
         double u = cursorY / (baseH * scale);
@@ -83,7 +83,7 @@ public class PinZoomTests
     public void ZoomAtCursor_CursorAtTopLeft_LeavesOriginUnmoved()
     {
         // 좌상단이 고정점이면 원점은 움직이지 않는다 (기존 동작과 동일한 특수 케이스).
-        var result = PinZoom.ZoomAtCursor(1.0, 120, 200, 150, 400, 300, cursorX: 0, cursorY: 0);
+        var result = PinZoom.ZoomAtCursor(At(1.0, 200, 150, 400, 300), 120, 400, 300, cursorX: 0, cursorY: 0);
 
         Assert.Equal(200, result.Left, 9);
         Assert.Equal(150, result.Top, 9);
@@ -95,7 +95,7 @@ public class PinZoomTests
         // 배율이 클램프에 걸려 변하지 않으면 창도 그대로여야 한다 — 그렇지 않으면
         // 최대 배율에서 휠을 굴릴 때마다 창이 스르륵 밀려난다.
         var result = PinZoom.ZoomAtCursor(
-            PinZoom.MaxScale, 120, 10, 20, 400, 300, cursorX: 300, cursorY: 200);
+            At(PinZoom.MaxScale, 10, 20, 400, 300), 120, 400, 300, cursorX: 300, cursorY: 200);
 
         Assert.Equal(PinZoom.MaxScale, result.Scale, 9);
         Assert.Equal(10, result.Left, 9);
@@ -109,7 +109,7 @@ public class PinZoomTests
         double left = -1800, top = 300, baseW = 500, baseH = 400;
         double cursorX = 250, cursorY = 200;
 
-        var result = PinZoom.ZoomAtCursor(1.0, 120, left, top, baseW, baseH, cursorX, cursorY);
+        var result = PinZoom.ZoomAtCursor(At(1.0, left, top, baseW, baseH), 120, baseW, baseH, cursorX, cursorY);
 
         double t = cursorX / baseW;
         double u = cursorY / baseH;
@@ -122,7 +122,7 @@ public class PinZoomTests
     [Fact]
     public void ZoomAtCursor_ScaleUnchanged_WidthMatchesBaseTimesScale()
     {
-        var result = PinZoom.ZoomAtCursor(1.5, 120, 0, 0, 200, 100, 50, 25);
+        var result = PinZoom.ZoomAtCursor(At(1.5, 0, 0, 200, 100), 120, 200, 100, 50, 25);
 
         Assert.Equal(200 * result.Scale, result.Width, 9);
         Assert.Equal(100 * result.Scale, result.Height, 9);
@@ -132,7 +132,7 @@ public class PinZoomTests
     [Fact]
     public void ResetToOriginal_ReturnsBaseSizeAtScaleOne()
     {
-        var result = PinZoom.ResetToOriginal(currentScale: 3.0, left: 100, top: 50, baseWidth: 200, baseHeight: 100);
+        var result = PinZoom.ResetToOriginal(At(3.0, 100, 50, 200, 100), baseWidth: 200, baseHeight: 100);
 
         Assert.Equal(1.0, result.Scale);
         Assert.Equal(200, result.Width);
@@ -150,7 +150,7 @@ public class PinZoomTests
         double centerX = left + baseW * scale / 2;
         double centerY = top + baseH * scale / 2;
 
-        var result = PinZoom.ResetToOriginal(scale, left, top, baseW, baseH);
+        var result = PinZoom.ResetToOriginal(At(scale, left, top, baseW, baseH), baseW, baseH);
 
         Assert.Equal(centerX, result.Left + result.Width / 2, 9);
         Assert.Equal(centerY, result.Top + result.Height / 2, 9);
@@ -160,7 +160,7 @@ public class PinZoomTests
     [Fact]
     public void ResetToOriginal_AlreadyOriginal_IsIdentity()
     {
-        var result = PinZoom.ResetToOriginal(1.0, 100, 50, 200, 100);
+        var result = PinZoom.ResetToOriginal(At(1.0, 100, 50, 200, 100), 200, 100);
 
         Assert.Equal(100, result.Left, 9);
         Assert.Equal(50, result.Top, 9);
@@ -325,9 +325,121 @@ public class PinZoomTests
         Assert.Equal(resized, PinZoom.ToPhysicalRect(resynced));
     }
 
+    // ---- 95단계 (최종 리뷰: 82단계 회귀) — 범위 밖 크기에서 다시 잡은 배율 ----
+
+    /// <summary>
+    /// 8배 핀을 150% 모니터로 옮기면 WPF가 창을 DPI 비율만큼 키워 보이는 폭이 기준의 12배가 된다. 보이는 사각형은 그대로
+    /// 두되 배율은 범위로 클램프한다 — 옛 코드는 배율 12, 라벨 1200%였다.
+    /// </summary>
+    [Fact]
+    public void Resync_ResizedBeyondMaxScale_ClampsTheScaleAndKeepsTheVisibleRect()
+    {
+        var ideal = new PinZoomResult(PinZoom.MaxScale, 100, 100, 3200, 2400);
+        var applied = PinZoom.ToPhysicalRect(ideal);
+        var resized = new PhysicalRect(1900, 80, 4800, 3600);
+
+        var resynced = PinZoom.Resync(ideal, applied, resized, 400);
+
+        Assert.Equal(PinZoom.MaxScale, resynced.Scale);
+        Assert.Equal(resized, PinZoom.ToPhysicalRect(resynced));
+    }
+
+    /// <summary>최소 배율 핀을 DPI가 낮은 모니터로 옮긴 대칭 경우 — 보이는 폭은 기준의 0.0675배, 배율은 최소로 클램프한다.</summary>
+    [Fact]
+    public void Resync_ResizedBelowMinScale_ClampsTheScaleAndKeepsTheVisibleRect()
+    {
+        var ideal = new PinZoomResult(PinZoom.MinScale, 100, 100, 40, 30);
+        var applied = PinZoom.ToPhysicalRect(ideal);
+        var resized = new PhysicalRect(1900, 80, 27, 20);
+
+        var resynced = PinZoom.Resync(ideal, applied, resized, 400);
+
+        Assert.Equal(PinZoom.MinScale, resynced.Scale);
+        Assert.Equal(resized, PinZoom.ToPhysicalRect(resynced));
+    }
+
+    /// <summary>
+    /// 확대 칸은 절대 줄이지 않는다 — 보이는 크기(기준의 12배)가 최대 배율 밖이면 배율은 이미 한계라 창은 그대로다.
+    /// 클램프한 배율(8, Resync의 결과)과 클램프하지 않은 배율(12) 둘 다 받친다. 옛 코드는 둘 다 핀을 1/3 줄였다.
+    /// </summary>
+    [Theory]
+    [InlineData(8.0)]
+    [InlineData(12.0)]
+    public void ZoomAtCursor_VisibleSizeAboveMaxScale_ZoomInNeverShrinks(double scale)
+    {
+        var current = new PinZoomResult(scale, 1900, 80, 4800, 3600);
+
+        var result = PinZoom.ZoomAtCursor(current, 120, 400, 300, cursorX: 2400, cursorY: 1800);
+
+        Assert.Equal(current with { Scale = PinZoom.MaxScale }, result);
+    }
+
+    /// <summary>축소 칸은 절대 키우지 않는다 — 보이는 크기가 최소 배율 밖인 대칭 경우.</summary>
+    [Theory]
+    [InlineData(0.1)]
+    [InlineData(0.0675)]
+    public void ZoomAtCursor_VisibleSizeBelowMinScale_ZoomOutNeverGrows(double scale)
+    {
+        var current = new PinZoomResult(scale, 1900, 80, 27, 20);
+
+        var result = PinZoom.ZoomAtCursor(current, -120, 400, 300, cursorX: 13, cursorY: 10);
+
+        Assert.Equal(current with { Scale = PinZoom.MinScale }, result);
+    }
+
+    /// <summary>
+    /// 범위 안쪽으로 가는 칸은 클램프한 배율에서 한 칸 걷는다(8 → 8/1.1). 커서 아래 점은 <b>보이는</b> 창 기준으로 고정한다 —
+    /// 배율 비율(8/1.1 ÷ 8)로 원점을 옮기면 실제 크기 비율(÷ 12)과 달라 그림이 커서에서 달아난다.
+    /// </summary>
+    [Fact]
+    public void ZoomAtCursor_VisibleSizeAboveMaxScale_ZoomOutStepsFromTheClampedScaleAroundTheCursor()
+    {
+        var current = new PinZoomResult(PinZoom.MaxScale, 1900, 80, 4800, 3600);
+        double cursorX = 1200, cursorY = 900;
+
+        var result = PinZoom.ZoomAtCursor(current, -120, 400, 300, cursorX, cursorY);
+
+        Assert.Equal(PinZoom.MaxScale / PinZoom.StepFactor, result.Scale, 9);
+        Assert.Equal(400 * result.Scale, result.Width, 9);
+        Assert.Equal(300 * result.Scale, result.Height, 9);
+        Assert.Equal(1900 + cursorX, result.Left + cursorX / current.Width * result.Width, 9);
+        Assert.Equal(80 + cursorY, result.Top + cursorY / current.Height * result.Height, 9);
+    }
+
+    /// <summary>최소 배율 밖에서 확대하는 대칭 경우 — 0.1에서 한 칸(0.11), 보이는 창 기준으로 커서 아래 점 고정.</summary>
+    [Fact]
+    public void ZoomAtCursor_VisibleSizeBelowMinScale_ZoomInStepsFromTheClampedScaleAroundTheCursor()
+    {
+        var current = new PinZoomResult(PinZoom.MinScale, 1900, 80, 27, 20);
+        double cursorX = 13, cursorY = 10;
+
+        var result = PinZoom.ZoomAtCursor(current, 120, 400, 300, cursorX, cursorY);
+
+        Assert.Equal(PinZoom.MinScale * PinZoom.StepFactor, result.Scale, 9);
+        Assert.Equal(1900 + cursorX, result.Left + cursorX / current.Width * result.Width, 9);
+        Assert.Equal(80 + cursorY, result.Top + cursorY / current.Height * result.Height, 9);
+    }
+
+    /// <summary>원래 크기 복귀는 <b>보이는</b> 사각형의 중심을 고정한다 — 클램프한 배율(8)로 잰 폭이 아니라 실제 폭(12배)에서.</summary>
+    [Fact]
+    public void ResetToOriginal_VisibleSizeAboveMaxScale_KeepsTheVisibleCenter()
+    {
+        var current = new PinZoomResult(PinZoom.MaxScale, 1900, 80, 4800, 3600);
+
+        var result = PinZoom.ResetToOriginal(current, 400, 300);
+
+        Assert.Equal(1900 + 2400, result.Left + result.Width / 2, 9);
+        Assert.Equal(80 + 1800, result.Top + result.Height / 2, 9);
+        Assert.Equal(400, result.Width);
+    }
+
+    /// <summary>크기가 배율과 맞는(기준 × 배율) 이상적 사각형 — 줌만 거친 보통 상태.</summary>
+    private static PinZoomResult At(double scale, double left, double top, double baseW, double baseH) =>
+        new(scale, left, top, baseW * scale, baseH * scale);
+
     /// <summary>화면 좌표 커서로 한 칸 — PinZoomController와 같은 호출 모양 (커서는 이상적 좌상단 기준으로 넘긴다).</summary>
     private static PinZoomResult StepAtScreen(
         PinZoomResult ideal, int delta, double cursorX, double cursorY, double baseW, double baseH) =>
         PinZoom.ZoomAtCursor(
-            ideal.Scale, delta, ideal.Left, ideal.Top, baseW, baseH, cursorX - ideal.Left, cursorY - ideal.Top);
+            ideal, delta, baseW, baseH, cursorX - ideal.Left, cursorY - ideal.Top);
 }
