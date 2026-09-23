@@ -18,20 +18,11 @@ public sealed class AppState
     // 전부 같은 6칸을 보게 하려면 색 목록이 상태여야 변경 통지(Changed)를 타고 퍼질 수 있다.
     private readonly Color[] _quickColors = [.. ColorPalette.DefaultQuickColors];
 
-    // 그룹 인덱스 = (int)ToolStyleGroup. 기본값 (사용자 조타): 펜 팔레트 빨강 / 형광펜 노랑 / 도형 초록.
-    private readonly Color[] _toolColors =
-    [
-        ColorPalette.DefaultQuickColors[5],
-        ColorPalette.DefaultQuickColors[1],
-        ColorPalette.DefaultQuickColors[4],
-    ];
+    // 그룹 인덱스 = (int)ToolStyleGroup. 기본 색·굵기는 ColorPalette.DefaultToolColor·ThicknessScale.Default가
+    // 단독 소유한다 (66단계, A4-5·A9-2) — 여기서 매직 인덱스로 다시 유도하지 않는다.
+    private readonly Color[] _toolColors = [.. Enum.GetValues<ToolStyleGroup>().Select(ColorPalette.DefaultToolColor)];
 
-    private readonly ThicknessStep[] _toolThickness =
-    [
-        ThicknessStep.Medium,
-        ThicknessStep.Medium,
-        ThicknessStep.Medium,
-    ];
+    private readonly ThicknessStep[] _toolThickness = [.. Enum.GetValues<ToolStyleGroup>().Select(_ => ThicknessScale.Default)];
 
     private ToolKind _activeTool = ToolKind.None;
     private bool _syncToolStyles;

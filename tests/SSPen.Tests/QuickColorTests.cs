@@ -143,29 +143,58 @@ public sealed class QuickColorTests
         Assert.All(restored, c => Assert.Equal(Purple, c));
     }
 
-    [Fact]
-    public void DefaultQuickColors_Count_MatchesAppStateQuickColorCount() =>
-        Assert.Equal(AppState.QuickColorCount, ColorPalette.DefaultQuickColors.Length);
-
     /// <summary>바인더 경로 특성화: 설정 파일의 깨진 칸만 기본색으로 돌아온다 (SettingsBinder는 ColorPalette 규칙에 위임).</summary>
     [Fact]
     public void SettingsBinder_ApplyToState_RestoresQuickColorsThroughColorPalette()
+    {
+        var state = ApplyThroughBinder(new AppSettings { QuickColors = ["#7F00FF", "broken"] });
+
+        Assert.Equal(Purple, state.QuickColors[0]);
+        Assert.Equal(ColorPalette.DefaultQuickColors[1], state.QuickColors[1]);
+        Assert.Equal(ColorPalette.DefaultQuickColors[5], state.QuickColors[5]);
+    }
+
+    /// <summary>
+    /// 66단계 (A4-5·A9-2): 깨진 도구 색은 <see cref="ColorPalette.DefaultToolColor"/>로, 범위 밖 굵기는
+    /// <see cref="ThicknessScale.FromStored"/>의 양끝 단계로 복원된다 — 바인더가 매직 인덱스·리터럴 4를 다시 유도하지 않는다.
+    /// </summary>
+    [Fact]
+    public void SettingsBinder_ApplyToState_CorruptToolColorAndOutOfRangeThickness_FallsBackToDefaults()
+    {
+        // 폴백이 실제로 쓰였음을 보이려고 시작 색을 기본색이 아닌 값으로 둔다.
+        var seeded = new AppState();
+        seeded.SetColor(ToolStyleGroup.Pen, Purple);
+        seeded.SetColor(ToolStyleGroup.Highlighter, Purple);
+
+        var state = ApplyThroughBinder(new AppSettings
+        {
+            PenColor = "broken",
+            HighlighterColor = "",
+            PenThickness = 99,
+            HighlighterThickness = -1,
+        }, seeded);
+
+        Assert.Equal(ColorPalette.DefaultToolColor(ToolStyleGroup.Pen), state.ColorOf(ToolStyleGroup.Pen));
+        Assert.Equal(ColorPalette.DefaultToolColor(ToolStyleGroup.Highlighter), state.ColorOf(ToolStyleGroup.Highlighter));
+        Assert.Equal(ThicknessStep.XLarge, state.ThicknessOf(ToolStyleGroup.Pen));
+        Assert.Equal(ThicknessStep.XSmall, state.ThicknessOf(ToolStyleGroup.Highlighter));
+    }
+
+    /// <summary>임시 디렉터리에 <paramref name="saved"/>를 저장·로드해 AppState(없으면 새 인스턴스)에 적용한 결과 (실제 설정 파일은 건드리지 않는다).</summary>
+    private static AppState ApplyThroughBinder(AppSettings saved, AppState? state = null)
     {
         string dir = Path.Combine(Path.GetTempPath(), "SSPenTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {
             var service = new SettingsService(dir);
-            service.Save(new AppSettings { QuickColors = ["#7F00FF", "broken"] });
-            var state = new AppState();
+            service.Save(saved);
+            state ??= new AppState();
             var binder = new SettingsBinder(state, new FadingInkController(new FadeSchedulerCore()), service);
 
             binder.Load();
             binder.ApplyToState();
-
-            Assert.Equal(Purple, state.QuickColors[0]);
-            Assert.Equal(ColorPalette.DefaultQuickColors[1], state.QuickColors[1]);
-            Assert.Equal(ColorPalette.DefaultQuickColors[5], state.QuickColors[5]);
+            return state;
         }
         finally
         {

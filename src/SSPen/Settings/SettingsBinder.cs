@@ -47,12 +47,13 @@ public sealed class SettingsBinder
             // 도구 그룹별 색·굵기 (사용자 조타: 기본 개별 보유). 동기화 플래그는 마지막에 적용
             // (먼저 켜면 그룹별 복원이 서로 덮어쓴다).
             _state.SyncToolStyles = false;
-            _state.SetThickness(ToolStyleGroup.Pen, (ThicknessStep)Math.Clamp(_settings.PenThickness, 0, 4));
-            _state.SetThickness(ToolStyleGroup.Highlighter, (ThicknessStep)Math.Clamp(_settings.HighlighterThickness, 0, 4));
-            _state.SetThickness(ToolStyleGroup.Shape, (ThicknessStep)Math.Clamp(_settings.ShapeThickness, 0, 4));
-            _state.SetColor(ToolStyleGroup.Pen, ColorPalette.Parse(_settings.PenColor, ColorPalette.DefaultQuickColors[5]));
-            _state.SetColor(ToolStyleGroup.Highlighter, ColorPalette.Parse(_settings.HighlighterColor, ColorPalette.DefaultQuickColors[1]));
-            _state.SetColor(ToolStyleGroup.Shape, ColorPalette.Parse(_settings.ShapeColor, ColorPalette.DefaultQuickColors[4]));
+            // 저장값 재단·깨진 색 폴백은 ThicknessScale.FromStored·ColorPalette.DefaultToolColor가 소유한다 (66단계).
+            _state.SetThickness(ToolStyleGroup.Pen, ThicknessScale.FromStored(_settings.PenThickness));
+            _state.SetThickness(ToolStyleGroup.Highlighter, ThicknessScale.FromStored(_settings.HighlighterThickness));
+            _state.SetThickness(ToolStyleGroup.Shape, ThicknessScale.FromStored(_settings.ShapeThickness));
+            _state.SetColor(ToolStyleGroup.Pen, ColorPalette.Parse(_settings.PenColor, ColorPalette.DefaultToolColor(ToolStyleGroup.Pen)));
+            _state.SetColor(ToolStyleGroup.Highlighter, ColorPalette.Parse(_settings.HighlighterColor, ColorPalette.DefaultToolColor(ToolStyleGroup.Highlighter)));
+            _state.SetColor(ToolStyleGroup.Shape, ColorPalette.Parse(_settings.ShapeColor, ColorPalette.DefaultToolColor(ToolStyleGroup.Shape)));
             _state.SyncToolStyles = sync;
             _fading.Duration = TimeSpan.FromSeconds(FadingDurations.Clamp(_settings.FadingSeconds));
         }

@@ -1,5 +1,6 @@
 using System.Windows.Media;
 using SSPen.Annotation;
+using SSPen.Settings;
 using Xunit;
 
 namespace SSPen.Tests;
@@ -383,4 +384,42 @@ public class ToolStyleTests
         state.TableRows = 4;
         Assert.Equal(1, changed);
     }
+
+    // ---- 66단계 (A4-5·A9-2): 도구 그룹 기본 색의 단일 소유 지점 ColorPalette.DefaultToolColor ----
+
+    /// <summary>
+    /// 새 AppState의 초기 색과 AppSettings의 hex 문자열 기본값이 모두 <see cref="ColorPalette.DefaultToolColor"/>와 같다.
+    /// AppSettings 리터럴은 JSON 표기 호환 때문에 문자열로 남으므로, 팔레트 순서나 기본 펜 색을 바꾸고 한쪽을 빠뜨리면 이 행이 빨개진다.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AllStyleGroups))]
+    public void DefaultToolColor_AllGroups_MatchNewAppStateAndAppSettingsDefaults(ToolStyleGroup group)
+    {
+        var expected = ColorPalette.DefaultToolColor(group);
+
+        Assert.Equal(expected, new AppState().ColorOf(group));
+        Assert.Equal(expected, ColorPalette.Parse(StoredColorOf(new AppSettings(), group), Colors.Transparent));
+    }
+
+    [Fact]
+    public void DefaultToolColor_UnknownGroup_Throws() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => ColorPalette.DefaultToolColor((ToolStyleGroup)99));
+
+    public static TheoryData<ToolStyleGroup> AllStyleGroups()
+    {
+        var data = new TheoryData<ToolStyleGroup>();
+        foreach (var group in Enum.GetValues<ToolStyleGroup>())
+        {
+            data.Add(group);
+        }
+        return data;
+    }
+
+    private static string StoredColorOf(AppSettings settings, ToolStyleGroup group) => group switch
+    {
+        ToolStyleGroup.Pen => settings.PenColor,
+        ToolStyleGroup.Highlighter => settings.HighlighterColor,
+        ToolStyleGroup.Shape => settings.ShapeColor,
+        _ => throw new Xunit.Sdk.XunitException($"새 그룹 {group}의 AppSettings 색 속성을 이 표에 적으세요."),
+    };
 }

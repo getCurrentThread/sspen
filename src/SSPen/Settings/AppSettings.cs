@@ -57,6 +57,9 @@ public sealed class AppSettings
     /// <summary>세 도구 그룹(펜/형광펜/도형)의 색·굵기 동기화 여부 (기본 개별 — 사용자 조타).</summary>
     public bool SyncToolStyles { get; set; }
 
+    // 도구 그룹 기본 색·굵기 리터럴 (66단계, A4-5·A9-2): JSON 표기 호환·가독성 때문에 hex 문자열과 정수 2를 그대로 둔다.
+    // 값의 원천은 ColorPalette.DefaultToolColor·ThicknessScale.Default이며, 일치는 ToolStyleTests·ThicknessScaleTests 증인이 잠근다.
+
     /// <summary>펜 색 (#RRGGBB).</summary>
     public string PenColor { get; set; } = "#E74C3C";
 

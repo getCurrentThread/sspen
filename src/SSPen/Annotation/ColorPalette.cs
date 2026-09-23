@@ -32,6 +32,21 @@ public static class ColorPalette
         Parse("#E74C3C"), Parse("#1FD430"), Parse("#00ADEF"), Parse("#FEF200"), Parse("#FF0B88"), Parse("#8B4513"),
     ];
 
+    /// <summary>
+    /// 도구 그룹별 기본 색 — 기본값 (사용자 조타): 펜 빨강 / 형광펜 노랑 / 도형 초록 (66단계, A4-5·A9-2).
+    /// <see cref="AppState"/>의 초기값과 <c>SettingsBinder.ApplyToState</c>의 깨진 색 폴백이 모두 이 한 곳을 읽는다.
+    /// 이전에는 매직 인덱스 [5]/[1]/[4]가 두 파일에 따로 적혀 있어, 팔레트 순서를 바꾸면 "새 설치의 펜 색"과
+    /// "설정이 깨졌을 때의 폴백 색"이 조용히 갈라질 수 있었다. <c>AppSettings</c>의 hex 문자열 기본값은 JSON 표기
+    /// 호환·가독성 때문에 리터럴로 남기고, 이 값과의 일치는 증인 테스트(ToolStyleTests)가 잠근다.
+    /// </summary>
+    public static Color DefaultToolColor(ToolStyleGroup group) => group switch
+    {
+        ToolStyleGroup.Pen => DefaultQuickColors[5],
+        ToolStyleGroup.Highlighter => DefaultQuickColors[1],
+        ToolStyleGroup.Shape => DefaultQuickColors[4],
+        _ => throw new ArgumentOutOfRangeException(nameof(group), group, null),
+    };
+
     /// <summary>기본 바로가기 색 문자열 사본 (설정 POCO 기본값용 — 배열 공유 방지).</summary>
     public static string[] DefaultQuickColorHex() => [.. DefaultQuickColors.Select(ToHex)];
 
