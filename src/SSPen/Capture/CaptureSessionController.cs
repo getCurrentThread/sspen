@@ -1,4 +1,5 @@
 using System.IO;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using SSPen.Diagnostics;
 using SSPen.Interop;
@@ -8,10 +9,37 @@ using SSPen.Shell;
 namespace SSPen.Capture;
 
 /// <summary>
+/// 캡처 한 번의 고정 스냅샷 (75단계, A7-3): BitBlt 이미지와 그것을 찍은 가상 스크린 사각형(물리 픽셀).
+/// 둘은 한 쌍으로만 의미가 있다 — 크롭(<see cref="CaptureService.Crop"/>)이 영역을 이 사각형 기준 오프셋으로 환산한다.
+/// </summary>
+public readonly record struct CaptureSnapshot(BitmapSource Image, PhysicalRect VirtualScreen);
+
+/// <summary>
+/// 캡처 오버레이 이음매 (75단계, A7-3). 프로덕션 구현은 <see cref="CaptureOverlayWindow"/> 하나이고
+/// (<c>Show</c>는 <c>Window.Show</c>가 암묵 구현한다), 헤드리스 증인은 기록하는 가짜를 꽂는다.
+///
+/// <b>닫기는 <see cref="Dismiss"/>뿐이다</b> — 인터페이스에 <c>Close</c>를 두지 않는 것이 설계다. 세션은 대개 마우스가 오버레이
+/// 위에 있는 채로(액션바 버튼·바깥 클릭) 끝나므로, <c>Window.Close</c>로 바로 파괴하면 WPF 입력 계층이 죽은 창을
+/// 가리키다 다음 마우스 이동에서 Win32 1400으로 터진다. 구현은 <see cref="WindowLifetime.HideThenClose"/>로만 닫는다 (AGENTS L89).
+/// </summary>
+internal interface ICaptureOverlay
+{
+    /// <summary>오버레이 HWND (z-밴드 삽입용). 창이 아직 초기화되지 않았으면 0.</summary>
+    nint Hwnd { get; }
+
+    void Show();
+
+    /// <summary>숨긴 뒤 이후 디스패처 패스에서 파괴한다 — <see cref="WindowLifetime.HideThenClose"/> 계약.</summary>
+    void Dismiss();
+}
+
+/// <summary>
 /// 캡처 세션 수명 관리 (WI-11, AppController에서 분리). 툴바 숨김·오버레이 생성·결과 처리·복원을
 /// 하나의 시퀀스로 소유한다. 셸은 툴바 가시성/PinManager/경고/저장 경로/z-밴드를 델리게이트로 주입한다.
 /// UI 디스패처는 생성자로 주입받는다 (LD-4): <c>Application.Current</c>에 의존하면 통합 테스트가
 /// STA 스레드마다 AppDomain 단일 <c>Application</c> 제약에 걸려 무너진다 (R24).
+/// 스냅샷(렌더 패스 대기 → DwmFlush → BitBlt)과 오버레이 창도 이음매 뒤에 있다 (75단계, A7-3) — 공개 생성자가
+/// 실제 구현을 꽂고, internal 생성자로 가짜를 꽂으면 시작부터 결과 처리까지 전 구간이 헤드리스로 돈다.
 /// </summary>
 public sealed class CaptureSessionController
 {
@@ -25,8 +53,10 @@ public sealed class CaptureSessionController
     private readonly Action<bool> _setDecorationsVisible;
     private readonly Action<bool> _setSurfacesSuspended;
     private readonly Action<bool> _setToastSuspended;
+    private readonly Func<CaptureSnapshot> _takeSnapshot;
+    private readonly Func<BitmapSource, PhysicalRect, Action<CaptureAction, PhysicalRect>, ICaptureOverlay> _createOverlay;
 
-    private CaptureOverlayWindow? _captureOverlay;
+    private ICaptureOverlay? _captureOverlay;
     private bool _captureSessionActive;
     private bool _toolbarRestoreAfterCapture;
 
@@ -41,6 +71,39 @@ public sealed class CaptureSessionController
         Action<bool> setDecorationsVisible,
         Action<bool> setSurfacesSuspended,
         Action<bool> setToastSuspended)
+        : this(
+            dispatcher,
+            toolbarVisible,
+            setToolbarVisible,
+            pins,
+            report,
+            saveFolder,
+            applyZBand,
+            setDecorationsVisible,
+            setSurfacesSuspended,
+            setToastSuspended,
+            takeSnapshot: () => TakeLiveSnapshot(dispatcher),
+            createOverlay: (image, virtualScreen, onComplete) => new CaptureOverlayWindow(image, virtualScreen, onComplete))
+    {
+    }
+
+    /// <summary>
+    /// 이음매 생성자 (75단계, A7-3). <paramref name="takeSnapshot"/>과 <paramref name="createOverlay"/>는
+    /// <c>ContextIdle</c> 연속체 안에서만 불린다 — 숨김이 합성에 반영되기 전에 찍으면 툴바·장식이 결과물에 남는다 (ARCH-4).
+    /// </summary>
+    internal CaptureSessionController(
+        Dispatcher dispatcher,
+        Func<bool> toolbarVisible,
+        Action<bool> setToolbarVisible,
+        Func<PinManager?> pins,
+        Action<CaptureOutcome> report,
+        Func<string?> saveFolder,
+        Action applyZBand,
+        Action<bool> setDecorationsVisible,
+        Action<bool> setSurfacesSuspended,
+        Action<bool> setToastSuspended,
+        Func<CaptureSnapshot> takeSnapshot,
+        Func<BitmapSource, PhysicalRect, Action<CaptureAction, PhysicalRect>, ICaptureOverlay> createOverlay)
     {
         _dispatcher = dispatcher;
         _toolbarVisible = toolbarVisible;
@@ -52,6 +115,8 @@ public sealed class CaptureSessionController
         _setDecorationsVisible = setDecorationsVisible;
         _setSurfacesSuspended = setSurfacesSuspended;
         _setToastSuspended = setToastSuspended;
+        _takeSnapshot = takeSnapshot;
+        _createOverlay = createOverlay;
     }
 
     /// <summary>캡처 세션 진행 중 여부 (툴바 토글 가드 등에서 참조).</summary>
@@ -99,13 +164,10 @@ public sealed class CaptureSessionController
         {
             try
             {
-                WaitForRenderPass();
-                NativeMethods.DwmFlush();
-                var virtualScreen = MonitorTopology.VirtualScreen();
-                var snapshot = CaptureService.CaptureVirtualScreen();
-                Log.Info($"캡처 스냅샷 완료: {virtualScreen}");
-                _captureOverlay = new CaptureOverlayWindow(snapshot, virtualScreen, (action, region) =>
-                    OnCaptureComplete(action, region, snapshot, virtualScreen));
+                var snapshot = _takeSnapshot();
+                Log.Info($"캡처 스냅샷 완료: {snapshot.VirtualScreen}");
+                _captureOverlay = _createOverlay(snapshot.Image, snapshot.VirtualScreen, (action, region) =>
+                    OnCaptureComplete(action, region, snapshot));
                 _captureOverlay.Show();
                 _applyZBand();
             }
@@ -117,18 +179,27 @@ public sealed class CaptureSessionController
         });
     }
 
-    private void OnCaptureComplete(
-        CaptureAction action,
-        PhysicalRect region,
-        System.Windows.Media.Imaging.BitmapSource snapshot,
-        PhysicalRect virtualScreen)
+    /// <summary>
+    /// 실제 스냅샷 (공개 생성자의 기본 이음매, 75단계에 연속체 본문에서 옮겼다): 렌더 패스 대기 → DwmFlush →
+    /// 가상 스크린 조회 → BitBlt. 순서가 계약이다 — 앞의 둘이 숨김(툴바·장식·토스트)을 합성에 반영시킨 뒤에야 찍는다 (ARCH-4, ARCH-14).
+    /// </summary>
+    private static CaptureSnapshot TakeLiveSnapshot(Dispatcher dispatcher)
+    {
+        WaitForRenderPass(dispatcher);
+        NativeMethods.DwmFlush();
+        var virtualScreen = MonitorTopology.VirtualScreen();
+        var image = CaptureService.CaptureVirtualScreen();
+        return new CaptureSnapshot(image, virtualScreen);
+    }
+
+    private void OnCaptureComplete(CaptureAction action, PhysicalRect region, CaptureSnapshot snapshot)
     {
         var outcome = CaptureOutcomeRules.Decide(action, region.IsEmpty, succeeded: true);
         try
         {
             if (action != CaptureAction.Cancel && !region.IsEmpty)
             {
-                var cropped = CaptureService.Crop(snapshot, region, virtualScreen);
+                var cropped = CaptureService.Crop(snapshot.Image, region, snapshot.VirtualScreen);
                 outcome = Perform(action, region, cropped);
             }
         }
@@ -150,7 +221,7 @@ public sealed class CaptureSessionController
     /// "예기치 않은 오류가 발생했습니다"라는 일반 대화상자로 끝났다 — 어떤 조작이 실패했는지도, 이미지가
     /// 사라졌다는 사실도 알 수 없었다. 좁은 예외만 잡는다 (프로그래밍 오류는 계속 위로 던진다).
     /// </summary>
-    private CaptureOutcome Perform(CaptureAction action, PhysicalRect region, System.Windows.Media.Imaging.BitmapSource cropped)
+    private CaptureOutcome Perform(CaptureAction action, PhysicalRect region, BitmapSource cropped)
     {
         switch (action)
         {
@@ -191,15 +262,17 @@ public sealed class CaptureSessionController
     ///
     /// async 금지 규약에 맞춰 일회성 <c>CompositionTarget.Rendering</c> 후크로 동기 대기한다
     /// (<c>AppController.CompositionTargetFrameSource</c>가 같은 패턴의 선례 — 45단계 이전에는 <c>OnRenderTick</c>).
+    /// 프레임 루프 구독자가 아니다: 캡처 직전에 한 번(120ms 상한) 구독했다가 첫 틱이나 상한에서 즉시 뗀다 —
+    /// 프레임 틱을 계속 받는 구독자는 그 어댑터 하나뿐이다 (AGENTS L12).
     /// </summary>
-    private void WaitForRenderPass()
+    private static void WaitForRenderPass(Dispatcher dispatcher)
     {
         var frame = new DispatcherFrame();
         EventHandler? hook = null;
         // 만약 렌더 틱이 오지 않으면(서피스가 전부 숨겨져 갱신할 게 없는 경우) 영원히 멈추므로
         // 상한을 둔다. 무한 대기로 캡처 자체가 죽는 것보다 장식 한 프레임이 남는 편이 낫다.
         var timeout = new DispatcherTimer(
-            TimeSpan.FromMilliseconds(120), DispatcherPriority.Send, (_, _) => frame.Continue = false, _dispatcher);
+            TimeSpan.FromMilliseconds(120), DispatcherPriority.Send, (_, _) => frame.Continue = false, dispatcher);
         hook = (_, _) =>
         {
             System.Windows.Media.CompositionTarget.Rendering -= hook;
@@ -216,13 +289,10 @@ public sealed class CaptureSessionController
 
     private void EndCaptureSession()
     {
-        if (_captureOverlay is not null)
-        {
-            // 마우스가 오버레이(또는 그 액션바 버튼) 위에 있는 채로 HWND를 파괴하면
-            // WPF 입력 계층이 죽은 창을 계속 가리키다 다음 마우스 이동에서 Win32 1400으로 터진다.
-            // 캡처는 반드시 버튼 클릭으로 끝나므로 이 경로가 정확히 그 상황이다 (WindowLifetime 참조).
-            Shell.WindowLifetime.HideThenClose(_captureOverlay);
-        }
+        // 마우스가 오버레이(또는 그 액션바 버튼) 위에 있는 채로 HWND를 파괴하면
+        // WPF 입력 계층이 죽은 창을 계속 가리키다 다음 마우스 이동에서 Win32 1400으로 터진다.
+        // 캡처는 반드시 버튼 클릭으로 끝나므로 이 경로가 정확히 그 상황이다 — Dismiss가 HideThenClose다 (ICaptureOverlay 참조).
+        _captureOverlay?.Dismiss();
         _captureOverlay = null;
         _captureSessionActive = false;
         if (_toolbarRestoreAfterCapture)

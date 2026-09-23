@@ -1,9 +1,11 @@
 namespace SSPen.Annotation;
 
 /// <summary>
-/// 프레임 틱 이음매 (45단계). 유일한 구현은 <c>AppController.CompositionTargetFrameSource</c>(private nested) — WPF
-/// <c>CompositionTarget.Rendering</c>의 프레임 틱 구독은 여기 하나다(캡처의 일회성 렌더 대기
-/// <c>CaptureSessionController.WaitForRenderPass</c>는 별개) (<see cref="DispatcherIdleScheduler"/> 선례 — 13단계, 73단계에 <c>ContentSurfaceWindow</c>에서 꺼냈다).
+/// 프레임 틱 이음매 (45단계). 유일한 구현은 <c>AppController.CompositionTargetFrameSource</c>(private nested)이고,
+/// WPF <c>CompositionTarget.Rendering</c>을 프레임 루프로 구독하는 곳은 앱 전체에서 그 어댑터 하나다. 이와 별개로
+/// <c>CaptureSessionController.WaitForRenderPass</c>가 캡처 직전 일회성 동기 대기(120ms 상한)로 구독했다가 즉시 뗀다 — 프레임 루프 구독자가 아니다.
+/// 이음매 하나에 얇은 WPF 어댑터 한 벌을 두는 모양은 <see cref="IIdleScheduler"/>/<see cref="DispatcherIdleScheduler"/>가 선례다
+/// (13단계, 73단계에 <c>ContentSurfaceWindow</c>에서 꺼냈다).
 /// <see cref="Start"/>/<see cref="Stop"/>은 멱등이어야 하며 <see cref="Frame"/> 발화 중 <see cref="Stop"/>이 불려도 안전해야 한다.
 /// </summary>
 public interface IFrameSource

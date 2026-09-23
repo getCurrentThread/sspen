@@ -68,7 +68,10 @@ public class CaptureOverlayRulesTests
         Assert.Equal(CapturePointerVerdict.RestartSelection, verdict);
     }
 
-    // ── 68단계(A7-5): 창 안에 있던 좌표·크기 판정. 이 창을 띄우는 테스트는 어느 스위트에도 없으므로 여기가 유일한 증인이다.
+    // ── 68단계(A7-5): 창 안에 있던 좌표·크기 판정. 여기가 유일한 증인이다 — 오버레이에서 영역을 끄는 테스트는 어느 스위트에도 없다.
+    //    E2E CaptureSessionE2ETests는 StartCapture를 부르지만 실제 CaptureOverlayWindow는 뜨지 않는다: 오버레이는 ContextIdle 연속체에서
+    //    만들어지는데 E2E 펌프(Background 우선순위)는 그보다 먼저 빠져나온다(75단계 측정: 펌프를 거듭해도 OverlayHwnd == 0).
+    //    헤드리스 CaptureSessionControllerTests는 ICaptureOverlay 가짜를 꽂으므로(75단계) 역시 이 판정들을 거치지 않는다.
 
     /// <summary>목표 토폴로지 3×1920×1080, 원점 −1920 (AGENTS "Coordinate spaces").</summary>
     private static readonly PhysicalRect VirtualScreen = new(-1920, 0, 5760, 1080);

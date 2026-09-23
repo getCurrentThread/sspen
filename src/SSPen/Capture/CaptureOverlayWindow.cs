@@ -22,8 +22,9 @@ public enum CaptureAction
 /// 드래그로 영역을 고른다. 배경 딤 처리는 사용자 요청으로 제거 — 선택 영역은
 /// 강조색 테두리 + 크기 표시로만 구분한다. 선택 확정 시 복사/저장/핀 고정/취소 도구모음.
 /// 단일 가상스크린 창이므로 선택 수학은 하나의 좌표 공간에서 끝난다 (-1920 이음새 무관).
+/// 세션 컨트롤러는 이 창을 <see cref="ICaptureOverlay"/>로만 본다 (75단계, A7-3) — 닫는 길은 <see cref="Dismiss"/> 하나다.
 /// </summary>
-public sealed class CaptureOverlayWindow : Window
+public sealed class CaptureOverlayWindow : Window, ICaptureOverlay
 {
     private readonly PhysicalRect _virtualScreen;
     private readonly Action<CaptureAction, PhysicalRect> _onComplete;
@@ -102,6 +103,12 @@ public sealed class CaptureOverlayWindow : Window
     }
 
     public nint Hwnd { get; private set; }
+
+    /// <summary>
+    /// 세션 종료 시 닫기 (75단계, A7-3). 캡처는 대개 마우스가 이 창 위에 있는 채로(액션바 버튼·바깥 클릭) 끝나므로
+    /// <c>Close</c>로 바로 파괴하면 다음 마우스 이동에서 Win32 1400이 터진다 — 숨긴 뒤 이후 패스에서 닫는다 (AGENTS L89).
+    /// </summary>
+    public void Dismiss() => WindowLifetime.HideThenClose(this);
 
     protected override void OnSourceInitialized(EventArgs e)
     {

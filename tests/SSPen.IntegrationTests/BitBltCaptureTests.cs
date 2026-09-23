@@ -32,13 +32,28 @@ public class BitBltCaptureTests
             Height = bounds.Height,
         };
         window.Show();
-        WindowStyling.PlacePhysical(WindowStyling.GetHwnd(window), bounds);
-        StaRunner.PumpMessages();
-        // DWM 합성 대기: 고정 슬립이 아니라 마커가 실제로 찍힐 때까지(최대 3초) 기다린다 (A8-7).
-        // 결과는 버린다 — 판정은 호출부의 캡처·단언이 한다. BitBlt가 막힌 세션이면 곧바로 null이 오고,
-        // 호출부의 기존 try/catch 대체 경로가 그대로 이어받는다. 시간 초과면 호출부의 같은 단언이 실패한다.
-        _ = PixelProbe.CaptureUntil(bounds, s => CenterPixel(s) == MarkerColor, 3000);
-        return window;
+        // 호출부의 try/finally는 이 메서드가 창을 돌려준 뒤에야 시작된다. 그래서 여기서 던지면(CaptureUntil이 삼키는 것은
+        // 메시지에 "BitBlt"가 든 InvalidOperationException뿐이다) 전면 톱모스트 마커가 닫히지 않고 새어 나가
+        // 뒤따르는 클래스의 픽셀 단언을 덮는다 — 넘겨주기 전의 실패는 여기서 닫는다 (75단계, 61단계 리뷰 지적).
+        bool handedOver = false;
+        try
+        {
+            WindowStyling.PlacePhysical(WindowStyling.GetHwnd(window), bounds);
+            StaRunner.PumpMessages();
+            // DWM 합성 대기: 고정 슬립이 아니라 마커가 실제로 찍힐 때까지(최대 3초) 기다린다 (A8-7).
+            // 결과는 버린다 — 판정은 호출부의 캡처·단언이 한다. BitBlt가 막힌 세션이면 곧바로 null이 오고,
+            // 호출부의 기존 try/catch 대체 경로가 그대로 이어받는다. 시간 초과면 호출부의 같은 단언이 실패한다.
+            _ = PixelProbe.CaptureUntil(bounds, s => CenterPixel(s) == MarkerColor, 3000);
+            handedOver = true;
+            return window;
+        }
+        finally
+        {
+            if (!handedOver)
+            {
+                window.Close();
+            }
+        }
     }
 
     private static Color CenterPixel(BitmapSource source)
